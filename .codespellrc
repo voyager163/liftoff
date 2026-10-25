@@ -1,6 +1,7 @@
 [codespell]
-# Generated files: the npm lockfile and the minified CI bundles.
-skip = ./.git,./LICENSE,*.svg,./node_modules,./package-lock.json,./.github/liftoff,./coverage,./out,./dist
+# Generated files: the npm lockfiles and the minified CI bundles.
+skip = ./.git,./LICENSE,*.svg,./node_modules,*/package-lock.json,./package-lock.json,./.github/liftoff,./coverage,./out,./dist
 check-hidden = true
-# Deliberate misspellings in tests of the "did you mean" suggestions.
-ignore-words-list = revew,clasify
+# Deliberate misspellings in tests of the "did you mean" suggestions, and
+# Vitest's afterAll.
+ignore-words-list = revew,clasify,afterall

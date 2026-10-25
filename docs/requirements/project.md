@@ -63,8 +63,9 @@ Verification: test
 
 ## PROJ-006 A generated project passes its own checks on macOS and Windows
 
-Liftoff's CI generates a project on macOS arm64 and Windows x64 and runs its
-locked install, lint, format and tests there.
+Liftoff's CI generates a project for every API stack on macOS arm64 and
+Windows x64 and runs its locked install, lint, format, type checks where the
+stack has them, and tests there.
 
 Verification: live
 
@@ -86,6 +87,23 @@ GitFlow profiles generate GOVERNANCE.md, branch rulesets under
 take effect only when a person applies them after the checks they require
 have run. CODEOWNERS is generated only when owners are given. The `none`
 profile generates no governance files.
+
+Verification: test
+
+## PROJ-009 The Node.js API project follows the API contract
+
+A `node-fastify` project is TypeScript run directly by Node.js 26, with
+Fastify, Drizzle ORM and node-postgres and a committed npm lockfile. It
+listens on port 8000; separates `/health/live` (no dependencies) from
+`/health/ready` (checks PostgreSQL over a new connection with a time limit,
+503 when it is unavailable or stops answering); serves OpenAPI and Scalar
+docs; has an initial Drizzle migration; reads configuration from the
+environment, then an explicitly named JSON file, then non-secret defaults,
+failing on a named file that is missing, malformed or has unknown settings;
+and ships Biome, strict type checks, tests against an in-process PostgreSQL
+with an 80% gate on every coverage metric, integration tests in a throwaway
+schema, a Dockerfile that runs as an unprivileged user and a Compose file
+with PostgreSQL. It contains no GenAI dependencies.
 
 Verification: test
 

@@ -52,7 +52,15 @@ describe("INIT-001 plan changes nothing but the plan file", () => {
     const created = await exec(["init", "--plan", "demo.plan.json", "--yes"]);
     expect(created.code).toBe(0);
     expect(created.out).toContain("Created");
+    expect(created.out).toContain("cd backend && uv sync && uv run pytest");
     expect(existsSync(path.join(work, "demo/CLAUDE.md"))).toBe(true);
+  });
+
+  it("suggests the selected stack's first commands", async () => {
+    const { code, out } = await exec(["init", ...PROJECT, "--stack", "node-fastify", "--yes"]);
+    expect(code).toBe(0);
+    expect(out).toContain("cd backend && npm ci && npm test");
+    expect(out).not.toContain("uv sync");
   });
 
   it("emits the plan as JSON", async () => {

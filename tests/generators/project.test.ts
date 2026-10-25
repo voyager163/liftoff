@@ -44,6 +44,7 @@ const CASES: Record<string, Record<string, unknown>> = {
   },
   "copilot-only": { agents: ["copilot"], review: { ai: true } },
   "claude-no-governance": { agents: ["claude"], review: { ai: true }, governance: "none" },
+  "node-copilot": { stack: "node-fastify", agents: ["copilot"], review: { ai: true } },
 };
 
 const files = async (overrides: Record<string, unknown> = {}) =>
@@ -190,6 +191,68 @@ describe("PROJ-005 the Python API project contract", () => {
     for (const file of await files(CASES["all-agents"])) {
       expect(file.content, file.path).not.toMatch(/\{\{liftoff\./);
     }
+  });
+});
+
+describe("PROJ-009 the Node.js API project contract", () => {
+  it("contains the application, migration, tests, lock, Dockerfile and Compose file", async () => {
+    const project = await byPath({ stack: "node-fastify" });
+    for (const required of [
+      "backend/src/app.ts",
+      "backend/src/health.ts",
+      "backend/src/config.ts",
+      "backend/src/server.ts",
+      "backend/drizzle/0000_create_items.sql",
+      "backend/drizzle/meta/_journal.json",
+      "backend/test/health.test.ts",
+      "backend/test/config.test.ts",
+      "backend/test/integration/postgresql.test.ts",
+      "backend/package.json",
+      "backend/package-lock.json",
+      "backend/Dockerfile",
+      "compose.yaml",
+      "README.md",
+      ".env.example",
+      ".github/workflows/01-pr-ci.yml",
+      ".github/workflows/02-codeql.yml",
+      ".github/dependabot.yml",
+    ]) {
+      expect(project.has(required), required).toBe(true);
+    }
+    const text = (p: string) => project.get(p)?.content ?? "";
+    expect(text("backend/src/config.ts")).toContain("port: 8000");
+    expect(text("backend/src/health.ts")).toContain('"/health/ready"');
+    expect(text("backend/src/health.ts")).toContain("query_timeout");
+    expect(text("backend/src/app.ts")).toContain("@scalar/fastify-api-reference");
+    expect(text("backend/src/app.ts")).toContain('title: "demo API"');
+    expect(text("backend/vitest.config.ts")).toContain(
+      "thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 }",
+    );
+    expect(text("backend/Dockerfile")).toContain("USER 10001");
+    expect(text("backend/Dockerfile")).toMatch(/FROM node:[^\s]+@sha256:[0-9a-f]{64}/);
+    expect(text("compose.yaml")).toContain('command: ["node", "src/migrate.ts"]');
+    const lock = JSON.parse(text("backend/package-lock.json"));
+    const pkg = JSON.parse(text("backend/package.json"));
+    expect(lock.packages[""].dependencies).toEqual(pkg.dependencies);
+    expect(lock.packages[""].devDependencies).toEqual(pkg.devDependencies);
+    for (const dependencies of [pkg.dependencies, pkg.devDependencies]) {
+      for (const version of Object.values(dependencies)) expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+    }
+    expect(text("backend/package.json")).not.toMatch(/ai-sdk|openai|anthropic|langfuse|pgvector/i);
+    expect(text(".github/workflows/01-pr-ci.yml")).toContain("name: ci-gate");
+    expect(text(".github/workflows/02-codeql.yml")).toContain("javascript-typescript");
+    expect(text(".github/dependabot.yml")).toContain("package-ecosystem: npm");
+  });
+
+  it("gets only its own stack's files and ignores", async () => {
+    const node = [...(await byPath({ stack: "node-fastify" })).keys()];
+    expect(node.filter((p) => p.endsWith(".py") || p.endsWith("uv.lock"))).toEqual([]);
+    const python = [...(await byPath()).keys()];
+    expect(python.filter((p) => p.endsWith(".ts") || p.endsWith("package.json"))).toEqual([]);
+    expect((await byPath()).get("backend/.gitignore")?.content).toContain(".venv/");
+    expect((await byPath({ stack: "node-fastify" })).get("backend/.gitignore")?.content).toContain(
+      "node_modules/",
+    );
   });
 });
 

@@ -82,16 +82,17 @@ jobs:
           if-no-files-found: error
 
   generated:
-    name: Generated project (${{ matrix.name }})
+    name: Generated ${{ matrix.stack }} project (${{ matrix.platform.name }})
     strategy:
       fail-fast: false
       matrix:
-        include:
+        platform:
           - name: macOS arm64
             os: macos-15
           - name: Windows x64
             os: windows-latest
-    runs-on: ${{ matrix.os }}
+        stack: [python-fastapi, node-fastify]
+    runs-on: ${{ matrix.platform.os }}
     timeout-minutes: 20
     defaults:
       run:
@@ -100,26 +101,40 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Also the Node.js the node-fastify project asks for in backend/.node-version.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: npm
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: matrix.stack == 'python-fastapi'
         with:
           version: "0.13.1"
       - run: npm ci
       - name: Create a project with every agent host
+        env:
+          STACK: ${{ matrix.stack }}
         run: >-
-          node src/cli/main.ts init --name demo --workflow manual
+          node src/cli/main.ts init --name demo --stack "$STACK" --workflow manual
           --agents copilot,codex,claude --owners voyager163
           --dir "$RUNNER_TEMP/demo" --yes
-      - name: Install, lint and test the generated project
+      - name: Install, lint and test the generated Python project
+        if: matrix.stack == 'python-fastapi'
         working-directory: ${{ runner.temp }}/demo/backend
         run: |
           uv sync --locked
           uv run ruff check .
           uv run ruff format --check .
           uv run pytest
+      - name: Install, lint, type-check and test the generated Node.js project
+        if: matrix.stack == 'node-fastify'
+        working-directory: ${{ runner.temp }}/demo/backend
+        run: |
+          test "$(node --version)" = "v$(cat .node-version)"
+          npm ci --no-audit --no-fund
+          npm run lint
+          npm run typecheck
+          npm test
       - name: Validate the generated project
         run: node src/cli/main.ts validate --dir "$RUNNER_TEMP/demo"
 

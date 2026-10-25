@@ -1,5 +1,6 @@
 import type { StackPlugin } from "../../contracts/project-plugin.ts";
 import { filesFrom } from "../files.ts";
+import { changeProcess, DOCKER_TOOL, DOCUMENTATION_RULE, GIT_TOOL } from "./shared.ts";
 
 const ROOT = "plugins/stack-python-fastapi/files";
 
@@ -31,23 +32,8 @@ export const pythonFastapiStack: StackPlugin = {
       purpose: "installs Python and the locked dependencies, and runs the checks",
       install: "https://docs.astral.sh/uv/getting-started/installation/",
     },
-    {
-      name: "Git",
-      command: "git",
-      versionArgs: ["--version"],
-      required: true,
-      minimum: "2.40.0",
-      purpose: "version control and the review policy",
-      install: "https://git-scm.com/downloads",
-    },
-    {
-      name: "Docker",
-      command: "docker",
-      versionArgs: ["--version"],
-      required: false,
-      purpose: "runs PostgreSQL and the API locally with docker compose",
-      install: "https://docs.docker.com/get-started/get-docker/",
-    },
+    GIT_TOOL,
+    DOCKER_TOOL,
   ],
   reviewRules: [
     {
@@ -74,8 +60,9 @@ export const pythonFastapiStack: StackPlugin = {
       always_human: false,
       reason: "tests; coverage gates still apply",
     },
-    { paths: ["docs/**", "*.md"], tier: "low", always_human: false, reason: "documentation" },
+    DOCUMENTATION_RULE,
   ],
+  quickStart: "cd backend && uv sync && uv run pytest",
   layout: [
     { path: "backend/app/", purpose: "the FastAPI application" },
     { path: "backend/migrations/", purpose: "Alembic database migrations" },
@@ -86,13 +73,7 @@ export const pythonFastapiStack: StackPlugin = {
     filesFrom(
       templates,
       ROOT,
-      {
-        name: config.name,
-        changeProcess:
-          profile === "none"
-            ? "See [REVIEW.md](REVIEW.md) for what reviewers look for."
-            : "Pull requests target `develop`. See [GOVERNANCE.md](GOVERNANCE.md) for the\nbranch model and [REVIEW.md](REVIEW.md) for what reviewers look for.",
-      },
+      { name: config.name, changeProcess: changeProcess(profile) },
       "seeded",
     ),
 };

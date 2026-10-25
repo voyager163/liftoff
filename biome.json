@@ -7,7 +7,12 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/.github/liftoff/*.mjs", "!**/tests/fixtures"]
+    "includes": [
+      "**",
+      "!**/.github/liftoff/*.mjs",
+      "!**/tests/fixtures",
+      "!**/assets/plugins/*/files"
+    ]
   },
   "formatter": {
     "enabled": true,

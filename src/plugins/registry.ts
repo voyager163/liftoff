@@ -5,6 +5,7 @@ import { agentsPlugin } from "./builtin/agents.ts";
 import { commonPlugin } from "./builtin/common.ts";
 import { gitflowGovernance, noGovernance } from "./builtin/governance/gitflow.ts";
 import { reviewPlugin } from "./builtin/review/review.ts";
+import { nodeFastifyStack } from "./builtin/stacks/node-fastify.ts";
 import { pythonFastapiStack } from "./builtin/stacks/python-fastapi.ts";
 import { manualWorkflow } from "./builtin/workflows.ts";
 import type { AgentHostId } from "./contracts/agent-host.ts";
@@ -17,6 +18,7 @@ import type { ProjectPlugin, StackPlugin } from "./contracts/project-plugin.ts";
 export const WORKLOADS = ["api"] as const;
 export const STACKS: Readonly<Record<string, StackPlugin>> = {
   "python-fastapi": pythonFastapiStack,
+  "node-fastify": nodeFastifyStack,
 };
 export const WORKFLOWS: Readonly<Record<string, ProjectPlugin>> = { manual: manualWorkflow };
 /** Workflows the product supports but this release cannot generate yet. */

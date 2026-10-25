@@ -5,7 +5,7 @@ import {
   type ProjectConfig,
   validateConfig,
 } from "../domain/project/config.ts";
-import { DEFAULT_GOVERNANCE, DEFAULT_WORKFLOW } from "../plugins/registry.ts";
+import { DEFAULT_GOVERNANCE, DEFAULT_WORKFLOW, STACKS } from "../plugins/registry.ts";
 import type { OptionSpec, ParsedArgs } from "./command.ts";
 import { UsageError } from "./outcome.ts";
 
@@ -32,7 +32,7 @@ export const PROJECT_OPTIONS: Readonly<Record<string, OptionSpec>> = {
     type: "string",
     valueName: "stack",
     default: "python-fastapi",
-    description: "Technology stack.",
+    description: `Technology stack: ${Object.keys(STACKS).join(", ")}.`,
   },
   workflow: {
     type: "string",
