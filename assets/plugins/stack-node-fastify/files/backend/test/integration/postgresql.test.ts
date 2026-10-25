@@ -27,8 +27,13 @@ beforeAll(async () => {
   await admin.connect();
   await admin.query(`CREATE SCHEMA "${schemaName}"`);
   await admin.end();
-  // Every connection sees only the new schema.
-  pool = new pg.Pool({ connectionString: url, options: `-c search_path=${schemaName}` });
+  // Every connection sees only the new schema. node-postgres prefers options
+  // in the URL over a separate options field, so the setting goes into the
+  // URL, after any options it already has: the last setting wins.
+  const isolated = new URL(url);
+  const options = [isolated.searchParams.get("options"), `-c search_path=${schemaName}`];
+  isolated.searchParams.set("options", options.filter(Boolean).join(" "));
+  pool = new pg.Pool({ connectionString: isolated.toString() });
 });
 
 afterAll(async () => {
@@ -42,6 +47,8 @@ afterAll(async () => {
 
 describe("against PostgreSQL", () => {
   it("applies the migrations and serves the API", async () => {
+    const { rows } = await pool.query("SELECT current_schema() AS name");
+    expect(rows[0].name).toBe(schemaName);
     const db = drizzle(pool, { schema });
     await migrate(db, { migrationsFolder: MIGRATIONS, migrationsSchema: schemaName });
     const app = await testApp(db, { probe: databaseProbe(url, 2) });
