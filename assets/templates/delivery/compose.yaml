@@ -1,26 +1,5 @@
-# Local development: PostgreSQL and the application.
-#   cp .env.example .env    # then set POSTGRES_PASSWORD
-#   docker compose up --build
+{{liftoff.header}}
 name: {{liftoff.name}}
 
 services:
-  database:
-    image: postgres:18-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
-    environment:
-      POSTGRES_DB: app
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}
-    ports:
-      - "127.0.0.1:5432:5432"
-    volumes:
-      - database:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-{{liftoff.services}}
-
-volumes:
-  database:
+{{liftoff.body}}

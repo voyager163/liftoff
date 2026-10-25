@@ -7,10 +7,12 @@ import { deliveryPlugin } from "./builtin/delivery.ts";
 import { vueFrontend } from "./builtin/frontends/vue.ts";
 import { gitflowGovernance, noGovernance } from "./builtin/governance/gitflow.ts";
 import { azureInfrastructure } from "./builtin/infrastructure/azure.ts";
+import { PATTERN_LIST } from "./builtin/patterns.ts";
 import { reviewPlugin } from "./builtin/review/review.ts";
 import { goHumaStack } from "./builtin/stacks/go-huma.ts";
 import { nodeFastifyStack } from "./builtin/stacks/node-fastify.ts";
 import { pythonFastapiStack } from "./builtin/stacks/python-fastapi.ts";
+import { pythonPydanticaiStack } from "./builtin/stacks/python-pydanticai.ts";
 import { manualWorkflow } from "./builtin/workflows.ts";
 import type { AgentHostId } from "./contracts/agent-host.ts";
 import {
@@ -19,6 +21,7 @@ import {
   type EnvironmentId,
   type FrontendPlugin,
   type InfrastructurePlugin,
+  type PatternPlugin,
   type ProjectPlugin,
   type StackPlugin,
 } from "./contracts/project-plugin.ts";
@@ -27,12 +30,24 @@ import {
  * Every plugin this release ships. Plugins are bundled and listed here;
  * nothing is ever loaded from a project or the network.
  */
-export const WORKLOADS = ["api"] as const;
+export const WORKLOADS = ["api", "genai"] as const;
 export const STACKS: Readonly<Record<string, StackPlugin>> = {
   "python-fastapi": pythonFastapiStack,
   "node-fastify": nodeFastifyStack,
   "go-huma": goHumaStack,
+  "python-pydanticai": pythonPydanticaiStack,
 };
+/** The stack each workload uses when none is named. */
+export const DEFAULT_STACKS: Readonly<Record<(typeof WORKLOADS)[number], string>> = {
+  api: "python-fastapi",
+  genai: "python-pydanticai",
+};
+/** GenAI patterns; other workloads take "none". */
+export const PATTERNS: Readonly<Record<string, PatternPlugin>> = Object.fromEntries(
+  PATTERN_LIST.map((pattern) => [pattern.name, pattern]),
+);
+export const NO_PATTERN = "none";
+export const DEFAULT_PATTERN = "generic";
 /** Web frontends; "none" selects no frontend. */
 export const FRONTENDS: Readonly<Record<string, FrontendPlugin>> = { vue: vueFrontend };
 export const NO_FRONTEND = "none";
@@ -69,6 +84,7 @@ export class SelectionError extends Error {
 
 export interface Selection {
   readonly stack: StackPlugin;
+  readonly pattern: PatternPlugin | undefined;
   readonly frontend: FrontendPlugin | undefined;
   readonly infrastructure: InfrastructurePlugin | undefined;
   /** In dev, staging, prod order. */
@@ -109,6 +125,23 @@ export function resolveSelection(config: ProjectConfig): Selection {
     );
   }
 
+  let pattern: PatternPlugin | undefined;
+  if (stack.workload === "genai") {
+    if (config.pattern === NO_PATTERN) {
+      throw new SelectionError(
+        `genai projects need a pattern; available: ${list(Object.keys(PATTERNS))}`,
+      );
+    }
+    pattern = entry(PATTERNS, config.pattern);
+    if (!pattern) {
+      throw new SelectionError(
+        `unknown pattern "${config.pattern}"; available: ${list(Object.keys(PATTERNS))}`,
+      );
+    }
+  } else if (config.pattern !== NO_PATTERN) {
+    throw new SelectionError(`patterns are for genai projects, not ${config.workload} projects`);
+  }
+
   let frontend: FrontendPlugin | undefined;
   if (config.frontend !== NO_FRONTEND) {
     frontend = entry(FRONTENDS, config.frontend);
@@ -134,6 +167,18 @@ export function resolveSelection(config: ProjectConfig): Selection {
         `unknown environment "${environment}"; available: ${list(ENVIRONMENTS)}`,
       );
     }
+  }
+  if (frontend && !stack.database) {
+    throw new SelectionError(
+      `the ${config.frontend} frontend is not available for ${config.workload} projects in this release`,
+      true,
+    );
+  }
+  if (infrastructure && !stack.database) {
+    throw new SelectionError(
+      `${config.infrastructure} infrastructure is not available for ${config.workload} projects in this release`,
+      true,
+    );
   }
   if (infrastructure && config.environments.length === 0) {
     throw new SelectionError(
@@ -191,10 +236,12 @@ export function resolveSelection(config: ProjectConfig): Selection {
   }
 
   const components: ComponentPlugin[] = [stack];
+  if (pattern) components.push(pattern);
   if (frontend) components.push(frontend);
   if (infrastructure) components.push(infrastructure);
   return {
     stack,
+    pattern,
     frontend,
     infrastructure,
     environments,
@@ -218,6 +265,7 @@ export function allPlugins(): ProjectPlugin[] {
   const plugins = [
     commonPlugin,
     ...Object.values(STACKS),
+    ...PATTERN_LIST,
     ...Object.values(FRONTENDS),
     ...Object.values(INFRASTRUCTURE),
     deliveryPlugin,

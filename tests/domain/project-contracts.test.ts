@@ -47,7 +47,7 @@ describe("PROJ-001 project configuration", () => {
     expect(validateConfig(config).infrastructure).toBe("none");
     expect(validateConfig(config).environments).toEqual([]);
     expect(serializeConfig(validateConfig({ ...config, frontend: "vue" }))).toContain(
-      "stack: python-fastapi\nfrontend: vue\n",
+      "stack: python-fastapi\npattern: none\nfrontend: vue\n",
     );
     const withEngine = validateConfig({ ...config, review: { ai: true, engine: "claude" } });
     expect(serializeConfig(withEngine)).toContain("engine: claude");

@@ -1,0 +1,52 @@
+# The API: lint and format, tests with coverage on the offline test model, and
+# the container image build. No job needs a model key.
+lint:
+  name: Lint
+  runs-on: ubuntu-latest
+  timeout-minutes: 10
+  defaults:
+    run:
+      working-directory: backend
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      with:
+        version: "0.13.1"
+        enable-cache: true
+    - run: uv sync --locked
+    - run: uv run ruff check .
+    - run: uv run ruff format --check .
+
+test:
+  name: Tests
+  runs-on: ubuntu-latest
+  timeout-minutes: 15
+  defaults:
+    run:
+      working-directory: backend
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      with:
+        version: "0.13.1"
+        enable-cache: true
+    - run: uv sync --locked
+    - run: uv run pytest
+
+image:
+  name: Container image
+  runs-on: ubuntu-latest
+  timeout-minutes: 15
+  defaults:
+    run:
+      working-directory: backend
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Build the image (not published)
+      run: docker build --tag api:ci .

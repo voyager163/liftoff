@@ -7,6 +7,7 @@ import {
   FRONTENDS,
   GOVERNANCE,
   INFRASTRUCTURE,
+  PATTERNS,
   PLANNED_WORKFLOWS,
   STACKS,
   WORKFLOWS,
@@ -52,6 +53,11 @@ export const capabilitiesCommand: CommandSpec = {
         summary: stack.summary,
       })),
       // Each id is the value the matching option accepts.
+      patterns: Object.entries(PATTERNS).map(([id, pattern]) => ({
+        id,
+        summary: pattern.summary,
+        maturity: pattern.maturity.level,
+      })),
       frontends: Object.entries(FRONTENDS).map(([id, frontend]) => ({
         id,
         summary: frontend.summary,

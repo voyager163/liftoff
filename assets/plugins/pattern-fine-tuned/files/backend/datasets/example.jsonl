@@ -1,0 +1,3 @@
+{"messages": [{"role": "system", "content": "You answer questions about our product in one sentence."}, {"role": "user", "content": "Where do I change my password?"}, {"role": "assistant", "content": "Open Settings, then Security, and choose Change password."}]}
+{"messages": [{"role": "system", "content": "You answer questions about our product in one sentence."}, {"role": "user", "content": "Can I export my data?"}, {"role": "assistant", "content": "Yes: Settings, then Data, then Export downloads everything as JSON."}]}
+{"messages": [{"role": "user", "content": "How do I contact support?"}, {"role": "assistant", "content": "Use the Help menu, or write to the address on your invoice."}]}

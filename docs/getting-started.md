@@ -49,8 +49,9 @@ one.
 
 | Option | Default | Choices in this release |
 | --- | --- | --- |
-| `--workload` | `api` | `api` |
-| `--stack` | `python-fastapi` | `python-fastapi`, `node-fastify`, `go-huma` |
+| `--workload` | `api` | `api`, `genai` |
+| `--stack` | `python-fastapi` for `api`, `python-pydanticai` for `genai` | `python-fastapi`, `node-fastify`, `go-huma`; `python-pydanticai` for `genai` |
+| `--pattern` | `generic` for `genai` | the nine [GenAI patterns](projects/genai-patterns.md) |
 | `--frontend` | `none` | `none`, `vue` |
 | `--infrastructure` | `none` | `none`, `azure` |
 | `--environments` | all three with `--infrastructure` | any of `dev`, `staging`, `prod` |
@@ -121,9 +122,10 @@ Both only read; neither installs nor changes anything.
 ## What you get
 
 See [Python API projects](projects/python-fastapi.md),
-[Node.js API projects](projects/node-fastify.md) or
-[Go API projects](projects/go-huma.md) for the generated layout, what each
-file is for and who owns it, [the Vue frontend](projects/vue-frontend.md)
+[Node.js API projects](projects/node-fastify.md),
+[Go API projects](projects/go-huma.md) or
+[GenAI projects](projects/python-pydanticai.md) for the generated layout,
+what each file is for and who owns it, [the Vue frontend](projects/vue-frontend.md)
 for what `--frontend vue` adds, and
 [Azure infrastructure](projects/azure-infrastructure.md) for what
 `--infrastructure azure` adds.

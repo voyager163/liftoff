@@ -32,13 +32,15 @@ export interface GenerationContext {
   readonly hosts: readonly AgentHostId[];
   readonly profile: ProfileId;
   readonly stack: StackPlugin;
+  /** The selected GenAI pattern, for GenAI projects. */
+  readonly pattern: PatternPlugin | undefined;
   /** The selected frontend, if any. */
   readonly frontend: FrontendPlugin | undefined;
   /** The selected infrastructure, if any. */
   readonly infrastructure: InfrastructurePlugin | undefined;
   /** Environments the infrastructure is generated for, in dev, staging, prod order. */
   readonly environments: readonly EnvironmentId[];
-  /** The stack, then the frontend and the infrastructure if selected. */
+  /** The stack, then the pattern, the frontend and the infrastructure if selected. */
   readonly components: readonly ComponentPlugin[];
   readonly templates: TemplateSet;
   readonly skills: readonly SkillSource[];
@@ -50,6 +52,7 @@ export interface GenerationContext {
 export type PluginKind =
   | "common"
   | "stack"
+  | "pattern"
   | "frontend"
   | "infrastructure"
   | "workflow"
@@ -89,8 +92,8 @@ export interface CodeqlLanguage {
 }
 
 /**
- * A part of the project with its own directory and checks: the API stack, a
- * frontend or the infrastructure. Files every part contributes to, such as
+ * A part of the project with its own directory and checks: the stack, a GenAI
+ * pattern, a frontend or the infrastructure. Files every part contributes to, such as
  * compose.yaml and the CI workflow, are assembled from each component's
  * parts directory, where each of these files is optional:
  *
@@ -100,29 +103,52 @@ export interface CodeqlLanguage {
  * - `README.md`: the component's README sections.
  */
 export interface ComponentPlugin extends ProjectPlugin {
-  readonly kind: "stack" | "frontend" | "infrastructure";
+  readonly kind: "stack" | "pattern" | "frontend" | "infrastructure";
   readonly checks: readonly ProjectCheck[];
   readonly tools: readonly ProjectTool[];
   /** Review policy rules for the component's files, added after the built-in ones. */
   readonly reviewRules: readonly PolicyRule[];
   /** The first commands to run in a new project, such as installing and testing, and where. */
-  readonly quickStart: { readonly directory: string; readonly command: string };
+  readonly quickStart?: { readonly directory: string; readonly command: string };
   /** Short description of the generated layout for README and AGENTS.md. */
   readonly layout: readonly { readonly path: string; readonly purpose: string }[];
   /** Asset directory holding the component's parts of the shared files. */
   readonly parts: string;
   /** The language CodeQL analyzes for it, if CodeQL supports one. */
   readonly codeql?: CodeqlLanguage;
+  /** Values for its parts beyond the project name, such as text built from metadata. */
+  readmeValues?(context: GenerationContext): Readonly<Record<string, string>>;
 }
 
 export interface StackPlugin extends ComponentPlugin {
   readonly kind: "stack";
   readonly workload: string;
   readonly codeql: CodeqlLanguage;
-  /** The command, run in the API's image, that applies the database migrations. */
-  readonly migrateCommand: readonly string[];
-  /** The scheme of APP_DATABASE_URL, such as "postgresql". */
-  readonly databaseUrlScheme: string;
+  readonly quickStart: { readonly directory: string; readonly command: string };
+  /** The PostgreSQL database the stack uses, if any. */
+  readonly database?: {
+    /** The command, run in the API's image, that applies the migrations. */
+    readonly migrateCommand: readonly string[];
+    /** The scheme of APP_DATABASE_URL, such as "postgresql". */
+    readonly urlScheme: string;
+  };
+}
+
+/** How far a GenAI pattern goes, stated plainly for its users. */
+export interface PatternMaturity {
+  /** "complete" when the pattern does what its name says; "foundation" when it is a starting point. */
+  readonly level: "complete" | "foundation";
+  readonly implemented: readonly string[];
+  /** What a production use would still need; never presented as done. */
+  readonly notImplemented: readonly string[];
+}
+
+/** One of the GenAI patterns a GenAI stack can be generated with. */
+export interface PatternPlugin extends ComponentPlugin {
+  readonly kind: "pattern";
+  /** The pattern's name, such as "rag". */
+  readonly name: string;
+  readonly maturity: PatternMaturity;
 }
 
 /** A web frontend. It reaches the API through the `api` service every stack runs. */

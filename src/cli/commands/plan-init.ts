@@ -153,11 +153,12 @@ export function makeInitCommand(
         // Each component starts in its own directory; after the first, the
         // shell is still in the previous one.
         let here = ".";
-        const quickStart = resolveSelection(validateConfig(plan.config)).components.map(
-          ({ quickStart: { directory, command } }) => {
-            const cd = path.posix.relative(here, directory);
-            here = directory;
-            return `  cd ${cd} && ${command}`;
+        const quickStart = resolveSelection(validateConfig(plan.config)).components.flatMap(
+          ({ quickStart: start }) => {
+            if (!start) return [];
+            const cd = path.posix.relative(here, start.directory);
+            here = start.directory;
+            return [`  cd ${cd} && ${start.command}`];
           },
         );
         return {

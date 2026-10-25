@@ -206,6 +206,13 @@ describe("CLI-003 capabilities", () => {
       },
     ]);
     expect(report.environments).toEqual(["dev", "staging", "prod"]);
+    expect(report.workloads).toEqual(["api", "genai"]);
+    expect(report.patterns).toHaveLength(9);
+    expect(report.patterns[0]).toEqual({
+      id: "generic",
+      summary: "One instruction-following agent behind one endpoint",
+      maturity: "complete",
+    });
     expect(report.frontends).toEqual([
       { id: "vue", summary: "Vue frontend with Vite, Tailwind CSS and TypeScript" },
     ]);

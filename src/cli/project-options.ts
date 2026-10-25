@@ -8,13 +8,19 @@ import {
 import { ENVIRONMENTS } from "../plugins/contracts/project-plugin.ts";
 import {
   DEFAULT_GOVERNANCE,
+  DEFAULT_PATTERN,
+  DEFAULT_STACKS,
   DEFAULT_WORKFLOW,
+  entry,
   FRONTENDS,
   GOVERNANCE,
   INFRASTRUCTURE,
   NO_FRONTEND,
   NO_INFRASTRUCTURE,
+  NO_PATTERN,
+  PATTERNS,
   STACKS,
+  WORKLOADS,
 } from "../plugins/registry.ts";
 import type { OptionSpec, ParsedArgs } from "./command.ts";
 import { UsageError } from "./outcome.ts";
@@ -35,14 +41,19 @@ export const PROJECT_OPTIONS: Readonly<Record<string, OptionSpec>> = {
     type: "string",
     valueName: "workload",
     default: "api",
-    description: "Kind of project.",
-    choices: ["api"],
+    description: "Kind of project: an API, or a GenAI API built around one pattern.",
+    choices: [...WORKLOADS],
   },
   stack: {
     type: "string",
     valueName: "stack",
-    default: "python-fastapi",
-    description: `Technology stack: ${Object.keys(STACKS).join(", ")}.`,
+    description: `Technology stack: ${Object.keys(STACKS).join(", ")}. Defaults to python-fastapi for api and python-pydanticai for genai.`,
+  },
+  pattern: {
+    type: "string",
+    valueName: "pattern",
+    choices: [NO_PATTERN, ...Object.keys(PATTERNS)],
+    description: `GenAI pattern, for genai projects: ${Object.keys(PATTERNS).join(", ")}. Defaults to ${DEFAULT_PATTERN}.`,
   },
   frontend: {
     type: "string",
@@ -123,6 +134,8 @@ export function projectFromOptions(
   if (name === undefined) throw new UsageError("--name is required");
   const agents = splitList(option("agents"));
   const infrastructure = option("infrastructure") ?? NO_INFRASTRUCTURE;
+  const workload = option("workload") ?? "api";
+  const genai = workload === "genai";
   const aiMode = option("ai-review") ?? "auto";
   const engine = option("review-engine");
   try {
@@ -130,8 +143,9 @@ export function projectFromOptions(
       {
         schema: CONFIG_SCHEMA,
         name,
-        workload: option("workload"),
-        stack: option("stack"),
+        workload,
+        stack: option("stack") ?? entry(DEFAULT_STACKS, workload) ?? DEFAULT_STACKS.api,
+        pattern: option("pattern") ?? (genai ? DEFAULT_PATTERN : NO_PATTERN),
         frontend: option("frontend"),
         infrastructure,
         environments:

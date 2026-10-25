@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { STACKS } from "../../src/plugins/registry.ts";
+import { PATTERNS, STACKS } from "../../src/plugins/registry.ts";
 
 const directory = path.resolve(import.meta.dirname, "../../.github/workflows");
 const files = readdirSync(directory)
@@ -231,11 +231,28 @@ describe("REVIEW-012 the refresh dispatches exactly the reviewed pull requests",
 describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {
   const ci = workflows.find((w) => w.name === "ci.yml")?.data;
 
-  it.each(["generated", "services"])("the %s job covers every stack and gates merging", (job) => {
-    expect([...(ci?.jobs[job]?.strategy?.matrix?.stack ?? [])].sort()).toEqual(
-      Object.keys(STACKS).sort(),
+  const apiStacks = Object.entries(STACKS)
+    .filter(([, stack]) => stack.workload === "api")
+    .map(([id]) => id)
+    .sort();
+
+  it.each(["generated", "services"])(
+    "the %s job covers every API stack and gates merging",
+    (job) => {
+      expect([...(ci?.jobs[job]?.strategy?.matrix?.stack ?? [])].sort()).toEqual(apiStacks);
+      expect(ci?.jobs["ci-gate"]?.needs).toContain(job);
+    },
+  );
+
+  it("PROJ-019 checks every GenAI pattern, and ci-gate needs it", () => {
+    const job = ci?.jobs.genai as Job & { strategy?: { matrix?: { pattern?: string[] } } };
+    expect([...(job?.strategy?.matrix?.pattern ?? [])].sort()).toEqual(
+      Object.keys(PATTERNS).sort(),
     );
-    expect(ci?.jobs["ci-gate"]?.needs).toContain(job);
+    const runs = (job?.steps ?? []).map((step) => step.run ?? "").join("\n");
+    expect(runs).toContain("uv run pytest");
+    expect(runs).toContain("docker compose up --build --wait");
+    expect(ci?.jobs["ci-gate"]?.needs).toContain("genai");
   });
 
   it("PROJ-016 checks generated infrastructure, and ci-gate needs it", () => {

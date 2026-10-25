@@ -65,6 +65,14 @@ describe("INIT-001 plan changes nothing but the plan file", () => {
     expect(go.out).toContain("cd backend && go test ./...");
   });
 
+  it("creates a GenAI project with the generic pattern by default", async () => {
+    const { code, out } = await exec(["init", ...PROJECT, "--workload", "genai", "--yes"]);
+    expect(code).toBe(0);
+    expect(out).toContain("  cd backend && uv sync && uv run pytest\n");
+    const config = readFileSync(path.join(work, "demo/liftoff.yaml"), "utf8");
+    expect(config).toContain("stack: python-pydanticai\npattern: generic\n");
+  });
+
   it("creates infrastructure for every environment by default", async () => {
     const { code, out } = await exec([
       "init",
@@ -150,6 +158,26 @@ describe("PROJ-003 selection errors map to exit codes", () => {
       ["plan", "--name", "demo", "--workflow", "manual", "--stack", "cobol"],
       2,
       'unknown stack "cobol"',
+    ],
+    [
+      ["plan", "--name", "demo", "--workflow", "manual", "--pattern", "rag"],
+      2,
+      "patterns are for genai projects",
+    ],
+    [
+      [
+        "plan",
+        "--name",
+        "demo",
+        "--workflow",
+        "manual",
+        "--workload",
+        "genai",
+        "--frontend",
+        "vue",
+      ],
+      6,
+      "not available for genai projects",
     ],
     [
       ["plan", "--name", "demo", "--workflow", "manual", "--environments", "dev"],
