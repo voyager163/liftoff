@@ -35,9 +35,11 @@ jobs:
           CONFIGURED: ${{ secrets.COPILOT_GITHUB_TOKEN != '' }}
         run: |
           cases=$(find evals/review -mindepth 1 -maxdepth 1 -type d | sort | jq -R . | jq -sc .)
-          echo "cases=$cases" >> "$GITHUB_OUTPUT"
-          echo "count=$(echo "$cases" | jq length)" >> "$GITHUB_OUTPUT"
-          echo "configured=$CONFIGURED" >> "$GITHUB_OUTPUT"
+          {
+            echo "cases=$cases"
+            echo "count=$(echo "$cases" | jq length)"
+            echo "configured=$CONFIGURED"
+          } >> "$GITHUB_OUTPUT"
           if [ "$CONFIGURED" != "true" ]; then
             echo "Review evals not run: add a COPILOT_GITHUB_TOKEN repository secret to enable them." >> "$GITHUB_STEP_SUMMARY"
           fi

@@ -63,7 +63,7 @@ jobs:
       - name: Show platform
         shell: bash
         run: |
-          node -p '`node ${process.version} on ${process.platform}-${process.arch}`'
+          node -p "'node ' + process.version + ' on ' + process.platform + '-' + process.arch"
           git --version
       - run: npm ci
       - run: npm run coverage
@@ -94,7 +94,7 @@ jobs:
             let failed = false;
             for (const name of names) {
               const result = needs[name].result;
-              console.log(`${name}: ${result}`);
+              console.log(name + ": " + result);
               if (result !== "success") failed = true;
             }
             process.exit(failed ? 1 : 0);
