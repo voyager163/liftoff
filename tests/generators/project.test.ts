@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -61,6 +62,17 @@ describe("PROJ-004 deterministic, collision-free generation", () => {
     const golden = path.join(goldenDir, `${name}.txt`);
     if (process.env.UPDATE_GOLDEN === "1") writeFileSync(golden, `${inventory}\n`);
     expect(inventory).toBe(readFileSync(golden, "utf8").trimEnd());
+  });
+
+  it("reads only templates that Git tracks", () => {
+    // A template file that .gitignore matches works locally but is missing
+    // from every checkout and release.
+    const ignored = execFileSync(
+      "git",
+      ["ls-files", "--others", "--ignored", "--exclude-standard", "--", "assets"],
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+    expect(ignored.split("\n").filter(Boolean)).toEqual([]);
   });
 
   it("generates the same bytes twice", async () => {

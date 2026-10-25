@@ -173,9 +173,11 @@ jobs:
           POSTGRES_USER: app
           # A throwaway database for this job only; not a secret.
           POSTGRES_PASSWORD: ci-only
-        # Not 5432: the generated Compose file publishes its own database there.
+        # Docker picks a free host port: the generated Compose file publishes
+        # its own database on 5432, and a fixed port can be taken by another
+        # connection on the runner.
         ports:
-          - 55432:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U app -d app"
           --health-interval 5s
@@ -184,11 +186,14 @@ jobs:
     env:
       STACK: ${{ matrix.stack }}
       PGHOST: 127.0.0.1
-      PGPORT: "55432"
       PGUSER: app
       PGPASSWORD: ci-only
       PGDATABASE: app
     steps:
+      - name: Use the host port Docker gave the PostgreSQL service
+        env:
+          PORT: ${{ job.services.postgres.ports['5432'] }}
+        run: echo "PGPORT=$PORT" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -221,14 +226,14 @@ jobs:
           case "$STACK" in
             python-fastapi)
               uv sync --locked
-              APP_DATABASE_URL="postgresql+psycopg://app:ci-only@127.0.0.1:55432/app" \
+              APP_DATABASE_URL="postgresql+psycopg://app:ci-only@127.0.0.1:$PGPORT/app" \
                 uv run pytest -m integration --no-cov ;;
             node-fastify)
               npm ci --no-audit --no-fund
-              APP_DATABASE_URL="postgresql://app:ci-only@127.0.0.1:55432/app" \
+              APP_DATABASE_URL="postgresql://app:ci-only@127.0.0.1:$PGPORT/app" \
                 npm run test:integration ;;
             go-huma)
-              APP_DATABASE_URL="postgresql://app:ci-only@127.0.0.1:55432/app" \
+              APP_DATABASE_URL="postgresql://app:ci-only@127.0.0.1:$PGPORT/app" \
                 go test -count=1 -tags integration ./internal/integration ;;
             *)
               echo "No integration tests are known for $STACK"
