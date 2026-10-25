@@ -20,6 +20,9 @@ and this project adheres to
   reports a tier and approval status on every pull request.
 - Review skills for GitHub Copilot, Codex and Claude Code, and a read-only
   verifier agent for each host.
+- Verified AI review with GitHub Copilot CLI: independent finder passes,
+  majority voting by separate verifier runs, tagged findings, no repeats and
+  a three-round cap, plus nightly review evals and weekly review metrics.
 - CI on macOS arm64 and Windows x64 with a fail-closed `ci-gate`, CodeQL,
   dependency review, committed branch rulesets and a weekly drift readback.
 - Open source project setup: README hero image, contributing guide,

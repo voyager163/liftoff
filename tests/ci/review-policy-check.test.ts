@@ -309,7 +309,7 @@ describe("REVIEW-007 the committed bundle matches source and works", () => {
     });
     const failed = await run(process.execPath, [script], {
       cwd: workdir,
-      env: { ...env, PATH: process.env.PATH },
+      env: { ...process.env, ...env },
     }).catch((error: { code: number; stdout: string }) => error);
     expect((failed as { code: number }).code).toBe(1);
     expect((failed as { stdout: string }).stdout).toContain("1 of 2");

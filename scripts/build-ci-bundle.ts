@@ -10,6 +10,8 @@ const root = path.resolve(import.meta.dirname, "..");
 export const BUNDLES: Readonly<Record<string, string>> = {
   ".github/liftoff/review-policy.mjs": "src/ci/review-policy-entry.ts",
   ".github/liftoff/governance-drift.mjs": "src/ci/governance-drift-entry.ts",
+  ".github/liftoff/ai-review.mjs": "src/ci/ai-review-entry.ts",
+  ".github/liftoff/review-metrics.mjs": "src/ci/review-metrics-entry.ts",
 };
 
 export async function bundle(entry: string): Promise<string> {

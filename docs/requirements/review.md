@@ -118,3 +118,82 @@ native: rulesets require code-owner review and CODEOWNERS covers every
 always-human path, including workflows.
 
 Verification: test
+
+## AIREVIEW-001 Findings are found independently and verified by vote
+
+Medium-risk changes get two finder passes and high-risk changes three, each
+with a different focus (correctness; failure and recovery; security).
+Candidates from all passes are merged when they share a fingerprint or point
+at the same file within three lines. Three separate verifier runs judge every
+candidate without seeing the finder's reasoning, and a candidate is reported
+only when a majority confirms it. Uncertain or missing verdicts count against
+it. Low-risk changes rely on the managed reviewer alone.
+
+Verification: test
+
+## AIREVIEW-002 Reports start with the count and tag every finding
+
+The review summary starts with the number of findings and their tags, or says
+"No findings. Nothing to fix." Each finding is tagged Important, Nit or
+Pre-existing, sorted most severe first, carries its failure scenario and fix,
+and is posted inline when its line is in the diff, otherwise in the summary.
+At most three nits are reported.
+
+Verification: test
+
+## AIREVIEW-003 Reviews converge instead of looping
+
+A finding is never posted twice: earlier findings are recognised by a
+fingerprint, and only fingerprints in comments posted by the review bot
+itself count. From the third round, finders review only the commits since the
+last round. After three rounds the pipeline posts one note asking the author
+to reconsider the approach and stops. A commit that was already reviewed is
+not reviewed again.
+
+Verification: test
+
+## AIREVIEW-004 Agents cannot be steered or given write access by the pull request
+
+Before an agent runs, every review-instruction file the pull request changed
+is restored to the base branch's version or removed. Agents get a read-only
+GitHub token, no write or network tools, and the Copilot token is stripped
+from every shell they start. Only a separate job that runs no agent posts the
+review. Fork pull requests and repositories without the Copilot token report
+"not run", never success.
+
+Verification: test
+
+## AIREVIEW-005 An incomplete review fails visibly
+
+If no finder pass returns a usable result, or fewer than two verifier runs do
+when there are candidates, publishing fails with an error instead of posting a
+review that looks complete. Partial failures are listed in the summary.
+
+Verification: test
+
+## EVAL-001 Review quality is measured against known cases
+
+`evals/review/` holds seeded and real defects the reviewer should catch and
+clean changes where any Important finding is a false positive. Cases are
+validated, and every committed patch must still apply, so a case cannot go
+stale unnoticed.
+
+Verification: test
+
+## EVAL-002 Evaluations run without giving the answer away
+
+The eval runner reviews each case as one commit on top of `develop`, tells the
+finders only the case's neutral description, scores whether a confirmed
+finding points at the defect, counts Important false positives, and fails its
+report when any case produced no score.
+
+Verification: test
+
+## EVAL-003 Human attention and reviewer quality are tracked with a guardrail
+
+A weekly read-only job reports merged pull requests, median and p95 hours to
+merge, median and p95 human approvals per pull request, the share of
+pull requests that passed verified AI review in one round, the mean number of
+rounds, and reverts. Bot approvals are not counted as human approvals.
+
+Verification: test

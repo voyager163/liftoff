@@ -1,0 +1,14 @@
+diff --git a/src/cli/outcome.ts b/src/cli/outcome.ts
+index dd64fd6..8cfae23 100644
+--- a/src/cli/outcome.ts
++++ b/src/cli/outcome.ts
+@@ -1,7 +1,7 @@
+ /**
+  * Every command ends in one of these outcomes, and each has a fixed exit code.
+- * "attention" means the command worked and found something to act on (for
+- * example differences or a required approval), which is not a failure.
++ * "attention" means the command worked and found something to act on, such
++ * as differences or a missing approval. That is not a failure.
+  */
+ export const OUTCOMES = {
+   success: 0,

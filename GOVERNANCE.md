@@ -82,7 +82,13 @@ risk calls for it. Each layer catches different problems.
    (Markdown, spelling, links, workflows) and dependency review are also
    required.
 3. **AI review on every pull request**: GitHub Copilot code review, guided by
-   [REVIEW.md](REVIEW.md) and [AGENTS.md](AGENTS.md).
+   [REVIEW.md](REVIEW.md) and [AGENTS.md](AGENTS.md). Medium- and high-risk
+   pull requests also get the verified review: two or three independent
+   finder passes, three separate verifier runs that vote on every candidate,
+   and only confirmed findings posted, tagged Important, Nit or Pre-existing,
+   with a summary that starts with the count. Findings are never repeated,
+   and after three rounds the review stops and asks for a rethink. It needs
+   the `COPILOT_GITHUB_TOKEN` secret and reports "not run" without it.
 4. **Security review**: CodeQL for TypeScript and workflows, with merging
    blocked while high or critical alerts are open; dependency review; and
    secret scanning with push protection.
@@ -95,6 +101,10 @@ risk calls for it. Each layer catches different problems.
    high. `liftoff review classify` shows the same result locally.
 6. **Every review thread is resolved** before merging: fixed, or answered with
    a reason.
+7. **Feedback loop**: the Review evals workflow scores the verified review
+   nightly against [seeded and clean cases](evals/review/), and Review metrics
+   reports human approvals, time to merge, review rounds and reverts weekly.
+   Missed bugs and reverts become new cases.
 
 ### Branch rules
 
