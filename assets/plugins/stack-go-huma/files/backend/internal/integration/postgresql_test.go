@@ -2,7 +2,7 @@
 
 // Package integration tests the API against a real PostgreSQL database.
 //
-// Run them with: APP_DATABASE_URL=... go test -tags integration ./internal/integration
+// Run them with: APP_DATABASE_URL=... go test -count=1 -tags integration ./internal/integration
 // They fail, rather than skip, when no database is configured. Each run works
 // in a new schema that is dropped afterwards, so the tables and data already
 // in that database are never touched.

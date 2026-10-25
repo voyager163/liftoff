@@ -309,6 +309,8 @@ describe("PROJ-010 the Go API project contract", () => {
     expect(text("compose.yaml")).toContain('command: ["migrate"]');
     const ci = text(".github/workflows/01-pr-ci.yml");
     expect(ci).toContain("go run ./tools/coverage cover.out 80");
+    // A cached result would pass without contacting PostgreSQL.
+    expect(ci).toContain("go test -count=1 -tags integration ./internal/integration");
     expect(ci).toContain("name: ci-gate");
     expect(ci).toMatch(/actions\/setup-go@[0-9a-f]{40} /);
     expect(text(".github/workflows/02-codeql.yml")).toContain("language: go");

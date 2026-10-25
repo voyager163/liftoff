@@ -72,7 +72,7 @@ APP_DATABASE_URL=postgresql://app:PASSWORD@127.0.0.1:5432/app go run ./cmd/api m
 | `go vet ./...` | Common mistakes |
 | `go test -coverpkg=./cmd/...,./internal/... -coverprofile=cover.out ./...` | Tests |
 | `go run ./tools/coverage cover.out 80` | At least 80% statement coverage |
-| `go test -tags integration ./internal/integration` | Integration tests; needs `APP_DATABASE_URL` pointing at PostgreSQL |
+| `go test -count=1 -tags integration ./internal/integration` | Integration tests; needs `APP_DATABASE_URL` pointing at PostgreSQL |
 
 CI runs all of them on every pull request, builds the container image and
 reviews new dependencies.

@@ -89,7 +89,8 @@ jobs:
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - run: go test -tags integration ./internal/integration
+      # -count=1: the database is not an input Go's test cache can see.
+      - run: go test -count=1 -tags integration ./internal/integration
 
   image:
     name: Container image

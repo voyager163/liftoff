@@ -23,7 +23,7 @@ export const goHumaStack: StackPlugin = {
     },
     {
       name: "Integration tests (needs PostgreSQL)",
-      command: "go test -tags integration ./internal/integration",
+      command: "go test -count=1 -tags integration ./internal/integration",
       directory: "backend",
     },
   ],

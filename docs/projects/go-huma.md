@@ -14,7 +14,7 @@ and Goose, with its modules locked in a committed `go.mod` and `go.sum`.
 | Database | PostgreSQL through a pgx pool; Goose SQL migrations built into the binary, with working down migrations |
 | Configuration | environment (`APP_*`) over a JSON file named by `APP_CONFIG_FILE` over non-secret defaults |
 | Checks | `gofmt`, `go vet`, and Go tests with at least 80% statement coverage, checked by `go run ./tools/coverage` |
-| Tests | unit tests need no database; `go test -tags integration ./internal/integration` runs against a real PostgreSQL in a throwaway schema |
+| Tests | unit tests need no database; `go test -count=1 -tags integration ./internal/integration` runs against a real PostgreSQL in a throwaway schema |
 | Container | a static binary on a pinned distroless image, running as an unprivileged user; the binary also runs the migrations and the container health check |
 
 Go reports statement coverage only, so the gate is on statements; the other
