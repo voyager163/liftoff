@@ -44,7 +44,12 @@ repository is the one the project's `origin` remote points at, or `--repo`.
 - **One step at a time.** apply-next takes only the next step, says exactly
   what it will do, and asks first; the default answer is no. With `--plan`,
   the step must be the one the saved plan expected, for the same repository
-  by GitHub's id.
+  by GitHub's id. Applying rulesets is bound to exactly the rulesets the plan
+  saw: change them, and the plan is refused.
+- **One command at a time.** apply-next, resume and verify --prove hold
+  `.liftoff/governance.lock` while they run, so two never interleave. If a
+  command was killed, delete the lock file once you are sure none is
+  running.
 - **Recorded before and after.** Each step is written to
   `.liftoff/governance.json` when it starts and when it ends, with its
   outcome. If it is interrupted, apply-next stops until `resume` has checked
@@ -81,7 +86,13 @@ it is still exactly where the change left it, so a merge made meanwhile is
 never undone; that branch is left for you to check. If a branch cannot be
 put back, for example because another rule forbids rewinding it, the proof
 stops and the record stays: `liftoff governance resume` puts it back once
-GitHub allows, and apply-next and verify wait until then.
+GitHub allows, and apply-next and verify wait until then. `status` shows
+it. Because the record is a file anyone can edit, resume checks it on
+GitHub first: it only puts back a branch the rulesets protect, from a
+commit the proof made from the recorded head, and asks before it does.
+
+A new proof replaces the last one as soon as it starts: if it stops part
+way, the proof counts as failed rather than keeping an earlier pass.
 
 Run the proof in a repository you are ready to protect, when nothing is
 being merged. GitHub's API cannot make a change only if the branch is still

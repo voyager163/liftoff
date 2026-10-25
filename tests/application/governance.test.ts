@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,6 +10,7 @@ import {
   GovernanceError,
   readDesired,
 } from "../../src/application/governance/assess.ts";
+import { PROOF_MESSAGE } from "../../src/application/governance/prove.ts";
 import { verifyGovernance } from "../../src/application/governance/verify.ts";
 import { applyInit, planInit } from "../../src/application/init/init-project.ts";
 import type { Action } from "../../src/domain/governance/checkpoints.ts";
@@ -54,6 +55,8 @@ afterEach(() => rmSync(work, { recursive: true, force: true }));
 
 const state = () =>
   JSON.parse(readFileSync(path.join(project, ".liftoff/governance.json"), "utf8"));
+const writeState = (value: unknown) =>
+  writeFileSync(path.join(project, ".liftoff/governance.json"), JSON.stringify(value));
 const next = async (github: FakeGitHubApi) =>
   (await assessGovernance({ fs, github }, project, REPOSITORY)).checkpoints.find(
     (checkpoint) => checkpoint.status === "next",
@@ -137,6 +140,37 @@ describe("GOV-001 each required check is required from the app that produces it"
       { context: "ci-gate", integrationId: 15368 },
       { context: "ci-gate", integrationId: 999 },
     ]);
+  });
+});
+
+describe("GOV-001 every page of a commit's checks is read", () => {
+  it("finds a required check or status past the first page", async () => {
+    const repo = fakeRepository({
+      defaultBranch: "develop",
+      branches: { main: "1".repeat(40), develop: "1".repeat(40) },
+    });
+    await pushedAndChecked(repo);
+    const head = "f".repeat(40);
+    const runs = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        name: `job ${i}`,
+        conclusion: "success",
+        app: { id: 15368 },
+        html_url: `https://job/${i}`,
+      }));
+    repo.checkRuns[head] = [...runs(100), ...(repo.checkRuns[head] ?? [])];
+    repo.statuses[head] = [
+      ...Array.from({ length: 100 }, (_, i) => ({
+        context: `other ${i}`,
+        state: "success",
+        creator: { login: "github-actions[bot]" },
+        target_url: "https://other",
+      })),
+      ...(repo.statuses[head] ?? []),
+    ];
+    expect((await next(new FakeGitHubApi(repo)))?.id).toBe("rulesets");
+    repo.checkRuns[head] = runs(1000);
+    await expect(next(new FakeGitHubApi(repo))).rejects.toThrow(/more than 1000 check runs/);
   });
 });
 
@@ -288,6 +322,26 @@ describe("GOV-002 apply-next takes one agreed step at a time, in order", () => {
     expect(github.writes().filter((call) => call.route.includes("/rulesets"))).toEqual([]);
   });
 
+  it("refuses a saved rulesets step once the rulesets it would send have changed", async () => {
+    const repo = fakeRepository({
+      defaultBranch: "develop",
+      branches: { main: "1".repeat(40), develop: "1".repeat(40) },
+    });
+    await pushedAndChecked(repo);
+    const github = new FakeGitHubApi(repo);
+    const planned = (await next(github))?.action;
+    expect(planned).toMatchObject({
+      kind: "apply-rulesets",
+      digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    if (planned?.kind !== "apply-rulesets") throw new Error("no rulesets step");
+    const stale = { ...planned, digest: "0".repeat(64) };
+    await expect(
+      applyNext({ fs, github }, project, REPOSITORY, { ...yes, expected: stale }),
+    ).rejects.toThrow(/make a new plan/);
+    expect(github.writes()).toEqual([]);
+  });
+
   it("leaves the rulesets to an admin", async () => {
     const repo = fakeRepository({
       admin: false,
@@ -327,7 +381,7 @@ describe("GOV-003 an interrupted step is checked, never repeated", () => {
     });
     const github = new FakeGitHubApi(repo);
     await expect(applyNext({ fs, github }, project, REPOSITORY, yes)).rejects.toThrow(/resume/);
-    expect(await resume({ fs, github }, project, REPOSITORY, now)).toMatchObject({
+    expect(await resume({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
       kind: "checked",
       outcome: "done",
     });
@@ -338,7 +392,7 @@ describe("GOV-003 an interrupted step is checked, never repeated", () => {
   it("records it failed when GitHub does not, for apply-next to offer again", async () => {
     interrupted();
     const github = new FakeGitHubApi(fakeRepository());
-    expect(await resume({ fs, github }, project, REPOSITORY, now)).toMatchObject({
+    expect(await resume({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
       outcome: "failed",
     });
     expect(github.writes()).toEqual([]);
@@ -350,11 +404,11 @@ describe("GOV-003 an interrupted step is checked, never repeated", () => {
 
   it("has nothing to check without an interrupted step, and refuses another repository's record", async () => {
     const github = new FakeGitHubApi(fakeRepository());
-    expect(await resume({ fs, github }, project, REPOSITORY, now)).toMatchObject({
+    expect(await resume({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
       kind: "nothing",
     });
     interrupted(99);
-    await expect(resume({ fs, github }, project, REPOSITORY, now)).rejects.toThrow(GovernanceError);
+    await expect(resume({ fs, github }, project, REPOSITORY, yes)).rejects.toThrow(GovernanceError);
   });
 });
 
@@ -451,7 +505,7 @@ describe("GOV-004 the proof tries what the rules forbid", () => {
       /could not tell whether direct-push on develop was refused: HTTP 403: API rate limit exceeded/,
     );
     expect(repo.branches.develop).toBe("1".repeat(40));
-    expect(state().proof).toBeUndefined();
+    expect(state().proof).toMatchObject({ passed: false });
   });
 
   it("keeps the record, and stops, when a branch cannot be put back; resume finishes it", async () => {
@@ -472,12 +526,12 @@ describe("GOV-004 the proof tries what the rules forbid", () => {
     expect(repo.branches.develop).not.toBe(head);
     expect(state().probe).toMatchObject({ branch: "develop", proof: "direct-push", head });
     await expect(applyNext({ fs, github }, project, REPOSITORY, yes)).rejects.toThrow(/resume/);
-    await expect(resume({ fs, github }, project, REPOSITORY, now)).rejects.toThrow(
+    await expect(resume({ fs, github }, project, REPOSITORY, yes)).rejects.toThrow(
       /non_fast_forward/,
     );
     expect(state().probe).toBeDefined();
     github.beforeWrite = undefined;
-    expect(await resume({ fs, github }, project, REPOSITORY, now)).toMatchObject({
+    expect(await resume({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
       kind: "probe",
       detail: `develop was put back at ${head.slice(0, 12)}`,
     });
@@ -545,6 +599,115 @@ describe("GOV-004 the proof tries what the rules forbid", () => {
     const before = github.writes().length;
     await expect(prove(github)).rejects.toThrow(GovernanceError);
     expect(github.writes()).toHaveLength(before);
+  });
+
+  it("checks for anything unfinished even when every checkpoint is done", async () => {
+    const { github } = await enforced();
+    await applyNext({ fs, github }, project, REPOSITORY, yes);
+    expect(await prove(github)).toMatchObject({ passed: true });
+    expect(await applyNext({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
+      kind: "done",
+    });
+    const done = state();
+    writeState({
+      ...done,
+      actions: [...done.actions, { checkpoint: "drift", kind: "run-drift", startedAt: now() }],
+    });
+    await expect(applyNext({ fs, github }, project, REPOSITORY, yes)).rejects.toThrow(/resume/);
+    writeState({
+      ...done,
+      probe: { branch: "develop", proof: "direct-push", head: "1".repeat(40), startedAt: now() },
+    });
+    await expect(applyNext({ fs, github }, project, REPOSITORY, yes)).rejects.toThrow(/resume/);
+    // The earlier pass does not count while that proof is unfinished.
+    expect((await next(github))?.id).toBe("proof");
+  });
+
+  it("keeps no earlier pass when a new proof stops part way", async () => {
+    const { repo, github } = await enforced();
+    expect(await prove(github)).toMatchObject({ passed: true });
+    repo.enforce = false;
+    const head = "1".repeat(40);
+    // The direct push is allowed and put back; the forced one meets a rate limit.
+    github.beforeWrite = (method, _route, body) => {
+      const update = body as { sha?: string; force?: boolean } | undefined;
+      if (method === "PATCH" && update?.force === true && update.sha !== head) {
+        throw new FakeGitHubError(403, "API rate limit exceeded");
+      }
+    };
+    await expect(prove(github)).rejects.toThrow(/could not tell whether force-push/);
+    expect(state().proof).toMatchObject({ passed: false });
+    const proof = (await assessGovernance({ fs, github }, project, REPOSITORY)).checkpoints.find(
+      (checkpoint) => checkpoint.id === "proof",
+    );
+    expect(proof).toMatchObject({
+      status: "later",
+      detail: "the last proof failed or did not finish",
+    });
+  });
+
+  it("checks an interrupted proof's record on GitHub, and asks before putting a branch back", async () => {
+    const { repo, github } = await enforced({ enforce: false });
+    const head = "1".repeat(40);
+    const probe = (value: Record<string, string>) =>
+      writeState({ ...state(), probe: { ...value, startedAt: now() } });
+    const before = github.writes().length;
+    // A record no proof made: develop "back" to an older commit.
+    const older = "0".repeat(40);
+    repo.commits[older] = { tree: "t".repeat(40), parents: [] };
+    probe({ branch: "develop", proof: "force-push", head: older, sha: head });
+    expect(await resume({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
+      kind: "probe",
+      detail: expect.stringContaining("which the proof did not make"),
+    });
+    // A branch the rulesets do not protect.
+    probe({ branch: "feature/x", proof: "deletion", head });
+    expect(await resume({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
+      detail: expect.stringContaining("which the rulesets do not protect"),
+    });
+    expect(github.writes()).toHaveLength(before);
+    expect(repo.branches).toEqual({ main: head, develop: head });
+
+    // A commit the proof did make: put back only once the person agrees.
+    const made = "a".repeat(40);
+    repo.commits[made] = { tree: "t".repeat(40), parents: [head], message: PROOF_MESSAGE };
+    repo.branches.develop = made;
+    probe({ branch: "develop", proof: "direct-push", head, sha: made });
+    const refused = await resume({ fs, github }, project, REPOSITORY, {
+      now,
+      confirm: async () => false,
+    });
+    expect(refused).toEqual({
+      kind: "declined",
+      change: `put develop back at ${head.slice(0, 12)}, from the proof's commit ${made.slice(0, 12)}`,
+    });
+    expect(repo.branches.develop).toBe(made);
+    expect(state().probe).toBeDefined();
+    expect(await resume({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
+      detail: `develop was put back at ${head.slice(0, 12)}`,
+    });
+    expect(repo.branches.develop).toBe(head);
+  });
+
+  it("runs one governance command at a time", async () => {
+    const { github } = await enforced();
+    let other: unknown;
+    const result = await verifyGovernance({ fs, github }, project, REPOSITORY, {
+      prove: true,
+      now,
+      confirm: async () => {
+        other = await applyNext({ fs, github }, project, REPOSITORY, yes).catch(
+          (error: Error) => error.message,
+        );
+        return false;
+      },
+    });
+    expect(result).toEqual({ kind: "declined" });
+    expect(other).toMatch(/another liftoff governance command has been running since/);
+    expect(existsSync(path.join(project, ".liftoff/governance.lock"))).toBe(false);
+    expect(await applyNext({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
+      kind: "applied",
+    });
   });
 
   it("needs the rules applied first, and the person's agreement", async () => {

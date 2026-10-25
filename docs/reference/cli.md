@@ -248,7 +248,7 @@ liftoff governance apply-next --plan governance.plan.json --use-gh --yes
 
 ## liftoff governance resume
 
-If .liftoff/governance.json records a step that never finished, assesses the repository again and records whether GitHub shows it done. Nothing is repeated or sent: a step that did not happen is offered again by the next `liftoff governance apply-next`, which asks first. If a `verify --prove` was interrupted while trying a forbidden change, it puts that branch back, but only while it is still exactly where the change left it. Otherwise it changes only .liftoff/governance.json.
+If .liftoff/governance.json records a step that never finished, assesses the repository again and records whether GitHub shows it done. Nothing is repeated or sent: a step that did not happen is offered again by the next `liftoff governance apply-next`, which asks first. If a `verify --prove` was interrupted while trying a forbidden change, it checks on GitHub that the branch is protected and still at the commit that change made, says how it would put the branch back, and asks; the default answer is no. In scripts, pass --yes. Otherwise it changes only .liftoff/governance.json.
 
 Changes files; asks first unless `--yes` is given.
 
@@ -259,11 +259,13 @@ JSON report: `liftoff.governance-resume/v1`.
 | `--dir <path>` | Project directory. (default `.`) |
 | `--repo <owner/name>` | The GitHub repository. Defaults to the one the project's origin remote points at. |
 | `--use-gh` | Let Liftoff use your GitHub CLI login to reach GitHub, without asking. Liftoff never sees or stores your credentials. |
+| `--yes` | Put a branch back without asking. |
 | `--json` | Print one JSON report on stdout. |
 | `--help` | Show help for this command. |
 
 ```bash
 liftoff governance resume
+liftoff governance resume --use-gh --yes
 ```
 
 ## liftoff governance verify

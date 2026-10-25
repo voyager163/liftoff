@@ -40,6 +40,63 @@ export const branchHead = async (api: GitHubApiPort, repository: string, branch:
   )?.object.sha;
 
 /**
+ * What putting an interrupted proof's branch back would change, checked
+ * against GitHub rather than trusted from the record, which is a file anyone
+ * can edit. The branch must be one the rulesets protect. It is put back only
+ * from a commit the proof made from the recorded head, with Liftoff's proof
+ * message and the head's files, or created again if the proof deleted it.
+ * Answers the change to ask the person about, or, when there is nothing to
+ * change, what was found.
+ */
+export async function plannedRepair(
+  api: GitHubApiPort,
+  repository: string,
+  probe: Omit<PendingProbe, "startedAt">,
+  protectedBranches: readonly string[],
+): Promise<{ readonly change: string } | { readonly found: string }> {
+  const route = `/repos/${repository}`;
+  const short = (sha: string) => sha.slice(0, 12);
+  if (!protectedBranches.includes(probe.branch)) {
+    return {
+      found: `the record names ${probe.branch}, which the rulesets do not protect; nothing was changed`,
+    };
+  }
+  const current = await branchHead(api, repository, probe.branch);
+  if (current === probe.head)
+    return { found: `${probe.branch} is at ${short(probe.head)}, as before` };
+  type Commit = { tree: { sha: string }; parents: { sha: string }[]; message?: string };
+  const head = await api.find<Commit>(`${route}/git/commits/${probe.head}`);
+  if (head === undefined) {
+    return {
+      found: `the recorded head ${short(probe.head)} is not a commit here; nothing was changed`,
+    };
+  }
+  if (current === undefined) {
+    return probe.proof === "deletion"
+      ? {
+          change: `create ${probe.branch} again at ${short(probe.head)}, where the proof deleted it`,
+        }
+      : { found: `${probe.branch} does not exist; nothing was changed` };
+  }
+  const made =
+    current === probe.sha ? await api.find<Commit>(`${route}/git/commits/${current}`) : undefined;
+  const parents = made?.parents.map((parent) => parent.sha) ?? [];
+  const fromHead =
+    probe.proof === "direct-push"
+      ? parents.length === 1 && parents[0] === probe.head
+      : probe.proof === "force-push" &&
+        parents.join() === head.parents.map((parent) => parent.sha).join();
+  if (made?.message === PROOF_MESSAGE && made.tree.sha === head.tree.sha && fromHead) {
+    return {
+      change: `put ${probe.branch} back at ${short(probe.head)}, from the proof's commit ${short(current)}`,
+    };
+  }
+  return {
+    found: `${probe.branch} is at ${short(current)}, which the proof did not make, so it was left as it is; check it`,
+  };
+}
+
+/**
  * Puts a branch back after a forbidden change GitHub allowed, but only while
  * it is exactly where that change left it: a branch someone has moved since
  * is left alone. Answers what happened, or throws when GitHub refuses.

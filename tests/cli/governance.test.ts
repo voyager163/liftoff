@@ -174,6 +174,45 @@ describe("GOV-003 status and resume", () => {
   });
 });
 
+describe("GOV-003 an interrupted proof in status and resume", () => {
+  it("reports it, and puts the branch back only when told to", async () => {
+    const head = repo.branches.main ?? "";
+    const made = "a".repeat(40);
+    repo.branches.develop = made;
+    repo.commits[made] = {
+      tree: "t".repeat(40),
+      parents: [head],
+      message: "Liftoff governance proof: GitHub must refuse this change",
+    };
+    writeFileSync(
+      path.join(work, "demo/.liftoff/governance.json"),
+      JSON.stringify({
+        schema: "liftoff.governance/v1",
+        repository: { id: 7, fullName: "octo/demo" },
+        actions: [],
+        probe: { branch: "develop", proof: "direct-push", head, sha: made, startedAt: "t" },
+      }),
+    );
+    const status = await exec(["status"]);
+    expect(status.code).toBe(3);
+    expect(status.out).toContain("proof  interrupted while trying direct-push on develop");
+    expect(status.out).toContain("liftoff governance resume");
+    const scripted = await exec(["resume", "--use-gh"]);
+    expect(scripted.code).toBe(2);
+    expect(scripted.err).toContain("pass --yes");
+    const declined = await exec(["resume", "--use-gh"], false);
+    expect(declined.code).toBe(4);
+    expect(declined.questions.at(-1)).toBe(
+      `Put develop back at ${head.slice(0, 12)}, from the proof's commit ${made.slice(0, 12)} on octo/demo?`,
+    );
+    expect(repo.branches.develop).toBe(made);
+    const resumed = await exec(["resume", "--use-gh", "--yes"]);
+    expect(resumed.code).toBe(0);
+    expect(resumed.out).toContain(`develop was put back at ${head.slice(0, 12)}`);
+    expect(repo.branches.develop).toBe(head);
+  });
+});
+
 describe("GOV-004 verify", () => {
   it("reads back, and proves only with agreement", async () => {
     const readback = await exec(["verify", "--use-gh"]);

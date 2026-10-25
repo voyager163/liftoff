@@ -35,7 +35,12 @@ export const GITHUB_ACTIONS_APP_ID = 15368;
 export type Action =
   | { readonly kind: "create-develop"; readonly from: string }
   | { readonly kind: "set-default-branch"; readonly branch: "develop" }
-  | { readonly kind: "apply-rulesets"; readonly names: readonly string[] }
+  | {
+      readonly kind: "apply-rulesets";
+      readonly names: readonly string[];
+      /** sha256 of exactly the rulesets it sends, so a saved plan approves those and no others. */
+      readonly digest: string;
+    }
   | { readonly kind: "run-drift"; readonly workflow: string };
 
 export interface Checkpoint {
@@ -83,8 +88,6 @@ export interface Observed {
     readonly id: number;
     readonly name: string;
     readonly enforcement: string;
-    /** When it last changed, to tell whether it changed since it was observed. */
-    readonly updatedAt?: string;
   }[];
   /** The full definitions of the rulesets the project commits, by name, where they exist. */
   readonly definitions: Readonly<Record<string, LiveRuleset>>;
@@ -264,7 +267,13 @@ function rulesets(desired: Desired, observed: Observed): Evaluation {
     done: false,
     detail: `not active: ${names.join(", ")}`,
     ...(observed.repository.admin
-      ? { action: { kind: "apply-rulesets", names } as const }
+      ? {
+          action: {
+            kind: "apply-rulesets",
+            names,
+            digest: sha256Hex(canonicalJson(missing)),
+          } as const,
+        }
       : { todo: "ask a repository admin to apply them" }),
   };
 }
@@ -317,7 +326,12 @@ function proof(desired: Desired, observed: Observed, record?: ProofRecord): Eval
     ? { done: true, detail: `proved ${record?.at}` }
     : {
         done: false,
-        detail: record === undefined ? "not proved yet" : "the rulesets changed since the proof",
+        detail:
+          record === undefined
+            ? "not proved yet"
+            : record.passed
+              ? "the rulesets changed since the proof"
+              : "the last proof failed or did not finish",
         todo: "run liftoff governance verify --prove",
       };
 }

@@ -136,6 +136,16 @@ describe("GOV-001 the governance checkpoints, in order", () => {
       id: "rulesets",
       action: { kind: "apply-rulesets", names: ["Protect develop"] },
     });
+    // Its digest is of exactly the rulesets it sends, not only their names.
+    const digest = (desired: Desired) =>
+      (
+        assessCheckpoints(desired, { ...ENFORCED, rulesets: [] }, { problems: [] }).find(
+          (checkpoint) => checkpoint.id === "rulesets",
+        )?.action as { digest?: string } | undefined
+      )?.digest;
+    const bypassed = { ...RULESET, bypass_actors: [{ actor_id: 1, actor_type: "Team" }] };
+    expect(digest(DESIRED)).toMatch(/^[0-9a-f]{64}$/);
+    expect(digest({ ...DESIRED, rulesets: [bypassed] })).not.toBe(digest(DESIRED));
     // Later checkpoints are not offered before the earlier ones.
     expect(unapplied.find((checkpoint) => checkpoint.id === "readback")?.status).toBe("later");
     const notAdmin = assess({

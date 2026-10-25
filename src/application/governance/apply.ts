@@ -1,10 +1,12 @@
 import path from "node:path";
 import type { Action, Checkpoint } from "../../domain/governance/checkpoints.ts";
+import { type LiveRuleset, targetedBranches } from "../../domain/governance/ruleset-drift.ts";
 import { GOVERNANCE_STATE_SCHEMA, type GovernanceState } from "../../domain/governance/state.ts";
 import { canonicalJson } from "../../domain/plan/plan.ts";
 import type { GitHubApiPort, ProjectFsPort } from "../ports.ts";
 import { type Assessment, assessGovernance, GovernanceError } from "./assess.ts";
-import { putBack } from "./prove.ts";
+import { withGovernanceLock } from "./lock.ts";
+import { plannedRepair, putBack } from "./prove.ts";
 import { readGovernanceState, writeGovernanceState } from "./state.ts";
 
 export interface ApplyPorts {
@@ -48,13 +50,39 @@ export async function stateFor(
   return state;
 }
 
+/** Refuses to go on while the record shows something unfinished, which resume must check first. */
+function requireNothingUnfinished(state: GovernanceState): void {
+  const unfinished = state.actions.find((action) => action.finishedAt === undefined);
+  if (unfinished) {
+    throw new GovernanceError(
+      `the ${unfinished.kind} action started ${unfinished.startedAt} never finished; check it with liftoff governance resume first`,
+    );
+  }
+  if (state.probe !== undefined) {
+    throw new GovernanceError(
+      `a proof was interrupted while trying ${state.probe.proof} on ${state.probe.branch}; run liftoff governance resume first`,
+    );
+  }
+}
+
 /**
  * Takes the next step, if Liftoff can: observes the repository again, and
  * performs the next checkpoint's action once the person agrees. The action
  * is recorded before it starts and after it ends, so an interrupted one can
  * be checked with resume.
  */
-export async function applyNext(
+export function applyNext(
+  ports: ApplyPorts,
+  directory: string,
+  repository: string,
+  options: ApplyOptions,
+): Promise<ApplyResult> {
+  return withGovernanceLock(ports.fs, directory, options.now, () =>
+    applyNextLocked(ports, directory, repository, options),
+  );
+}
+
+async function applyNextLocked(
   ports: ApplyPorts,
   directory: string,
   repository: string,
@@ -67,20 +95,11 @@ export async function applyNext(
       `the plan is for repository ${options.repositoryId}, but ${repository} is repository ${observed.id}; make a new plan`,
     );
   }
+  // Checked before anything else, even when every checkpoint looks done.
+  const state = await stateFor(ports.fs, directory, assessment);
+  requireNothingUnfinished(state);
   const next = assessment.checkpoints.find((checkpoint) => checkpoint.status === "next");
   if (next === undefined) return { kind: "done", assessment };
-  const state = await stateFor(ports.fs, directory, assessment);
-  const unfinished = state.actions.find((action) => action.finishedAt === undefined);
-  if (unfinished) {
-    throw new GovernanceError(
-      `the ${unfinished.kind} action started ${unfinished.startedAt} never finished; check it with liftoff governance resume first`,
-    );
-  }
-  if (state.probe !== undefined) {
-    throw new GovernanceError(
-      `a proof was interrupted while trying ${state.probe.proof} on ${state.probe.branch}; run liftoff governance resume first`,
-    );
-  }
   if (next.action === undefined) return { kind: "person", checkpoint: next, assessment };
   if (
     options.expected !== undefined &&
@@ -154,10 +173,13 @@ async function perform(
             `the "${name}" ruleset changed on GitHub since it was assessed, so it was left as it is; run apply-next again`,
           );
         if (existing) {
-          const current = await ports.github.get<{ enforcement: string; updated_at?: string }>(
-            `${route}/rulesets/${existing.id}`,
-          );
-          if (current.enforcement === "active" || current.updated_at !== existing.updatedAt) {
+          const current = await ports.github.get<LiveRuleset>(`${route}/rulesets/${existing.id}`);
+          const assessed = assessment.observed.definitions[name];
+          if (
+            current.enforcement === "active" ||
+            assessed === undefined ||
+            canonicalJson(definitionOf(current)) !== canonicalJson(definitionOf(assessed))
+          ) {
             throw changed();
           }
           await ports.github.send("PUT", `${route}/rulesets/${existing.id}`, desired);
@@ -178,8 +200,19 @@ async function perform(
   }
 }
 
+/** What a ruleset enforces, where, and for whom, with when it last changed. */
+const definitionOf = (ruleset: LiveRuleset) => ({
+  target: ruleset.target,
+  enforcement: ruleset.enforcement,
+  conditions: ruleset.conditions,
+  bypass_actors: ruleset.bypass_actors,
+  rules: ruleset.rules,
+  updated_at: ruleset.updated_at,
+});
+
 export type ResumeResult =
   | { readonly kind: "nothing"; readonly assessment: Assessment }
+  | { readonly kind: "declined"; readonly change: string }
   | {
       readonly kind: "checked";
       readonly action: string;
@@ -198,19 +231,43 @@ export type ResumeResult =
  * if its checkpoint is now done, otherwise failed, for apply-next to retry
  * once the person agrees again.
  */
-export async function resume(
+export function resume(
   ports: ApplyPorts,
   directory: string,
   repository: string,
-  now: () => string,
+  options: {
+    readonly now: () => string;
+    /** Asks the person to agree to a change on GitHub, described in words; the default is no. */
+    readonly confirm: (change: string) => Promise<boolean>;
+  },
+): Promise<ResumeResult> {
+  return withGovernanceLock(ports.fs, directory, options.now, () =>
+    resumeLocked(ports, directory, repository, options),
+  );
+}
+
+async function resumeLocked(
+  ports: ApplyPorts,
+  directory: string,
+  repository: string,
+  { now, confirm }: Parameters<typeof resume>[3],
 ): Promise<ResumeResult> {
   const assessment = await assessGovernance(ports, directory, repository);
   const state = await stateFor(ports.fs, directory, assessment);
   if (state.probe !== undefined) {
-    // An interrupted proof: put its branch back if it is still where the
-    // forbidden change left it. A refusal keeps the record for another try.
+    // An interrupted proof. The record is a file anyone can edit, so what it
+    // says is checked on GitHub, and nothing changes without the person's
+    // agreement. A refusal by GitHub keeps the record for another try.
     const { probe, ...rest } = state;
-    const detail = await putBack(ports.github, repository, probe);
+    const protectedBranches = [...new Set(assessment.desired.rulesets.flatMap(targetedBranches))];
+    const planned = await plannedRepair(ports.github, repository, probe, protectedBranches);
+    let detail: string;
+    if ("change" in planned) {
+      if (!(await confirm(planned.change))) return { kind: "declined", change: planned.change };
+      detail = await putBack(ports.github, repository, probe);
+    } else {
+      detail = planned.found;
+    }
     await writeGovernanceState(ports.fs, directory, rest);
     return {
       kind: "probe",

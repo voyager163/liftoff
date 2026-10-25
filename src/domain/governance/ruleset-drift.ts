@@ -56,6 +56,7 @@ export interface LiveRuleset {
   /** Missing when the person reading it may not see who can bypass it. */
   readonly bypass_actors?: readonly unknown[];
   readonly rules?: readonly Rule[];
+  readonly updated_at?: string;
 }
 
 /** Sorts object keys and order-insensitive arrays so equal rules compare equal. */

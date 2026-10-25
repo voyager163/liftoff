@@ -135,23 +135,27 @@ export function makeGovernanceStatusCommand(
           text: "Nothing is recorded yet. Start with: liftoff governance assess\n",
         };
       }
-      const interrupted = state.actions.filter((action) => action.finishedAt === undefined);
+      const interrupted =
+        state.actions.some((action) => action.finishedAt === undefined) ||
+        state.probe !== undefined;
       const lines = [
         `Governance of ${state.repository.fullName} (repository ${state.repository.id})`,
         ...state.actions.map(
           (action) =>
             `  ${action.outcome ?? "unfinished"}  ${action.checkpoint}: ${action.kind}, started ${action.startedAt}${action.detail ? ` (${action.detail})` : ""}`,
         ),
-        state.proof
-          ? `  proof  ${state.proof.passed ? "passed" : "failed"} ${state.proof.at}`
-          : "  proof  not run",
+        state.probe
+          ? `  proof  interrupted while trying ${state.probe.proof} on ${state.probe.branch}, started ${state.probe.startedAt}`
+          : state.proof
+            ? `  proof  ${state.proof.passed ? "passed" : "failed or unfinished"} ${state.proof.at}`
+            : "  proof  not run",
         "",
-        interrupted.length > 0
-          ? "An action was interrupted. Check it with: liftoff governance resume"
+        interrupted
+          ? "Something was interrupted. Check it with: liftoff governance resume"
           : "See the live state with: liftoff governance assess",
       ];
       return {
-        outcome: interrupted.length > 0 ? "attention" : "success",
+        outcome: interrupted ? "attention" : "success",
         report: { directory, recorded: true, state },
         text: `${lines.join("\n")}\n`,
       };
@@ -367,16 +371,39 @@ export function makeGovernanceResumeCommand(
     path: ["governance", "resume"],
     summary: "Check an interrupted governance step against GitHub instead of repeating it.",
     description:
-      "If .liftoff/governance.json records a step that never finished, assesses the repository again and records whether GitHub shows it done. Nothing is repeated or sent: a step that did not happen is offered again by the next `liftoff governance apply-next`, which asks first. If a `verify --prove` was interrupted while trying a forbidden change, it puts that branch back, but only while it is still exactly where the change left it. Otherwise it changes only .liftoff/governance.json.",
+      "If .liftoff/governance.json records a step that never finished, assesses the repository again and records whether GitHub shows it done. Nothing is repeated or sent: a step that did not happen is offered again by the next `liftoff governance apply-next`, which asks first. If a `verify --prove` was interrupted while trying a forbidden change, it checks on GitHub that the branch is protected and still at the commit that change made, says how it would put the branch back, and asks; the default answer is no. In scripts, pass --yes. Otherwise it changes only .liftoff/governance.json.",
     readOnly: false,
     reportSchema: "liftoff.governance-resume/v1",
-    options: GITHUB_OPTIONS,
-    examples: ["liftoff governance resume"],
+    options: {
+      ...GITHUB_OPTIONS,
+      yes: { type: "boolean", short: "y", description: "Put a branch back without asking." },
+    },
+    examples: ["liftoff governance resume", "liftoff governance resume --use-gh --yes"],
     async run(args, { io }) {
       const ports = portsFor(io.cwd);
       const directory = path.resolve(io.cwd, args.options.dir as string);
       const repository = await repositoryWithConsent(args, io, ports.github, directory);
-      const result = await resume(ports, directory, repository, () => new Date().toISOString());
+      const result = await resume(ports, directory, repository, {
+        now: () => new Date().toISOString(),
+        confirm: (change) => {
+          if (args.options.yes === true) return Promise.resolve(true);
+          if (!io.interactive) {
+            throw new UsageError(
+              `resume would ${change}; pass --yes when no one can answer a prompt`,
+            );
+          }
+          return io.confirm(
+            `${change.charAt(0).toUpperCase()}${change.slice(1)} on ${repository}?`,
+          );
+        },
+      });
+      if (result.kind === "declined") {
+        return {
+          outcome: "cancelled",
+          report: { interrupted: true, probe: result.change, changed: false },
+          text: "Nothing was changed; the interrupted proof is still recorded.\n",
+        };
+      }
       const heading =
         result.kind === "nothing"
           ? "Nothing was interrupted."

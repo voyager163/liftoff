@@ -195,21 +195,24 @@ export class FakeGitHubApi implements GitHubApiPort {
       return repo.workflows.map((file) => ({ path: file, type: "file" }));
     }
     if (method === "GET" && rest === "/pulls") return repo.pulls;
+    // One page of a list, as GitHub's per_page and page parameters select.
+    const page = <T>(items: T[]): T[] => {
+      const params = new URLSearchParams(query);
+      const size = Number(params.get("per_page") ?? 30);
+      const number = Number(params.get("page") ?? 1);
+      return items.slice((number - 1) * size, number * size);
+    };
     const checkedSha = on("GET", /^\/commits\/(\w+)\/check-runs$/);
     if (checkedSha !== undefined) {
-      return { check_runs: repo.checkRuns[checkedSha] ?? [] };
+      return { check_runs: page(repo.checkRuns[checkedSha] ?? []) };
     }
     const statusSha = on("GET", /^\/commits\/(\w+)\/statuses$/);
     if (statusSha !== undefined) {
-      return repo.statuses[statusSha] ?? [];
+      return page(repo.statuses[statusSha] ?? []);
     }
     if (method === "GET" && rest === "/rulesets") {
-      return repo.rulesets.map(({ id, name, enforcement, updatedAt }) => ({
-        id,
-        name,
-        enforcement,
-        updated_at: updatedAt ?? "2026-10-01T00:00:00Z",
-      }));
+      // The list gives no updated_at; the ruleset by id does.
+      return repo.rulesets.map(({ id, name, enforcement }) => ({ id, name, enforcement }));
     }
     const shownId = on("GET", /^\/rulesets\/(\d+)$/);
     if (shownId !== undefined) {

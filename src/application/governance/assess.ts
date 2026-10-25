@@ -20,6 +20,8 @@ import { readGovernanceState } from "./state.ts";
 export const DRIFT_WORKFLOW = ".github/workflows/90-governance-drift.yml";
 /** How many recent pull requests are searched for runs of the required checks. */
 const RECENT_PULLS = 20;
+/** Pages of 100 check runs or statuses read for one commit before giving up. */
+const MAX_PAGES = 10;
 
 export class GovernanceError extends Error {
   override readonly name = "GovernanceError";
@@ -106,46 +108,63 @@ export async function observe(
       ({ context, integrationId }) =>
         !checks.some((check) => check.context === context && check.appId === integrationId),
     );
+  // Every page of a commit's check runs or statuses, until the required
+  // checks are all seen; a commit with more than MAX_PAGES is an error.
+  const paged = async <T>(sha: string, what: string, read: (page: number) => Promise<T[]>) => {
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const items = await read(page);
+      if (items.length < 100 || !wanted()) return;
+    }
+    throw new GovernanceError(
+      `${sha} has more than ${MAX_PAGES * 100} ${what}; let a required check run on a newer pull request`,
+    );
+  };
   for (const sha of [...new Set(pulls.map((pull) => pull.head.sha))]) {
     if (!wanted()) break;
-    const runs = await api.get<{
-      check_runs: {
-        name: string;
-        conclusion: string | null;
-        app?: { id: number };
-        html_url: string;
-      }[];
-    }>(`${route}/commits/${sha}/check-runs?per_page=100`);
-    for (const run of runs.check_runs) {
-      if (run.conclusion === "success" && run.app) {
-        checks.push({ context: run.name, appId: run.app.id, url: run.html_url });
+    await paged(sha, "check runs", async (page) => {
+      const runs = await api.get<{
+        check_runs: {
+          name: string;
+          conclusion: string | null;
+          app?: { id: number };
+          html_url: string;
+        }[];
+      }>(`${route}/commits/${sha}/check-runs?per_page=100&page=${page}`);
+      for (const run of runs.check_runs) {
+        if (run.conclusion === "success" && run.app) {
+          checks.push({ context: run.name, appId: run.app.id, url: run.html_url });
+        }
       }
-    }
-    const statuses = await api.get<
-      { context: string; state: string; creator?: { login: string }; target_url?: string | null }[]
-    >(`${route}/commits/${sha}/statuses?per_page=100`);
-    for (const status of statuses) {
-      // A status set with a workflow's token comes from the GitHub Actions app.
-      if (status.state === "success" && status.creator?.login === "github-actions[bot]") {
-        checks.push({
-          context: status.context,
-          appId: GITHUB_ACTIONS_APP_ID,
-          url: status.target_url ?? `https://github.com/${repository}/commit/${sha}`,
-        });
+      return runs.check_runs;
+    });
+    await paged(sha, "statuses", async (page) => {
+      const statuses = await api.get<
+        {
+          context: string;
+          state: string;
+          creator?: { login: string };
+          target_url?: string | null;
+        }[]
+      >(`${route}/commits/${sha}/statuses?per_page=100&page=${page}`);
+      for (const status of statuses) {
+        // A status set with a workflow's token comes from the GitHub Actions app.
+        if (status.state === "success" && status.creator?.login === "github-actions[bot]") {
+          checks.push({
+            context: status.context,
+            appId: GITHUB_ACTIONS_APP_ID,
+            url: status.target_url ?? `https://github.com/${repository}/commit/${sha}`,
+          });
+        }
       }
-    }
+      return statuses;
+    });
   }
 
   const rulesets = (
-    await api.get<{ id: number; name: string; enforcement: string; updated_at?: string }[]>(
+    await api.get<{ id: number; name: string; enforcement: string }[]>(
       `${route}/rulesets?per_page=100`,
     )
-  ).map(({ id, name, enforcement, updated_at }) => ({
-    id,
-    name,
-    enforcement,
-    ...(updated_at === undefined ? {} : { updatedAt: updated_at }),
-  }));
+  ).map(({ id, name, enforcement }) => ({ id, name, enforcement }));
   // The committed rulesets in full, for what the rules on each branch cannot
   // show: the branches each applies to and who may bypass it.
   const definitions: Record<string, LiveRuleset> = {};
@@ -215,8 +234,12 @@ export async function assessGovernance(
   const problems = await localProblems(ports.fs, directory);
   const observed = await observe(ports.github, repository, desired);
   const state = await readGovernanceState(ports.fs, directory);
+  // An unfinished probe means the last proof did not finish, whatever an
+  // earlier one recorded.
   const proof: ProofRecord | undefined =
-    state?.repository.id === observed.repository.id ? state.proof : undefined;
+    state?.repository.id === observed.repository.id && state.probe === undefined
+      ? state.proof
+      : undefined;
   return {
     repository,
     desired,

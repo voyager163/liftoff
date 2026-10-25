@@ -4,6 +4,7 @@ import type { GovernanceState } from "../../domain/governance/state.ts";
 import type { GitHubApiPort, ProjectFsPort } from "../ports.ts";
 import { stateFor } from "./apply.ts";
 import { type Assessment, assessGovernance, GovernanceError } from "./assess.ts";
+import { withGovernanceLock } from "./lock.ts";
 import { type ProofResult, proveBranch } from "./prove.ts";
 import { writeGovernanceState } from "./state.ts";
 
@@ -26,11 +27,27 @@ export async function verifyGovernance(
   ports: { fs: ProjectFsPort; github: GitHubApiPort },
   directory: string,
   repository: string,
-  options: {
-    readonly prove: boolean;
-    readonly confirm: () => Promise<boolean>;
-    readonly now: () => string;
-  },
+  options: VerifyOptions,
+): Promise<VerifyResult> {
+  // Proving changes GitHub and the record, so it holds the lock throughout.
+  return options.prove
+    ? withGovernanceLock(ports.fs, directory, options.now, () =>
+        verifyLocked(ports, directory, repository, options),
+      )
+    : verifyLocked(ports, directory, repository, options);
+}
+
+interface VerifyOptions {
+  readonly prove: boolean;
+  readonly confirm: () => Promise<boolean>;
+  readonly now: () => string;
+}
+
+async function verifyLocked(
+  ports: { fs: ProjectFsPort; github: GitHubApiPort },
+  directory: string,
+  repository: string,
+  options: VerifyOptions,
 ): Promise<VerifyResult> {
   const assessment = await assessGovernance(ports, directory, repository);
   const status = (id: string) => assessment.checkpoints.find((c) => c.id === id)?.status;
@@ -69,6 +86,15 @@ export async function verifyGovernance(
       return save(rest);
     },
   };
+  const rulesetIds = assessment.desired.rulesets
+    .map(({ name }) => assessment.observed.rulesets.find((ruleset) => ruleset.name === name)?.id)
+    .filter((rulesetId): rulesetId is number => rulesetId !== undefined);
+  const fingerprint = rulesetFingerprint(assessment.desired, assessment.observed);
+  const record = (passed: boolean) =>
+    save({ ...state, proof: { passed, rulesetIds, fingerprint, at: options.now() } });
+  // Until this proof passes, no earlier one counts: one that stops part way
+  // leaves a failed record, not the last pass.
+  await record(false);
   const results: ProofResult[] = [];
   for (const branch of branches) {
     const proved = await proveBranch(ports.github, repository, branch, journal);
@@ -77,11 +103,7 @@ export async function verifyGovernance(
     if (state.probe !== undefined) break;
   }
   const passed = state.probe === undefined && results.every((result) => result.refused);
-  const rulesetIds = assessment.desired.rulesets
-    .map(({ name }) => assessment.observed.rulesets.find((ruleset) => ruleset.name === name)?.id)
-    .filter((rulesetId): rulesetId is number => rulesetId !== undefined);
-  const fingerprint = rulesetFingerprint(assessment.desired, assessment.observed);
-  await save({ ...state, proof: { passed, rulesetIds, fingerprint, at: options.now() } });
+  await record(passed);
   return {
     kind: "proved",
     passed,
