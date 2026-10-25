@@ -29,11 +29,34 @@ export interface Difference {
   readonly detail: string;
 }
 
+const isBranchName = (ref: string) => ref.startsWith("refs/heads/") && !/[*?[]/.test(ref);
+
 /** Branch names a ruleset targets directly (wildcards cannot be read back per branch). */
 export function targetedBranches(ruleset: DesiredRuleset): string[] {
   return ruleset.conditions.ref_name.include
-    .filter((ref) => ref.startsWith("refs/heads/") && !/[*?[]/.test(ref))
+    .filter(isBranchName)
     .map((ref) => ref.slice("refs/heads/".length));
+}
+
+/** What a ruleset targets other than named branches, such as a pattern or ~ALL. */
+export function patternTargets(ruleset: DesiredRuleset): string[] {
+  return ruleset.conditions.ref_name.include.filter((ref) => !isBranchName(ref));
+}
+
+/** A ruleset as GitHub returns it by id. */
+export interface LiveRuleset {
+  readonly target?: string;
+  readonly enforcement: string;
+  readonly conditions?: {
+    readonly ref_name?: {
+      readonly include?: readonly string[];
+      readonly exclude?: readonly string[];
+    };
+  } | null;
+  /** Missing when the person reading it may not see who can bypass it. */
+  readonly bypass_actors?: readonly unknown[];
+  readonly rules?: readonly Rule[];
+  readonly updated_at?: string;
 }
 
 /** Sorts object keys and order-insensitive arrays so equal rules compare equal. */
@@ -113,6 +136,46 @@ export function compareRuleset(
         });
       }
     }
+  }
+  return differences;
+}
+
+/**
+ * What the rules on each branch cannot show: which branches a live ruleset
+ * applies to, and who may bypass it. Both must be exactly as committed, since
+ * a narrower target or an extra bypass weakens it.
+ */
+export function compareDefinition(desired: DesiredRuleset, live: LiveRuleset): Difference[] {
+  const differences: Difference[] = [];
+  const at = `ruleset "${desired.name}"`;
+  const same = (a: unknown, b: unknown) =>
+    JSON.stringify(normalize(a)) === JSON.stringify(normalize(b));
+  const applies = {
+    include: live.conditions?.ref_name?.include ?? [],
+    exclude: live.conditions?.ref_name?.exclude ?? [],
+  };
+  if (!same(desired.conditions.ref_name, applies) || (live.target ?? "branch") !== desired.target) {
+    differences.push({
+      branch: at,
+      rule: "(conditions)",
+      kind: "changed",
+      detail: `applies to ${describe(applies)}, not ${describe(desired.conditions.ref_name)}`,
+    });
+  }
+  if (live.bypass_actors === undefined) {
+    differences.push({
+      branch: at,
+      rule: "(bypass)",
+      kind: "changed",
+      detail: "who may bypass it cannot be read with this login; a repository admin must verify it",
+    });
+  } else if (!same(desired.bypass_actors, live.bypass_actors)) {
+    differences.push({
+      branch: at,
+      rule: "(bypass)",
+      kind: "changed",
+      detail: `expected bypass actors ${describe(desired.bypass_actors)}, found ${describe(live.bypass_actors)}`,
+    });
   }
   return differences;
 }

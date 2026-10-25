@@ -99,3 +99,81 @@ after-release and sync workflows run end to end, with and without a release
 app, and a release whose tree was changed fails the lineage check.
 
 Verification: live
+
+## GOV-001 Governance is assessed read-only, with consent
+
+`liftoff governance assess` reads the repository on GitHub through the
+person's own GitHub CLI login, only after they agree (or pass `--use-gh`),
+and changes nothing. It evaluates, in order: the local handoff, develop and
+main with develop as the default branch, the project's workflows on the
+default branch, a real successful run of every check the rulesets require
+from the app that produces it, on any page of a recent commit's checks, the rulesets being active, their readback,
+the drift job having passed, and the proof. The first checkpoint not done is
+the next one; it says what Liftoff can do for it or what the person must do.
+A repository that is not a Liftoff project, such as Liftoff's own, is
+assessed against the rulesets it commits.
+
+Verification: test
+
+## GOV-002 One agreed step at a time
+
+`liftoff governance apply-next` assesses again and takes only the next step,
+and only one Liftoff can take: creating develop, making it the default
+branch, applying the rulesets (only after every required check has run,
+only as an admin, and changing only Liftoff's own rulesets by name, never
+another one), or running the drift job. It asks first, with no as the
+default, or needs `--yes`. With `--plan` the step must be the one the saved
+plan expects, for the same repository by GitHub's id; a rulesets step
+carries a digest of exactly the rulesets it sends, so a plan saved before
+they changed is refused. A ruleset is read
+again just before it is changed, and left as it is if it changed on GitHub
+since it was assessed. Each step is recorded in `.liftoff/governance.json`
+before and after, with its outcome. Only one governance command that
+changes GitHub or the record runs at a time in a project.
+`liftoff governance plan` lists who takes each step left.
+
+Verification: test
+
+## GOV-003 An interrupted step is checked, never repeated
+
+A step recorded as started but not finished, or a proof interrupted part
+way, blocks apply-next, even when every checkpoint looks done, until
+`liftoff governance resume` checks it against GitHub: a step is done if
+GitHub shows its checkpoint done, otherwise failed, for apply-next to offer
+again after asking. For an interrupted proof, the record is not trusted:
+resume puts a branch back only if the rulesets protect it and it is at a
+commit that proof made, or GitHub's activity record shows it was deleted
+from the recorded head, and only after the person agrees. `liftoff governance status` shows what is recorded, including an
+interrupted proof, without contacting GitHub. A record for another
+repository is refused.
+
+Verification: test
+
+## GOV-004 The rules are proved by trying what they forbid
+
+`liftoff governance verify` compares the rules GitHub enforces with the
+committed rulesets, including the branches each applies to and who may
+bypass it; a ruleset that selects branches by pattern cannot match, and
+without committed rulesets nothing matches. With `--prove`, once the
+rulesets match, the record is this repository's and the person agrees, it
+tries a direct push, a forced push and deleting each protected branch. An
+earlier pass stops counting as soon as it starts. Each must be refused by a
+rule; any other refusal, such as a rate limit, leaves
+the proof unfinished. Each change is recorded before it is tried; anything GitHub
+allows, or answers unclearly but makes, is put back while the branch is
+still where the change left it, and a branch that moved since is left
+alone. A change that cannot be put back stops the proof and stays recorded
+for `resume`. The outcome, and the rulesets it proved, are recorded, and a
+proof counts only while those rulesets are unchanged on GitHub, including
+an edit in place. The drift checkpoint counts only `develop`'s own runs.
+
+Verification: test
+
+## GOV-005 Governance is activated on a real repository
+
+In a disposable GitHub repository made from a generated project, the
+checkpoints are taken in order from a new repository to enforced and proved
+rules, and the readback matches. Read-only, `liftoff governance assess`
+reports on Liftoff's own repository.
+
+Verification: live

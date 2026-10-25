@@ -64,6 +64,12 @@ describe("CLI-001 one registry drives every command", () => {
       "validate",
       "doctor",
       "review classify",
+      "governance status",
+      "governance assess",
+      "governance plan",
+      "governance apply-next",
+      "governance resume",
+      "governance verify",
     ]);
   });
 

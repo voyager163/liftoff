@@ -142,3 +142,5 @@ for what `--frontend vue` adds, and
 covers OpenSpec, Spec Kit and manual development.
 [The release flow](projects/release-flow.md) covers how GitFlow projects build,
 release and publish their images.
+[Activating governance](projects/governance-activation.md) covers applying the
+rulesets on GitHub with `liftoff governance`.

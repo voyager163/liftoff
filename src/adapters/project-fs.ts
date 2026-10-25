@@ -2,6 +2,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   rename,
@@ -50,6 +51,33 @@ export class LocalProjectFs implements ProjectFsPort {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, content, { flag: "wx" });
     if (executable && process.platform !== "win32") await chmod(file, 0o755);
+  }
+
+  async replaceFile(file: string, content: string): Promise<void> {
+    await mkdir(path.dirname(file), { recursive: true });
+    const temporary = `${file}.${process.pid}.tmp`;
+    await writeFile(temporary, content);
+    await rename(temporary, file);
+  }
+
+  async createExclusive(file: string, content: string): Promise<boolean> {
+    await mkdir(path.dirname(file), { recursive: true });
+    let handle: Awaited<ReturnType<typeof open>>;
+    try {
+      handle = await open(file, "wx");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw error;
+    }
+    try {
+      await handle.writeFile(content);
+    } catch (error) {
+      await handle.close();
+      await rm(file, { force: true });
+      throw error;
+    }
+    await handle.close();
+    return true;
   }
 
   async publish(staging: string, target: string): Promise<void> {

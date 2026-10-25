@@ -48,6 +48,13 @@ export interface ProjectFsPort {
   /** A new empty directory beside `target`, on the same volume, for staging. */
   createStaging(target: string): Promise<string>;
   writeFile(path: string, content: string, executable: boolean): Promise<void>;
+  /** Writes a file, replacing it if it exists, so a reader sees the old or the new text. */
+  replaceFile(path: string, content: string): Promise<void>;
+  /**
+   * Creates a file only if there is none: false when one exists. If writing
+   * it fails once created, it is removed again and the error thrown.
+   */
+  createExclusive(path: string, content: string): Promise<boolean>;
   /** Moves the staged directory to `target`, which must be missing or empty. */
   publish(staging: string, target: string): Promise<void>;
   remove(path: string): Promise<void>;
@@ -78,6 +85,28 @@ export interface InitializerPort {
   ): Promise<InitializerOutcome>;
   /** Paths particular to this machine, such as the home directory, that a project's files must never contain. */
   machinePaths(): readonly string[];
+}
+
+/**
+ * GitHub's REST API, reached with the person's own GitHub CLI login. Liftoff
+ * never sees or stores their credentials.
+ */
+export interface GitHubApiPort {
+  /** The GitHub repository a directory's origin remote points at, as owner/name. */
+  repositoryOf(directory: string): Promise<string | undefined>;
+  get<T>(route: string): Promise<T>;
+  /** Like get, but undefined when GitHub answers 404. */
+  find<T>(route: string): Promise<T | undefined>;
+  send<T>(method: "POST" | "PATCH" | "PUT" | "DELETE", route: string, body?: unknown): Promise<T>;
+  /** Like send, but reports a refusal with GitHub's HTTP status instead of throwing. */
+  attempt(
+    method: "PATCH" | "DELETE",
+    route: string,
+    body?: unknown,
+  ): Promise<
+    | { readonly ok: true }
+    | { readonly ok: false; readonly status?: number; readonly message: string }
+  >;
 }
 
 /** Reads a tool's version without changing anything. */
