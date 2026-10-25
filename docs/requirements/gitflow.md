@@ -20,6 +20,12 @@ Anything else fails with what the branch should be called. Other events,
 and pull requests into other branches, have nothing to check. A GitHub
 error fails the job. Projects without a GitFlow profile get neither job.
 
+Both jobs run the base branch's copy of the check, never the pull request's
+own, and read the pull request as it is when they run, so editing its
+description or base, which also starts CI again, or re-running the job,
+always checks the current one. The incident reference must be on the
+Incident line itself.
+
 Verification: test
 
 ## FLOW-002 What merges into main is exactly what CI qualified

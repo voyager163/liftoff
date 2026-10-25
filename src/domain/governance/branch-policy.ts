@@ -28,8 +28,8 @@ export interface BranchRequest {
 
 const NAME = "[A-Za-z0-9][A-Za-z0-9._/-]*";
 const VERSION = /^(?:release|hotfix)\/(\d+\.\d+\.\d+)$/;
-/** A line such as "Incident: INC-123" or "Incident: https://…". */
-const INCIDENT = /^\s*Incident:\s*\S+/im;
+/** A line such as "Incident: INC-123" or "Incident: https://…", with the reference on that line. */
+const INCIDENT = /^[ \t]*Incident:[ \t]*\S/im;
 
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const prefixed = (prefixes: readonly string[], head: string) =>

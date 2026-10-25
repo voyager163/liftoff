@@ -1137,6 +1137,12 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
       "node .github/liftoff/branch-policy.mjs lineage",
     );
     expect(generated.get(".github/liftoff/branch-policy.mjs")?.ownership).toBe("managed");
+    // Both run the base branch's check, and run again when the description changes.
+    const text = generated.get(".github/workflows/01-pr-ci.yml")?.content ?? "";
+    expect(
+      text.match(/ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.sha \}\}/g),
+    ).toHaveLength(2);
+    expect(text).toContain("types: [opened, synchronize, reopened, edited]");
   });
 
   it("adds neither without a GitFlow profile", async () => {

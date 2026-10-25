@@ -12,10 +12,12 @@ interface Repo {
   trees?: Record<string, string>;
   /** Answer every request with a server error. */
   down?: boolean;
+  /** The pull request as GitHub has it now, when it differs from the event. */
+  current?: { body?: string | null; base?: { ref: string } };
 }
 
 /** Answers the GitHub REST routes the checks read, from `repo`. */
-function fakeFetch(repo: Repo, requests: string[]) {
+function fakeFetch(repo: Repo, requests: string[], pull: Record<string, unknown>) {
   return async (input: string): Promise<Response> => {
     const url = new URL(input);
     requests.push(`${url.pathname}${url.search}`);
@@ -27,7 +29,16 @@ function fakeFetch(repo: Repo, requests: string[]) {
     if (repo.down) return json({ message: "unavailable" }, 503);
     const compare = /\/compare\/([^.]+)\.\.\.(\w+)$/.exec(url.pathname);
     if (compare) return json(repo.compare?.[compare[1] ?? ""] ?? { ahead_by: 0, behind_by: 0 });
-    if (url.pathname.endsWith("/actions/runs")) return json({ workflow_runs: repo.runs ?? [] });
+    if (url.pathname.endsWith("/pulls/7")) return json({ ...pull, ...repo.current });
+    const workflow = /\/actions\/workflows\/([^/]+)\/runs$/.exec(url.pathname)?.[1];
+    if (workflow !== undefined) {
+      // Only successful runs are asked for.
+      expect(url.searchParams.get("status")).toBe("success");
+      const passed = (repo.runs ?? []).filter(
+        (run) => run.path.endsWith(`/${workflow}`) && run.conclusion === "success",
+      );
+      return json({ total_count: passed.length });
+    }
     const tag = /\/git\/ref\/tags\/v(.+)$/.exec(url.pathname);
     if (tag) return (repo.tags ?? []).includes(tag[1] ?? "") ? json({}) : json({}, 404);
     const commit = /\/git\/commits\/(\w+)$/.exec(url.pathname);
@@ -65,9 +76,11 @@ const run = async (
     readFile: () => JSON.stringify(event),
     appendFile: () => undefined,
     log: (text) => logs.push(text),
-    fetch: fakeFetch(repo, requests),
+    fetch: fakeFetch(repo, requests, event.pull_request),
   });
-  return { code, log: logs.join(""), requests };
+  // A check of a pull request reads it first; the rest is what it asked.
+  const [first, ...rest] = requests;
+  return { code, log: logs.join(""), requests: first === "/repos/o/r/pulls/7" ? rest : requests };
 };
 
 const CI_PASSED = { runs: [{ path: ".github/workflows/01-pr-ci.yml", conclusion: "success" }] };
@@ -100,7 +113,7 @@ describe("FLOW-001 the branch-policy check", () => {
     expect(code).toBe(0);
     expect(requests).toEqual([
       `/repos/o/r/compare/develop...${HEAD}`,
-      `/repos/o/r/actions/runs?head_sha=${HEAD}&branch=develop&event=push&per_page=100`,
+      `/repos/o/r/actions/workflows/01-pr-ci.yml/runs?head_sha=${HEAD}&branch=develop&event=push&status=success&per_page=1`,
       "/repos/o/r/git/ref/tags/v1.2.0",
     ]);
   });
@@ -127,6 +140,27 @@ describe("FLOW-001 the branch-policy check", () => {
     const { code, log } = await run("branch", { head: "release/1.2.0", base: "main" }, repo);
     expect(code).toBe(1);
     expect(log).toContain(message);
+  });
+
+  it("reads the description and base as they are now, not as the event recorded them", async () => {
+    const hotfix = { head: "hotfix/1.2.1", base: "main", body: "Incident: INC-7" };
+    const removed = await run("branch", hotfix, { current: { body: "No incident any more" } });
+    expect(removed.code).toBe(1);
+    expect(removed.log).toContain('needs an "Incident: <reference>" line');
+    const added = await run(
+      "branch",
+      { ...hotfix, body: "" },
+      { current: { body: "Incident: INC-7" } },
+    );
+    expect(added.code).toBe(0);
+    const retargeted = await run(
+      "branch",
+      { head: "feature/x", base: "develop" },
+      {
+        current: { base: { ref: "main" } },
+      },
+    );
+    expect(retargeted.log).toContain("feature/x cannot merge into main");
   });
 
   it("checks that a hotfix starts from the current main and names its incident", async () => {

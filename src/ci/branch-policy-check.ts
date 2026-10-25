@@ -54,16 +54,20 @@ export async function main(mode: Mode, context: CheckEnvironment): Promise<numbe
       return 0;
     }
     const event = JSON.parse(context.readFile(required(env, "GITHUB_EVENT_PATH"))) as {
-      pull_request?: PullRequest;
+      pull_request?: { number: number };
     };
-    const pr = event.pull_request;
-    if (!pr) throw new Error("the event has no pull request");
+    if (!event.pull_request) throw new Error("the event has no pull request");
     const client = new GitHubClient({
       token: required(env, "GITHUB_TOKEN"),
       ...(env.GITHUB_API_URL ? { apiUrl: env.GITHUB_API_URL } : {}),
       ...(context.fetch ? { fetch: context.fetch } : {}),
     });
     const repository = required(env, "GITHUB_REPOSITORY");
+    // The pull request as it is now, not as the event recorded it, so a
+    // re-run sees an edited description or base.
+    const pr = await client.get<PullRequest>(
+      `/repos/${repository}/pulls/${event.pull_request.number}`,
+    );
     const problems =
       mode === "branch"
         ? await branchProblems(client, repository, pr, env)
@@ -148,16 +152,20 @@ async function lineageProblems(
 const compare = (client: GitHubClient, repository: string, base: string, sha: string) =>
   client.get<Comparison>(`/repos/${repository}/compare/${base}...${sha}`);
 
-/** Whether the CI workflow succeeded on a push of this commit to develop. */
+/**
+ * Whether the CI workflow succeeded on a push of this commit to develop. It
+ * asks for that workflow's successful runs only, so one is never lost behind
+ * a page of other runs.
+ */
 async function ciPassedOnDevelop(
   client: GitHubClient,
   repository: string,
   sha: string,
 ): Promise<boolean> {
-  const { workflow_runs: runs } = await client.get<{
-    workflow_runs: { path: string; conclusion: string | null }[];
-  }>(`/repos/${repository}/actions/runs?head_sha=${sha}&branch=develop&event=push&per_page=100`);
-  return runs.some((run) => run.path === CI_WORKFLOW && run.conclusion === "success");
+  const { total_count: count } = await client.get<{ total_count: number }>(
+    `/repos/${repository}/actions/workflows/${CI_WORKFLOW.split("/").at(-1)}/runs?head_sha=${sha}&branch=develop&event=push&status=success&per_page=1`,
+  );
+  return count > 0;
 }
 
 async function tagExists(client: GitHubClient, repository: string, version: string) {

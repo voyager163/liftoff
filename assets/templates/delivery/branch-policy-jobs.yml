@@ -8,9 +8,11 @@ branch-policy:
     contents: read
     actions: read
   steps:
+    # The check from the base branch, never the pull request's own copy.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
+        ref: ${{ github.event.pull_request.base.sha || github.sha }}
         sparse-checkout: .github/liftoff
     - name: Check the branch
       env:
@@ -28,9 +30,11 @@ release-lineage:
   permissions:
     contents: read
   steps:
+    # The check from the base branch, never the pull request's own copy.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
+        ref: ${{ github.event.pull_request.base.sha || github.sha }}
         sparse-checkout: .github/liftoff
     - name: Check the release lineage
       env:

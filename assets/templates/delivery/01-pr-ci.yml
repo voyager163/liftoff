@@ -6,6 +6,8 @@ name: CI
 
 on:
   pull_request:
+    # Edited too: the branch checks read the description and the base.
+    types: [opened, synchronize, reopened, edited]
     branches: [develop, main]
   push:
     branches: [develop, main]

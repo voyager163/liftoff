@@ -47,6 +47,14 @@ describe("FLOW-001 which branches may merge where", () => {
     expect(
       check("hotfix/1.2.1", "main", "Fixes the login outage.\n\nIncident: INC-42"),
     ).toMatchObject({ allowed: true, kind: "hotfix", version: "1.2.1" });
+    for (const body of [
+      "Incident:\n\n## Testing\nTests pass",
+      "Incident:   \nINC-42",
+      "Incident:",
+    ]) {
+      expect(check("hotfix/1.2.1", "main", body).allowed).toBe(false);
+    }
+    expect(check("hotfix/1.2.1", "main", "Incident:\tINC-42").allowed).toBe(true);
     expect(check("hotfix/1.2.1", "main", "Fixes the login outage.")).toMatchObject({
       allowed: false,
       reason: expect.stringContaining('"Incident: <reference>"'),
