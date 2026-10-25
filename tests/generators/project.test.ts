@@ -1581,7 +1581,17 @@ describe("FLOW-007 projects with infrastructure deploy by digest, and fail close
   };
   const API = `api ghcr.io/acme/app/api sha256:${"a".repeat(64)}\n`;
   // A file of answers, one per call, the last repeated once they run out.
-  const answers = `answer() { line=$(head -n 1 "$1"); if [ "$(wc -l < "$1")" -gt 1 ]; then tail -n +2 "$1" > "$1.next" && mv "$1.next" "$1"; fi; printf '%s' "$line"; }\nsleep() { :; }`;
+  // Only shell builtins, since starting processes is slow on Windows.
+  const answers = [
+    "answer() {",
+    '  local n=0 i=0 line last=""',
+    '  if [ -f "$1.n" ]; then read -r n < "$1.n"; fi',
+    '  while IFS= read -r line; do last=$line; [ "$i" -eq "$n" ] && break; i=$((i + 1)); done < "$1"',
+    '  echo $((n + 1)) > "$1.n"',
+    "  printf '%s' \"$last\"",
+    "}",
+    "sleep() { :; }",
+  ].join("\n");
 
   it("deploys dev only while its commit is still develop's head", async () => {
     const files = await azure();
@@ -1605,7 +1615,10 @@ describe("FLOW-007 projects with infrastructure deploy by digest, and fail close
     expect(newer.calls).toBe("api repos/acme/app/branches/develop --jq .commit.sha\n");
   });
 
-  it("never runs two migrations at once, and stops one it gives up on", async () => {
+  // Each poll starts a subshell, which is slow on Windows.
+  it("never runs two migrations at once, and stops one it gives up on", {
+    timeout: 30_000,
+  }, async () => {
     const script = stepNamed(
       await deploySteps(),
       "Run the database migrations with the new API image",
@@ -1673,7 +1686,10 @@ describe("FLOW-007 projects with infrastructure deploy by digest, and fail close
     expect(migrate("", { new: "Failed\n" }).status).toBe(1);
   });
 
-  it("waits for the new revision itself, not an old one still answering", async () => {
+  // Each poll starts a subshell, which is slow on Windows.
+  it("waits for the new revision itself, not an old one still answering", {
+    timeout: 30_000,
+  }, async () => {
     const script = stepNamed(
       await deploySteps(),
       "Deploy the new images, and wait for their revisions",
