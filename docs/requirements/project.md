@@ -197,6 +197,8 @@ assembled from the parts of the API stack and the frontend:
 - each component adds its Compose services, CI jobs, Dependabot entries,
   README sections and the language CodeQL analyzes, each language once;
 - `ci-gate` needs every job, dependency review included;
+- every relative link in the README points at a file or directory the
+  project has;
 - two components defining the same service or job, a service depending on
   one that does not exist, or a part that is not the expected YAML shape
   stops generation with an error.

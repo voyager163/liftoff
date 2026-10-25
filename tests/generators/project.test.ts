@@ -692,6 +692,25 @@ describe("PROJ-014 shared files are assembled from each component's parts", () =
     expect(jobs).toContain("dependencies");
   });
 
+  it.each([
+    [{}],
+    [{ governance: "none" }],
+    [{ stack: "node-fastify", frontend: "vue" }],
+    [{ stack: "go-huma", frontend: "vue" }],
+  ])("links the README only to files the project has, for %j", async (overrides) => {
+    const project = await byPath(overrides);
+    const readme = project.get("README.md")?.content ?? "";
+    const targets = [...readme.matchAll(/\]\(([^)\s]+)\)/g)]
+      .map(([, target]) => (target ?? "").replace(/#.*$/, "").replace(/\/$/, ""))
+      .filter((target) => target !== "" && !/^[a-z]+:/.test(target));
+    expect(targets.length).toBeGreaterThan(0);
+    for (const target of targets) {
+      const found =
+        project.has(target) || [...project.keys()].some((p) => p.startsWith(`${target}/`));
+      expect(found, target).toBe(true);
+    }
+  });
+
   const VALID: Record<string, string> = {
     "a/compose.yaml": "api:\n  image: a\n",
     "a/ci-jobs.yml": "lint:\n  runs-on: ubuntu-latest\n",
