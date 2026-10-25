@@ -68,10 +68,12 @@ admin. Rulesets that select branches by pattern, such as `release/*` or
 
 `liftoff governance verify --prove` runs only when the rulesets are active
 and match. On each protected branch it tries an empty commit pushed on top,
-a commit forced in beside the head, and deleting the branch. GitHub must
-refuse each one. If it allows one, Liftoff puts the branch back at once, at
-the head it had just before, and the proof fails. The outcome, and the
-rulesets it proved, are recorded; new or replaced rulesets need a new proof.
+a commit forced in beside the head, and deleting the branch. A rule must
+refuse each one; any other answer, such as a rate limit, leaves the proof
+unfinished rather than passed. If GitHub allows one, Liftoff puts the
+branch back at once, at the head it had just before, and the proof fails.
+The outcome, and the rulesets as they were proved, are recorded: a new,
+replaced or edited ruleset needs a new proof.
 
 Each change is written to `.liftoff/governance.json` before it is tried and
 removed once the branch is as it was. Liftoff puts a branch back only while

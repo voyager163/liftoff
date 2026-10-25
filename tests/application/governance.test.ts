@@ -183,6 +183,8 @@ describe("GOV-002 apply-next takes one agreed step at a time, in order", () => {
       ["run-drift", "done"],
     ]);
     expect(state().proof).toMatchObject({ passed: true, rulesetIds: [100, 101] });
+    // The drift job counts only as develop's.
+    expect(github.calls.some((call) => call.route.includes("/runs?branch=develop&"))).toBe(true);
   });
 
   it("changes nothing when the person declines", async () => {
@@ -436,6 +438,20 @@ describe("GOV-004 the proof tries what the rules forbid", () => {
     expect(result.results[0]?.detail).toContain("GitHub gave no clear answer");
     expect(repo.branches).toEqual({ main: "1".repeat(40), develop: "1".repeat(40) });
     expect(state().probe).toBeUndefined();
+  });
+
+  it("counts only a refusal by a rule, not a rate limit or another error", async () => {
+    const { repo, github } = await enforced();
+    github.beforeWrite = (method, route) => {
+      if (method === "PATCH" && route.endsWith("/develop")) {
+        throw new FakeGitHubError(403, "API rate limit exceeded");
+      }
+    };
+    await expect(prove(github)).rejects.toThrow(
+      /could not tell whether direct-push on develop was refused: HTTP 403: API rate limit exceeded/,
+    );
+    expect(repo.branches.develop).toBe("1".repeat(40));
+    expect(state().proof).toBeUndefined();
   });
 
   it("keeps the record, and stops, when a branch cannot be put back; resume finishes it", async () => {

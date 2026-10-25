@@ -4,6 +4,7 @@ import {
   type Desired,
   GITHUB_ACTIONS_APP_ID,
   type Observed,
+  rulesetFingerprint,
 } from "../../src/domain/governance/checkpoints.ts";
 import type { DesiredRuleset, LiveRuleset } from "../../src/domain/governance/ruleset-drift.ts";
 
@@ -48,7 +49,12 @@ const ENFORCED: Observed = {
   driftRun: { conclusion: "success", url: "https://drift" },
 };
 
-const PROVED = { passed: true, rulesetIds: [41], at: "2026-10-25T00:00:00Z" };
+const PROVED = {
+  passed: true,
+  rulesetIds: [41],
+  fingerprint: rulesetFingerprint(DESIRED, ENFORCED),
+  at: "2026-10-25T00:00:00Z",
+};
 
 const assess = (
   observed: Partial<Observed>,
@@ -236,12 +242,21 @@ describe("GOV-001 the governance checkpoints, in order", () => {
       id: "proof",
       detail: "not proved yet",
     });
-    expect(
-      next(assess({}, { problems: [], proof: { ...PROVED, rulesetIds: [40] } })),
-    ).toMatchObject({
-      id: "proof",
-      detail: "the rulesets changed since the proof",
-    });
+    // Replaced, or edited in place where the branch rules do not show it.
+    const live = ENFORCED.definitions["Protect develop"] ?? { enforcement: "active" };
+    for (const observed of [
+      { rulesets: [{ id: 40, name: "Protect develop", enforcement: "active" }] },
+      {
+        definitions: {
+          "Protect develop": { ...live, rules: [{ type: "deletion" }, { type: "creation" }] },
+        },
+      },
+    ]) {
+      expect(next(assess(observed))).toMatchObject({
+        id: "proof",
+        detail: "the rulesets changed since the proof",
+      });
+    }
     expect(next(assess({}, { problems: [], proof: { ...PROVED, passed: false } }))?.id).toBe(
       "proof",
     );

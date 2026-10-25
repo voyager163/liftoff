@@ -160,7 +160,9 @@ export async function observe(
       [];
   }
   const runs = await api.find<{ workflow_runs: { conclusion: string | null; html_url: string }[] }>(
-    `${route}/actions/workflows/${path.posix.basename(desired.driftWorkflow)}/runs?per_page=1`,
+    // develop's own runs: apply-next starts it there, and a run of a changed
+    // copy on another branch says nothing about develop.
+    `${route}/actions/workflows/${path.posix.basename(desired.driftWorkflow)}/runs?branch=develop&per_page=1`,
   );
   const latest = runs?.workflow_runs[0];
 

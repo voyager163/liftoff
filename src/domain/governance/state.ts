@@ -32,7 +32,12 @@ const stateSchema = z.strictObject({
     }),
   ),
   proof: z.optional(
-    z.strictObject({ passed: z.boolean(), rulesetIds: z.array(z.number()), at: z.string() }),
+    z.strictObject({
+      passed: z.boolean(),
+      rulesetIds: z.array(z.number()),
+      fingerprint: z.string(),
+      at: z.string(),
+    }),
   ),
   /**
    * A forbidden change verify --prove is trying, written before it is tried

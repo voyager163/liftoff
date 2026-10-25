@@ -149,12 +149,14 @@ bypass it; a ruleset that selects branches by pattern cannot match, and
 without committed rulesets nothing matches. With `--prove`, once the
 rulesets match, the record is this repository's and the person agrees, it
 tries a direct push, a forced push and deleting each protected branch. Each
-must be refused. Each change is recorded before it is tried; anything GitHub
+must be refused by a rule; any other refusal, such as a rate limit, leaves
+the proof unfinished. Each change is recorded before it is tried; anything GitHub
 allows, or answers unclearly but makes, is put back while the branch is
 still where the change left it, and a branch that moved since is left
 alone. A change that cannot be put back stops the proof and stays recorded
 for `resume`. The outcome, and the rulesets it proved, are recorded, and a
-proof of other rulesets does not count.
+proof counts only while those rulesets are unchanged on GitHub, including
+an edit in place. The drift checkpoint counts only `develop`'s own runs.
 
 Verification: test
 

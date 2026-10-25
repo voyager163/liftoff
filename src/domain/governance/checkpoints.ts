@@ -1,3 +1,4 @@
+import { canonicalJson, sha256Hex } from "../plan/plan.ts";
 import {
   compareDefinition,
   compareRuleset,
@@ -96,9 +97,36 @@ export interface Observed {
 /** What was recorded locally about the proof, the one checkpoint GitHub cannot show. */
 export interface ProofRecord {
   readonly passed: boolean;
-  /** The ruleset ids it proved, so new or replaced rulesets need a new proof. */
+  /** The ids of the rulesets it proved. */
   readonly rulesetIds: readonly number[];
+  /** The rulesets as proved, from rulesetFingerprint. */
+  readonly fingerprint: string;
   readonly at: string;
+}
+
+/**
+ * The committed rulesets as GitHub has them: each one's id, and what it
+ * enforces, on which branches and with whom allowed to bypass it. A proof
+ * counts only while this is unchanged, so a ruleset replaced or edited in
+ * place, such as one extended to another branch, needs a new proof.
+ */
+export function rulesetFingerprint(desired: Desired, observed: Observed): string {
+  return sha256Hex(
+    canonicalJson(
+      desired.rulesets.map(({ name }) => {
+        const live = observed.definitions[name];
+        return {
+          name,
+          id: observed.rulesets.find((ruleset) => ruleset.name === name)?.id ?? null,
+          target: live?.target,
+          enforcement: live?.enforcement,
+          conditions: live?.conditions,
+          bypass_actors: live?.bypass_actors,
+          rules: live?.rules,
+        };
+      }),
+    ),
+  );
 }
 
 interface Evaluation {
@@ -283,12 +311,8 @@ function drift(desired: Desired, observed: Observed): Evaluation {
 }
 
 function proof(desired: Desired, observed: Observed, record?: ProofRecord): Evaluation {
-  const ids = desired.rulesets
-    .map(({ name }) => observed.rulesets.find((ruleset) => ruleset.name === name)?.id)
-    .filter((id): id is number => id !== undefined)
-    .sort((a, b) => a - b);
   const proved =
-    record?.passed === true && [...record.rulesetIds].sort((a, b) => a - b).join() === ids.join();
+    record?.passed === true && record.fingerprint === rulesetFingerprint(desired, observed);
   return proved
     ? { done: true, detail: `proved ${record?.at}` }
     : {

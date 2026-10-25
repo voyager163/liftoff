@@ -1,3 +1,4 @@
+import { rulesetFingerprint } from "../../domain/governance/checkpoints.ts";
 import { targetedBranches } from "../../domain/governance/ruleset-drift.ts";
 import type { GovernanceState } from "../../domain/governance/state.ts";
 import type { GitHubApiPort, ProjectFsPort } from "../ports.ts";
@@ -79,7 +80,8 @@ export async function verifyGovernance(
   const rulesetIds = assessment.desired.rulesets
     .map(({ name }) => assessment.observed.rulesets.find((ruleset) => ruleset.name === name)?.id)
     .filter((rulesetId): rulesetId is number => rulesetId !== undefined);
-  await save({ ...state, proof: { passed, rulesetIds, at: options.now() } });
+  const fingerprint = rulesetFingerprint(assessment.desired, assessment.observed);
+  await save({ ...state, proof: { passed, rulesetIds, fingerprint, at: options.now() } });
   return {
     kind: "proved",
     passed,

@@ -25,6 +25,11 @@ export interface ProbeJournal {
 
 /** HTTP statuses GitHub answers a change a rule forbids with. */
 const REFUSALS = new Set([403, 409, 422]);
+/**
+ * What GitHub says when a rule refused a change. The same statuses also
+ * answer rate limits and invalid requests, which prove nothing.
+ */
+const RULE_REFUSAL = /rule violation|protected branch|protected ref/i;
 
 /** The commit a branch points at, or undefined when it does not exist. */
 export const branchHead = async (api: GitHubApiPort, repository: string, branch: string) =>
@@ -114,7 +119,12 @@ export async function proveBranch(
       proof === "deletion"
         ? await api.attempt("DELETE", ref)
         : await api.attempt("PATCH", ref, { sha, force: proof === "force-push" });
-    if (!outcome.ok && outcome.status !== undefined && REFUSALS.has(outcome.status)) {
+    if (
+      !outcome.ok &&
+      outcome.status !== undefined &&
+      REFUSALS.has(outcome.status) &&
+      RULE_REFUSAL.test(outcome.message)
+    ) {
       await journal.finish();
       results.push({ branch, proof, refused: true, detail: `refused (HTTP ${outcome.status})` });
       continue;
