@@ -50,6 +50,14 @@ const CASES: Record<string, Record<string, unknown>> = {
   "claude-no-governance": { agents: ["claude"], review: { ai: true }, governance: "none" },
   "node-copilot": { stack: "node-fastify", agents: ["copilot"], review: { ai: true } },
   "go-codex": { stack: "go-huma", agents: ["codex"], review: { ai: true } },
+  "go-vue-azure": {
+    stack: "go-huma",
+    frontend: "vue",
+    infrastructure: "azure",
+    environments: ["dev", "staging", "prod"],
+    agents: ["claude"],
+    review: { ai: true },
+  },
   "node-vue-copilot": {
     stack: "node-fastify",
     frontend: "vue",
@@ -112,6 +120,8 @@ describe("PROJ-004 deterministic, collision-free generation", () => {
         profile: selection.profile,
         stack: selection.stack,
         frontend: selection.frontend,
+        infrastructure: selection.infrastructure,
+        environments: selection.environments,
         components: selection.components,
         templates: { read: () => "", list: () => [] },
         skills: [],
@@ -741,10 +751,12 @@ describe("PROJ-014 shared files are assembled from each component's parts", () =
       profile: selection.profile,
       stack: selection.stack,
       frontend: undefined,
+      infrastructure: undefined,
+      environments: [],
       components: [stack, frontend],
       templates: {
         read: (p) => parts[p] ?? readFileSync(path.join(repoRoot, "assets", p), "utf8"),
-        list: () => [],
+        list: (directory) => Object.keys(parts).filter((p) => p.startsWith(`${directory}/`)),
       },
       skills: [],
       agents: [],
@@ -803,5 +815,137 @@ describe("PROJ-014 shared files are assembled from each component's parts", () =
     [{ "a/compose.yaml": "- api\n" }, "a/compose.yaml must be a YAML mapping"],
   ])("refuses parts that do not fit together %#", (change, message) => {
     expect(assemble({ ...VALID, ...change })).toThrow(message);
+  });
+});
+
+describe("PROJ-015 Azure infrastructure as OpenTofu code", () => {
+  const azure = {
+    stack: "python-fastapi",
+    frontend: "vue",
+    infrastructure: "azure",
+    environments: ["prod", "dev"],
+    agents: ["claude"],
+    review: { ai: true },
+  };
+  const base = "infrastructure/opentofu/azure";
+
+  it("generates bootstrap, the modules and a root for each selected environment", async () => {
+    const paths = [...(await byPath(azure)).keys()].filter((p) => p.startsWith(base));
+    const roots = new Set(paths.map((p) => p.split("/").slice(3, 5).join("/")));
+    expect([...roots].sort()).toEqual([
+      ".gitignore",
+      "bootstrap/.terraform.lock.hcl",
+      "bootstrap/main.tf",
+      "bootstrap/outputs.tf",
+      "bootstrap/terraform.tfvars.example",
+      "bootstrap/variables.tf",
+      "bootstrap/versions.tf",
+      "environments/dev",
+      "environments/prod",
+      "modules/app",
+      "modules/naming",
+    ]);
+    for (const environment of ["dev", "prod"]) {
+      for (const file of [
+        ".terraform.lock.hcl",
+        "backend.hcl.example",
+        "main.tf",
+        "outputs.tf",
+        "terraform.tfvars.example",
+        "variables.tf",
+        "versions.tf",
+      ]) {
+        expect(paths, `${environment}/${file}`).toContain(
+          `${base}/environments/${environment}/${file}`,
+        );
+      }
+    }
+    const project = await byPath(azure);
+    expect(project.get(`${base}/bootstrap/variables.tf`)?.content).toContain(
+      'environments = ["dev", "prod"]',
+    );
+  });
+
+  it("gives each environment its settings and the stack's migrations and database URL", async () => {
+    const project = await byPath(azure);
+    const root = (environment: string) =>
+      project.get(`${base}/environments/${environment}/main.tf`)?.content ?? "";
+    expect(root("dev")).toContain('sku_name              = "B_Standard_B1ms"');
+    expect(root("dev")).toContain("high_availability     = false");
+    expect(root("dev")).toContain("api_min_replicas    = 0");
+    expect(root("prod")).toContain('sku_name              = "GP_Standard_D2ds_v5"');
+    expect(root("prod")).toContain("high_availability     = true");
+    expect(root("prod")).toContain("backup_retention_days = 35");
+    expect(root("prod")).toContain('migrate_command     = ["alembic", "upgrade", "head"]');
+    expect(root("prod")).toContain('database_url_scheme = "postgresql+psycopg"');
+    expect(project.get(`${base}/environments/prod/backend.hcl.example`)?.content).toContain(
+      'key                  = "prod.tfstate"',
+    );
+    const node = await byPath({ ...azure, stack: "node-fastify", frontend: "none" });
+    const nodeRoot = node.get(`${base}/environments/dev/main.tf`)?.content ?? "";
+    expect(nodeRoot).toContain('migrate_command     = ["node", "src/migrate.ts"]');
+    expect(nodeRoot).not.toContain("web_image");
+    expect(node.get(`${base}/environments/dev/variables.tf`)?.content).not.toContain("web_image");
+    expect(root("dev")).toContain("web_image = var.web_image");
+  });
+
+  it("locks exactly the providers each root pins, for every platform", async () => {
+    const project = await byPath(azure);
+    const pins = (versions: string) =>
+      Object.fromEntries(
+        [...versions.matchAll(/source\s+= "hashicorp\/(\w+)"\s+version\s+= "([\d.]+)"/g)].map(
+          ([, name, version]) => [name, version],
+        ),
+      );
+    const locked = (lock: string) =>
+      Object.fromEntries(
+        [
+          ...lock.matchAll(
+            /provider "registry\.opentofu\.org\/hashicorp\/(\w+)" \{\s+version\s+= "([\d.]+)"/g,
+          ),
+        ].map(([, name, version]) => [name, version]),
+      );
+    for (const root of ["bootstrap", "environments/dev"]) {
+      const text = (file: string) => project.get(`${base}/${root}/${file}`)?.content ?? "";
+      expect(Object.keys(pins(text("versions.tf"))).length, root).toBeGreaterThan(0);
+      expect(locked(text(".terraform.lock.hcl")), root).toEqual(pins(text("versions.tf")));
+      // One h1 hash per platform: macOS arm64, Windows x64 and Linux x64.
+      const hashes = /hashes = \[([^\]]*)\]/.exec(text(".terraform.lock.hcl"))?.[1] ?? "";
+      expect(hashes.match(/"h1:/g)?.length ?? 0, root).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("adds validation and a security scan to CI, provider updates and a review rule", async () => {
+    const project = await byPath(azure);
+    const ci = parse(project.get(".github/workflows/01-pr-ci.yml")?.content ?? "");
+    expect(ci.jobs["ci-gate"].needs).toEqual(
+      expect.arrayContaining(["infrastructure-validate", "infrastructure-scan"]),
+    );
+    const validate = ci.jobs["infrastructure-validate"].steps
+      .map((step: { run?: string }) => step.run ?? "")
+      .join("\n");
+    expect(validate).toContain("tofu fmt -check -recursive");
+    expect(validate).toContain("-lockfile=readonly");
+    const updates = parse(project.get(".github/dependabot.yml")?.content ?? "").updates;
+    expect(updates).toContainEqual(
+      expect.objectContaining({
+        "package-ecosystem": "opentofu",
+        directories: [`/${base}/bootstrap`, `/${base}/environments/*`],
+      }),
+    );
+    const policy = parsePolicy(project.get(".github/review-policy.yml")?.content ?? "");
+    expect(policy.rules.find((rule) => rule.paths.includes("infrastructure/**"))).toMatchObject({
+      tier: "high",
+      always_human: true,
+    });
+    expect(project.get("README.md")?.content).toContain("## Infrastructure");
+    expect(project.get("AGENTS.md")?.content).toContain("tofu fmt -check -recursive");
+  });
+
+  it("adds nothing for infrastructure by default", async () => {
+    const project = await byPath({ stack: "node-fastify" });
+    expect([...project.keys()].filter((p) => p.startsWith("infrastructure/"))).toEqual([]);
+    expect(project.get(".github/workflows/01-pr-ci.yml")?.content).not.toContain("tofu");
+    expect(project.get(".github/dependabot.yml")?.content).not.toContain("opentofu");
   });
 });

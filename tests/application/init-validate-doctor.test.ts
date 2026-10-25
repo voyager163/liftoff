@@ -321,6 +321,29 @@ describe("DOCTOR-001 doctor checks the tools the project needs", () => {
     expect(names).toEqual(["Node.js", "Git", "Docker"]);
   });
 
+  it("adds the infrastructure's tools", async () => {
+    const target = await create(path.join(work, "azure"), {
+      ...config,
+      infrastructure: "azure",
+      environments: ["dev"],
+    });
+    const result = await runDoctor(
+      {
+        fs,
+        tools: tools({ uv: "uv 0.13.1", git: "git version 2.54.0", tofu: "OpenTofu v1.13.2" }),
+      },
+      target,
+    );
+    expect(result.tools.map((t) => [t.name, t.status, t.required])).toEqual([
+      ["uv", "ok", true],
+      ["Git", "ok", true],
+      ["Docker", "missing", false],
+      ["OpenTofu", "ok", true],
+      ["Checkov", "missing", false],
+    ]);
+    expect(result.ready).toBe(true);
+  });
+
   it("checks only Git outside a project, and is ready when it is present", async () => {
     const result = await runDoctor({ fs, tools: tools({ git: "git version 2.54.0" }) }, work);
     expect(result.project).toBeUndefined();

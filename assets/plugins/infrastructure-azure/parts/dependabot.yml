@@ -1,0 +1,11 @@
+- package-ecosystem: opentofu
+  directories:
+    - /infrastructure/opentofu/azure/bootstrap
+    - /infrastructure/opentofu/azure/environments/*
+  schedule:
+    interval: weekly
+  cooldown:
+    default-days: 7
+  groups:
+    opentofu:
+      patterns: ["*"]

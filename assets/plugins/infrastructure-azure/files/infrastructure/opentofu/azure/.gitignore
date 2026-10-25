@@ -1,0 +1,9 @@
+# Provider downloads, state, plans and local settings stay out of Git. The
+# lock files (.terraform.lock.hcl) are committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+backend.hcl
+terraform.tfvars

@@ -73,6 +73,19 @@ describe("PROJ-003 selections are checked first", () => {
     }
   });
 
+  it("orders environments dev, staging, prod and puts the infrastructure last", () => {
+    const selection = resolveSelection(
+      config({ frontend: "vue", infrastructure: "azure", environments: ["prod", "dev"] }),
+    );
+    expect(selection.environments).toEqual(["dev", "prod"]);
+    expect(selection.components.map((c) => c.id)).toEqual([
+      "stack/python-fastapi",
+      "frontend/vue",
+      "infrastructure/azure-opentofu",
+    ]);
+    expect(selection.plugins.map((p) => p.id)).toContain("infrastructure/azure-opentofu");
+  });
+
   it("places a selected frontend after the stack", () => {
     const selection = resolveSelection(config({ stack: "go-huma", frontend: "vue" }));
     expect(selection.frontend?.id).toBe("frontend/vue");
@@ -88,6 +101,18 @@ describe("PROJ-003 selections are checked first", () => {
     [{ workload: "genai" }, /unknown workload "genai"/, false],
     [{ stack: "rust-axum" }, /unknown stack "rust-axum"/, false],
     [{ frontend: "react" }, /unknown frontend "react"; available: none, vue/, false],
+    [
+      { infrastructure: "aws", environments: ["dev"] },
+      /unknown infrastructure "aws"; available: none, azure/,
+      false,
+    ],
+    [
+      { infrastructure: "azure", environments: ["qa"] },
+      /unknown environment "qa"; available: dev, staging, prod/,
+      false,
+    ],
+    [{ infrastructure: "azure" }, /azure infrastructure needs at least one environment/, false],
+    [{ environments: ["dev"] }, /environments need infrastructure/, false],
     [{ workflow: "waterfall" }, /unknown workflow "waterfall"/, false],
     [{ workflow: "openspec" }, /OpenSpec workflow is not available in this release yet/, true],
     [{ workflow: "spec-kit" }, /Spec Kit workflow is not available/, true],

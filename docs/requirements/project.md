@@ -30,8 +30,8 @@ Verification: test
 
 ## PROJ-003 Selections are checked before anything is generated
 
-The workload, stack, frontend, workflow, agents, governance profile and
-review engine are checked against the plugins this release ships. An unknown value is a
+The workload, stack, frontend, infrastructure and its environments, workflow,
+agents, governance profile and review engine are checked against the plugins this release ships. An unknown value is a
 usage error (exit 2). A value the product supports but this release cannot
 generate yet, such as the OpenSpec workflow, is reported as unsupported
 (exit 6), never silently replaced. The review engine must be a
@@ -209,6 +209,45 @@ assembled from the parts of the API stack and the frontend:
   expected YAML shape.
 
 Verification: test
+
+## PROJ-015 Azure infrastructure is generated as OpenTofu code
+
+`--infrastructure azure` adds `infrastructure/opentofu/azure/`, for the
+environments named with `--environments` (dev, staging and prod by
+default), always in that order. The default, `--infrastructure none`, adds
+none of it.
+
+- `bootstrap/` creates what the environments share: zone-redundant,
+  versioned state storage reachable only with Microsoft Entra ID, the
+  container registry, and each environment's resource group and the
+  identity its containers pull images with.
+- Each environment has its own root and state key over one shared module: a
+  private network, PostgreSQL reachable only from it, and Container Apps for
+  the API, a migrations job running the stack's migrate command and, with a
+  frontend, the frontend as the only public entry point.
+- Environments differ only in their settings: PostgreSQL is Burstable with
+  no standby in dev and staging, and General Purpose with a zone-redundant
+  standby in prod.
+- Resource names come from the project, the environment and a hash of the
+  subscription, so globally unique names do not collide.
+- Each root commits a provider lock pinning exactly its providers, with
+  hashes for macOS arm64, Windows x64 and Linux x64.
+- CI checks formatting, validates every root against its lock and runs
+  Checkov; Dependabot updates the providers; infrastructure changes are high
+  tier and always need a person. Liftoff generates and checks the code but
+  never applies it.
+
+Verification: test
+
+## PROJ-016 Generated infrastructure passes OpenTofu and Checkov
+
+Liftoff's CI generates projects with Azure infrastructure, for every
+environment with a frontend and for production alone without one, and checks
+that `tofu fmt` finds nothing to change, that every root initializes from
+its committed lock and validates, and that Checkov reports no findings
+except those skipped next to the resource with a reason.
+
+Verification: live
 
 ## INIT-001 Plans are read-only and tamper-evident
 

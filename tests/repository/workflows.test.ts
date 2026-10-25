@@ -238,6 +238,15 @@ describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {
     expect(ci?.jobs["ci-gate"]?.needs).toContain(job);
   });
 
+  it("PROJ-016 checks generated infrastructure, and ci-gate needs it", () => {
+    const job = ci?.jobs.infrastructure;
+    const runs = (job?.steps ?? []).map((step) => step.run ?? "").join("\n");
+    expect(runs).toContain("tofu fmt -check -recursive");
+    expect(runs).toContain("-lockfile=readonly");
+    expect(runs).toContain("checkov");
+    expect(ci?.jobs["ci-gate"]?.needs).toContain("infrastructure");
+  });
+
   it("checks the frontend with every stack, in a browser on Linux", () => {
     const runs = (job: string) =>
       (ci?.jobs[job]?.steps ?? []).map((step) => step.run ?? "").join("\n");

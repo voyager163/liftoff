@@ -44,6 +44,8 @@ describe("PROJ-001 project configuration", () => {
     const { owners: _owners, ...withoutOwners } = config;
     expect(validateConfig(withoutOwners).owners).toEqual([]);
     expect(validateConfig(config).frontend).toBe("none");
+    expect(validateConfig(config).infrastructure).toBe("none");
+    expect(validateConfig(config).environments).toEqual([]);
     expect(serializeConfig(validateConfig({ ...config, frontend: "vue" }))).toContain(
       "stack: python-fastapi\nfrontend: vue\n",
     );
@@ -56,6 +58,7 @@ describe("PROJ-001 project configuration", () => {
     [{ ...config, name: "Not Valid" }, "name"],
     [{ ...config, schema: "liftoff.config/v2" }, "schema"],
     [{ ...config, agents: ["claude", "claude"] }, "each agent may be listed once"],
+    [{ ...config, environments: ["dev", "dev"] }, "each environment may be listed once"],
     [{ ...config, owners: ["a", "a"] }, "each owner may be listed once"],
     [
       { ...config, owners: ["alice", "Alice"] },

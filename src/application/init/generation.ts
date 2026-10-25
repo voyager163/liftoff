@@ -46,6 +46,8 @@ export async function generate(
     profile: selection.profile,
     stack: selection.stack,
     frontend: selection.frontend,
+    infrastructure: selection.infrastructure,
+    environments: selection.environments,
     components: selection.components,
     templates: await loadTemplates(assets, selection),
     skills: sources.skills,

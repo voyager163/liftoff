@@ -65,6 +65,24 @@ describe("INIT-001 plan changes nothing but the plan file", () => {
     expect(go.out).toContain("cd backend && go test ./...");
   });
 
+  it("creates infrastructure for every environment by default", async () => {
+    const { code, out } = await exec([
+      "init",
+      ...PROJECT,
+      "--frontend",
+      "vue",
+      "--infrastructure",
+      "azure",
+      "--yes",
+    ]);
+    expect(code).toBe(0);
+    expect(out).toContain(
+      "  cd ../frontend && npm ci && npm test\n  cd ../infrastructure/opentofu/azure && tofu fmt -check -recursive\n",
+    );
+    const roots = path.join(work, "demo/infrastructure/opentofu/azure/environments");
+    expect(readdirSync(roots).sort()).toEqual(["dev", "prod", "staging"]);
+  });
+
   it("suggests the frontend's first commands from the backend's directory", async () => {
     const { code, out } = await exec(["init", ...PROJECT, "--frontend", "vue", "--yes"]);
     expect(code).toBe(0);
@@ -132,6 +150,11 @@ describe("PROJ-003 selection errors map to exit codes", () => {
       ["plan", "--name", "demo", "--workflow", "manual", "--stack", "cobol"],
       2,
       'unknown stack "cobol"',
+    ],
+    [
+      ["plan", "--name", "demo", "--workflow", "manual", "--environments", "dev"],
+      2,
+      "environments need infrastructure",
     ],
     [
       ["plan", "--name", "demo", "--workflow", "manual", "--frontend", "react"],

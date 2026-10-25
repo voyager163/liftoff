@@ -1,10 +1,12 @@
 import { PROFILES } from "../../domain/risk-policy/profiles.ts";
 import { AGENT_HOSTS } from "../../plugins/builtin/agents/hosts.ts";
+import { ENVIRONMENTS } from "../../plugins/contracts/project-plugin.ts";
 import {
   DEFAULT_GOVERNANCE,
   DEFAULT_WORKFLOW,
   FRONTENDS,
   GOVERNANCE,
+  INFRASTRUCTURE,
   PLANNED_WORKFLOWS,
   STACKS,
   WORKFLOWS,
@@ -53,6 +55,11 @@ export const capabilitiesCommand: CommandSpec = {
         id: frontend.id.replace(/^frontend\//, ""),
         summary: frontend.summary,
       })),
+      infrastructure: Object.values(INFRASTRUCTURE).map((infrastructure) => ({
+        id: infrastructure.id.replace(/^infrastructure\//, ""),
+        summary: infrastructure.summary,
+      })),
+      environments: ENVIRONMENTS,
       workflows: [
         ...Object.keys(WORKFLOWS).map((id) => ({ id, available: true })),
         ...Object.keys(PLANNED_WORKFLOWS).map((id) => ({ id, available: false })),

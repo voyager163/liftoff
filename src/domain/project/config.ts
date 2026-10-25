@@ -23,6 +23,10 @@ const configSchema = z.strictObject({
   stack: z.string().check(z.minLength(1)),
   /** A web frontend, or "none". */
   frontend: z._default(z.string().check(z.minLength(1)), "none"),
+  /** Infrastructure as code, or "none". */
+  infrastructure: z._default(z.string().check(z.minLength(1)), "none"),
+  /** Deployment environments the infrastructure is generated for. */
+  environments: z._default(z.array(z.string().check(z.minLength(1))), []),
   workflow: z.string().check(z.minLength(1)),
   agents: z.array(z.string().check(z.minLength(1))),
   governance: z.string().check(z.minLength(1)),
@@ -52,6 +56,11 @@ export function validateConfig(raw: unknown, source = CONFIG_FILE): ProjectConfi
     throw new ConfigError(`${source} is invalid: ${issues.join("; ")}`);
   }
   const config = parsed.data;
+  if (new Set(config.environments).size !== config.environments.length) {
+    throw new ConfigError(
+      `${source} is invalid: environments: each environment may be listed once`,
+    );
+  }
   if (new Set(config.agents).size !== config.agents.length) {
     throw new ConfigError(`${source} is invalid: agents: each agent may be listed once`);
   }
@@ -82,6 +91,8 @@ export function serializeConfig(config: ProjectConfig): string {
     workload: config.workload,
     stack: config.stack,
     frontend: config.frontend,
+    infrastructure: config.infrastructure,
+    environments: config.environments,
     workflow: config.workflow,
     agents: config.agents,
     governance: config.governance,

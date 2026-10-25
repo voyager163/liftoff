@@ -40,10 +40,15 @@ interface Part {
   readonly data: unknown;
 }
 
+/** The components that have a part of `file`, with its asset path. */
+const withPart = (context: GenerationContext, file: string) =>
+  context.components
+    .map((component) => ({ component, path: `${component.parts}/${file}` }))
+    .filter(({ component, path }) => context.templates.list(component.parts).includes(path));
+
 /** Each component's part of one shared file, rendered and checked to parse as `shape`. */
 function parts(context: GenerationContext, file: string, shape: "mapping" | "list"): Part[] {
-  return context.components.map((component) => {
-    const path = `${component.parts}/${file}`;
+  return withPart(context, file).map(({ component, path }) => {
     const text = renderTemplate(context.templates.read(path), { name: context.config.name }, path);
     const data: unknown = parse(text);
     const isList = Array.isArray(data);
@@ -110,12 +115,13 @@ function ci(context: GenerationContext): string {
 
 function codeql(context: GenerationContext): string {
   const languages = new Map<string, string>();
-  for (const { codeql } of context.components) {
-    if (!languages.has(codeql.language)) languages.set(codeql.language, codeql.buildMode);
+  const analyzed = context.components.flatMap(({ codeql }) => (codeql ? [codeql] : []));
+  for (const { language, buildMode } of analyzed) {
+    if (!languages.has(language)) languages.set(language, buildMode);
   }
   languages.set("actions", "none");
   const subjects = [
-    ...new Set(context.components.map(({ codeql }) => codeql.subject)),
+    ...new Set(analyzed.map(({ subject }) => subject)),
     "the GitHub Actions workflows",
   ];
   return renderTemplate(
@@ -142,7 +148,7 @@ function dependabot(context: GenerationContext): string {
     ...part,
     data: Object.fromEntries(
       (part.data as Record<string, unknown>[]).map((update) => [
-        `${update["package-ecosystem"]} in ${update.directory}`,
+        `${update["package-ecosystem"]} in ${update.directory ?? update.directories}`,
         update,
       ]),
     ),
@@ -156,10 +162,9 @@ function dependabot(context: GenerationContext): string {
 }
 
 function readme(context: GenerationContext): string {
-  const sections = context.components.map((component) => {
-    const path = `${component.parts}/README.md`;
-    return renderTemplate(context.templates.read(path), { name: context.config.name }, path);
-  });
+  const sections = withPart(context, "README.md").map(({ path }) =>
+    renderTemplate(context.templates.read(path), { name: context.config.name }, path),
+  );
   return [
     ...sections.map((section) => `${section.trimEnd()}\n`),
     `## How changes are made\n\n${changeProcess(context.profile)}\n`,

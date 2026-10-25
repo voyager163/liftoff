@@ -37,6 +37,7 @@
     "render:docs": "node scripts/render-cli-reference.ts",
     "lock:python": "node scripts/templates/lock-python.ts",
     "lock:node": "node scripts/templates/lock-node.ts",
+    "lock:opentofu": "node scripts/templates/lock-opentofu.ts",
     "bundle": "node scripts/package/build-bundle.ts"
   },
   "dependencies": {

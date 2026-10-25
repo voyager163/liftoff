@@ -6,17 +6,21 @@ import { commonPlugin } from "./builtin/common.ts";
 import { deliveryPlugin } from "./builtin/delivery.ts";
 import { vueFrontend } from "./builtin/frontends/vue.ts";
 import { gitflowGovernance, noGovernance } from "./builtin/governance/gitflow.ts";
+import { azureInfrastructure } from "./builtin/infrastructure/azure.ts";
 import { reviewPlugin } from "./builtin/review/review.ts";
 import { goHumaStack } from "./builtin/stacks/go-huma.ts";
 import { nodeFastifyStack } from "./builtin/stacks/node-fastify.ts";
 import { pythonFastapiStack } from "./builtin/stacks/python-fastapi.ts";
 import { manualWorkflow } from "./builtin/workflows.ts";
 import type { AgentHostId } from "./contracts/agent-host.ts";
-import type {
-  ComponentPlugin,
-  FrontendPlugin,
-  ProjectPlugin,
-  StackPlugin,
+import {
+  type ComponentPlugin,
+  ENVIRONMENTS,
+  type EnvironmentId,
+  type FrontendPlugin,
+  type InfrastructurePlugin,
+  type ProjectPlugin,
+  type StackPlugin,
 } from "./contracts/project-plugin.ts";
 
 /**
@@ -32,6 +36,11 @@ export const STACKS: Readonly<Record<string, StackPlugin>> = {
 /** Web frontends; "none" selects no frontend. */
 export const FRONTENDS: Readonly<Record<string, FrontendPlugin>> = { vue: vueFrontend };
 export const NO_FRONTEND = "none";
+/** Infrastructure as code; "none" selects none. */
+export const INFRASTRUCTURE: Readonly<Record<string, InfrastructurePlugin>> = {
+  azure: azureInfrastructure,
+};
+export const NO_INFRASTRUCTURE = "none";
 export const WORKFLOWS: Readonly<Record<string, ProjectPlugin>> = { manual: manualWorkflow };
 /** Workflows the product supports but this release cannot generate yet. */
 export const PLANNED_WORKFLOWS: Readonly<Record<string, string>> = {
@@ -61,7 +70,10 @@ export class SelectionError extends Error {
 export interface Selection {
   readonly stack: StackPlugin;
   readonly frontend: FrontendPlugin | undefined;
-  /** The stack, then the frontend if one is selected. */
+  readonly infrastructure: InfrastructurePlugin | undefined;
+  /** In dev, staging, prod order. */
+  readonly environments: readonly EnvironmentId[];
+  /** The stack, then the frontend and the infrastructure if selected. */
   readonly components: readonly ComponentPlugin[];
   readonly hosts: readonly AgentHostId[];
   readonly profile: ProfileId;
@@ -107,6 +119,34 @@ export function resolveSelection(config: ProjectConfig): Selection {
     }
   }
 
+  let infrastructure: InfrastructurePlugin | undefined;
+  if (config.infrastructure !== NO_INFRASTRUCTURE) {
+    infrastructure = entry(INFRASTRUCTURE, config.infrastructure);
+    if (!infrastructure) {
+      throw new SelectionError(
+        `unknown infrastructure "${config.infrastructure}"; available: ${list([NO_INFRASTRUCTURE, ...Object.keys(INFRASTRUCTURE)])}`,
+      );
+    }
+  }
+  for (const environment of config.environments) {
+    if (!(ENVIRONMENTS as readonly string[]).includes(environment)) {
+      throw new SelectionError(
+        `unknown environment "${environment}"; available: ${list(ENVIRONMENTS)}`,
+      );
+    }
+  }
+  if (infrastructure && config.environments.length === 0) {
+    throw new SelectionError(
+      `${config.infrastructure} infrastructure needs at least one environment`,
+    );
+  }
+  if (!infrastructure && config.environments.length > 0) {
+    throw new SelectionError("environments need infrastructure; add --infrastructure azure");
+  }
+  const environments = ENVIRONMENTS.filter((environment) =>
+    config.environments.includes(environment),
+  );
+
   const workflow = entry(WORKFLOWS, config.workflow);
   if (!workflow) {
     const planned = entry(PLANNED_WORKFLOWS, config.workflow);
@@ -150,10 +190,14 @@ export function resolveSelection(config: ProjectConfig): Selection {
     );
   }
 
-  const components = frontend ? [stack, frontend] : [stack];
+  const components: ComponentPlugin[] = [stack];
+  if (frontend) components.push(frontend);
+  if (infrastructure) components.push(infrastructure);
   return {
     stack,
     frontend,
+    infrastructure,
+    environments,
     components,
     hosts,
     profile,
@@ -175,6 +219,7 @@ export function allPlugins(): ProjectPlugin[] {
     commonPlugin,
     ...Object.values(STACKS),
     ...Object.values(FRONTENDS),
+    ...Object.values(INFRASTRUCTURE),
     deliveryPlugin,
     ...Object.values(WORKFLOWS),
     agentsPlugin,
