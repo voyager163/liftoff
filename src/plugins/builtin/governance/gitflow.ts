@@ -1,0 +1,234 @@
+import type { ProfileId } from "../../../domain/risk-policy/policy.ts";
+import { PROFILES } from "../../../domain/risk-policy/profiles.ts";
+import type { Artifact, GenerationContext, ProjectPlugin } from "../../contracts/project-plugin.ts";
+
+const DRIFT_WORKFLOW = `# Managed by Liftoff. Change it through Liftoff rather than by hand.
+#
+# Reads back the branch rules GitHub actually enforces and compares them with
+# the committed rulesets in .github/rulesets/. A committed ruleset is not
+# proof of protection; this readback is. Fails on any difference.
+name: Governance drift
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Governance drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/rulesets
+            .github/liftoff
+          sparse-checkout-cone-mode: false
+      - name: Compare live branch rules with the committed rulesets
+        env:
+          GITHUB_TOKEN: \${{ github.token }}
+        run: node .github/liftoff/governance-drift.mjs
+`;
+
+function ruleset(
+  name: string,
+  branch: string,
+  methods: string[],
+  context: GenerationContext,
+  approvals: number,
+) {
+  return {
+    name,
+    target: "branch",
+    enforcement: "active",
+    conditions: { ref_name: { include: [`refs/heads/${branch}`], exclude: [] } },
+    bypass_actors: [],
+    rules: [
+      { type: "deletion" },
+      { type: "non_fast_forward" },
+      {
+        type: "pull_request",
+        parameters: {
+          allowed_merge_methods: methods,
+          dismiss_stale_reviews_on_push: true,
+          require_code_owner_review: approvals > 0 && context.config.owners.length > 0,
+          require_last_push_approval: approvals > 0,
+          required_approving_review_count: approvals,
+          required_review_thread_resolution: true,
+          required_reviewers: [],
+        },
+      },
+      {
+        type: "required_status_checks",
+        parameters: {
+          do_not_enforce_on_create: false,
+          strict_required_status_checks_policy: true,
+          required_status_checks: ["ci-gate", "review-policy"].map((check) => ({
+            context: check,
+            integration_id: 15368,
+          })),
+        },
+      },
+      {
+        type: "code_scanning",
+        parameters: {
+          code_scanning_tools: [
+            {
+              tool: "CodeQL",
+              security_alerts_threshold: "high_or_higher",
+              alerts_threshold: "errors",
+            },
+          ],
+        },
+      },
+      ...(context.hosts.includes("copilot")
+        ? [
+            {
+              type: "copilot_code_review",
+              parameters: { review_on_push: false, review_draft_pull_requests: false },
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
+function governanceMarkdown({ config, hosts }: GenerationContext, profile: ProfileId): string {
+  const p = PROFILES[profile];
+  const aiLines: string[] = [];
+  if (hosts.includes("copilot")) {
+    aiLines.push(
+      "Copilot code review comments on every pull request once the rulesets are applied.",
+    );
+  }
+  if (config.review.ai && hosts.length > 0) {
+    aiLines.push(
+      "Medium- and high-risk changes also get the verified AI review, which reports only findings independent verifiers confirm.",
+    );
+  }
+  const aiStep = aiLines.length === 0 ? "" : `4. ${aiLines.join(" ")}\n`;
+  const resolveStep = aiLines.length === 0 ? 4 : 5;
+  return `# Governance
+
+How changes reach \`develop\` and \`main\` in ${config.name}. Liftoff generated
+this as a starting point under the \`${profile}\` profile: ${p.summary}
+
+## Branches
+
+| Change | From | Into | Merge |
+| --- | --- | --- | --- |
+| Feature, fix, chore, docs, CI | \`feature/…\`, \`fix/…\`, \`chore/…\`, \`docs/…\`, \`ci/…\` | \`develop\` | Squash |
+| Release | \`release/X.Y.Z\` from a healthy \`develop\` commit | \`main\` | Merge commit |
+| Hotfix | \`hotfix/X.Y.Z\` from \`main\`, with an incident reference | \`main\` | Merge commit |
+| Back-merge after a release | a branch from \`develop\` with \`main\` merged in | \`develop\` | Merge commit |
+
+Never push directly to \`develop\` or \`main\`, force-push them or squash away
+history being synchronized.
+
+## Review
+
+1. Before opening a pull request, run the checks in [AGENTS.md](AGENTS.md)
+   and show their output.
+2. CI must pass: \`ci-gate\` covers lint, tests with coverage and dependency
+   review; CodeQL blocks merging on high or critical alerts.
+3. \`review-policy\` sets the tier from what the change touches
+   ([.github/review-policy.yml](.github/review-policy.yml)) and checks the
+   required approvals: low ${p.approvals.low}, medium ${p.approvals.medium},
+   high ${p.approvals.high}.
+${aiStep}${resolveStep}. Every review thread is resolved before merging: fixed, or answered with a
+   reason.
+
+## Branch rules
+
+The intended rules are in [.github/rulesets/](.github/rulesets/). They are
+not active until you apply them, and they should only be applied after every
+check they require (\`ci-gate\` and \`review-policy\`) has run successfully on a
+real pull request, so a new rule never waits on a check that does not exist.
+
+Apply one with the GitHub CLI, for example:
+
+\`\`\`bash
+gh api --method POST repos/OWNER/REPO/rulesets --input .github/rulesets/develop.json
+\`\`\`
+
+The Governance drift workflow then reads back what GitHub enforces and fails
+if it differs from the committed rulesets.
+`;
+}
+
+/** GitFlow governance handoff: generated policy and rules, applied later by a person. */
+export function gitflowGovernance(profile: ProfileId): ProjectPlugin {
+  return {
+    id: `governance/${profile}`,
+    kind: "governance",
+    version: "1",
+    summary: PROFILES[profile].summary,
+    templateRoots: [],
+    artifacts(context) {
+      const approvals = PROFILES[profile].approvals.low;
+      const bundle = context.ciBundles["governance-drift.mjs"];
+      if (bundle === undefined)
+        throw new Error("this release does not ship the governance-drift.mjs CI bundle");
+      const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+      const files: Artifact[] = [
+        {
+          path: "GOVERNANCE.md",
+          ownership: "seeded",
+          content: governanceMarkdown(context, profile),
+        },
+        {
+          path: ".github/rulesets/develop.json",
+          ownership: "seeded",
+          content: json(
+            ruleset("Protect develop", "develop", ["merge", "squash"], context, approvals),
+          ),
+        },
+        {
+          path: ".github/rulesets/main.json",
+          ownership: "seeded",
+          content: json(ruleset("Protect main", "main", ["merge"], context, approvals)),
+        },
+        { path: ".github/liftoff/governance-drift.mjs", ownership: "managed", content: bundle },
+        {
+          path: ".github/workflows/90-governance-drift.yml",
+          ownership: "managed",
+          content: DRIFT_WORKFLOW,
+        },
+      ];
+      if (context.config.owners.length > 0) {
+        const owners = context.config.owners.map((login) => `@${login}`).join(" ");
+        files.push({
+          path: ".github/CODEOWNERS",
+          ownership: "seeded",
+          content: [
+            "# Who reviews what. GitHub requests these owners on matching changes.",
+            `* ${owners}`,
+            "",
+            "# Changes that can weaken every other check always need an owner.",
+            `/.github/ ${owners}`,
+            `/REVIEW.md ${owners}`,
+            `/AGENTS.md ${owners}`,
+            "",
+          ].join("\n"),
+        });
+      }
+      return files;
+    },
+  };
+}
+
+/** No governance: no branch rules or governance documents. */
+export const noGovernance: ProjectPlugin = {
+  id: "governance/none",
+  kind: "governance",
+  version: "1",
+  summary: PROFILES.none.summary,
+  templateRoots: [],
+  artifacts: () => [],
+};

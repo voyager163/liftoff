@@ -1,15 +1,16 @@
+# Managed by Liftoff. Change it through Liftoff rather than by hand.
+#
 # Verified AI review for medium- and high-risk pull requests, following
 # https://claude.dev/blog/solving-code-review-at-anthropic/ : several finder
 # passes look for bugs independently, separate verifier runs vote on each
 # candidate, and only findings a majority confirms are posted, tagged
-# Important, Nit or Pre-existing. Low-risk changes rely on Copilot code
-# review alone. After three rounds the pipeline stops and asks for a rethink.
+# Important, Nit or Pre-existing. Low-risk changes rely on the managed
+# reviewer alone. After three rounds the pipeline stops and asks for a rethink.
 #
-# Agents run GitHub Copilot CLI with a user-owned token (COPILOT_GITHUB_TOKEN,
-# "Copilot Requests" permission) that is stripped from every shell they start.
-# They get a read-only GITHUB_TOKEN, no write tools and no network tools, and
-# review with the base branch's instructions. Only the publish job, which
-# runs no agent, can comment on the pull request.
+# Agents run copilot through .github/liftoff/review-agent.sh with
+# the COPILOT_GITHUB_TOKEN secret. They get a read-only GITHUB_TOKEN, no
+# write or network tools, and review with the base branch's instructions.
+# Only the publish job, which runs no agent, can comment on the pull request.
 name: AI review
 
 on:
@@ -25,7 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  COPILOT_CLI: "@github/copilot@1.0.98"
+  REVIEW_AGENT_CLI: "@github/copilot@1.0.98"
   LIFTOFF_REVIEW_DIR: ai-review
 
 jobs:
@@ -51,7 +52,8 @@ jobs:
         id: plan
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          COPILOT_CONFIGURED: ${{ secrets.COPILOT_GITHUB_TOKEN != '' }}
+          LIFTOFF_AGENT_CONFIGURED: ${{ secrets.COPILOT_GITHUB_TOKEN != '' }}
+          LIFTOFF_AGENT_SECRET: COPILOT_GITHUB_TOKEN
         run: node .github/liftoff/ai-review.mjs prepare
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.plan.outputs.run == 'true' || steps.plan.outputs.stop == 'true'
@@ -62,7 +64,7 @@ jobs:
           if-no-files-found: error
 
   find:
-    name: Find (pass ${{ matrix.pass }})
+    name: Find bugs
     needs: prepare
     if: needs.prepare.outputs.run == 'true'
     runs-on: ubuntu-latest
@@ -86,26 +88,14 @@ jobs:
         env:
           LIFTOFF_BASE_REF: ${{ github.base_ref }}
         run: node .github/liftoff/ai-review.mjs restore-instructions
-      - name: Install Copilot CLI
-        run: npm install --global "$COPILOT_CLI"
-      - name: Look for bugs
+      - name: Install the review agent
+        run: npm install --global "$REVIEW_AGENT_CLI"
+      - name: Look for bugs (pass ${{ matrix.pass }})
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          COPILOT_MODEL: ${{ vars.LIFTOFF_REVIEW_MODEL }}
+          LIFTOFF_REVIEW_MODEL: ${{ vars.LIFTOFF_REVIEW_MODEL }}
           PASS: ${{ matrix.pass }}
-        run: |
-          mkdir -p ai-review/finders
-          copilot -p "$(cat "ai-review/finder-$PASS.md")" -s \
-            --allow-all-tools \
-            --deny-tool write \
-            --deny-tool 'shell(git push)' --deny-tool 'shell(git commit)' \
-            --deny-tool 'shell(git checkout)' --deny-tool 'shell(git reset)' \
-            --deny-tool 'shell(gh:*)' --deny-tool 'shell(curl:*)' --deny-tool 'shell(wget:*)' \
-            --deny-tool 'shell(npm:*)' --deny-tool 'shell(npx:*)' --deny-tool 'url' \
-            --excluded-tools web_fetch web_search \
-            --disable-builtin-mcps \
-            --secret-env-vars COPILOT_GITHUB_TOKEN \
-            > "ai-review/finders/finder-$PASS.txt"
+        run: bash .github/liftoff/review-agent.sh "ai-review/finder-$PASS.md" "ai-review/finders/finder-$PASS.txt"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ai-review-finder-${{ matrix.pass }}
@@ -114,7 +104,7 @@ jobs:
           if-no-files-found: error
 
   verify:
-    name: Verify (run ${{ matrix.run }})
+    name: Verify findings
     needs: [prepare, find]
     if: needs.prepare.outputs.run == 'true'
     runs-on: ubuntu-latest
@@ -148,28 +138,16 @@ jobs:
         env:
           LIFTOFF_BASE_REF: ${{ github.base_ref }}
         run: node .github/liftoff/ai-review.mjs restore-instructions
-      - name: Install Copilot CLI
+      - name: Install the review agent
         if: steps.candidates.outputs.has-candidates == 'true'
-        run: npm install --global "$COPILOT_CLI"
-      - name: Verify each candidate independently
+        run: npm install --global "$REVIEW_AGENT_CLI"
+      - name: Verify each candidate independently (run ${{ matrix.run }})
         if: steps.candidates.outputs.has-candidates == 'true'
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          COPILOT_MODEL: ${{ vars.LIFTOFF_REVIEW_MODEL }}
+          LIFTOFF_REVIEW_MODEL: ${{ vars.LIFTOFF_REVIEW_MODEL }}
           RUN: ${{ matrix.run }}
-        run: |
-          mkdir -p ai-review/verifiers
-          copilot -p "$(cat ai-review/verifier.md)" -s \
-            --allow-all-tools \
-            --deny-tool write \
-            --deny-tool 'shell(git push)' --deny-tool 'shell(git commit)' \
-            --deny-tool 'shell(git checkout)' --deny-tool 'shell(git reset)' \
-            --deny-tool 'shell(gh:*)' --deny-tool 'shell(curl:*)' --deny-tool 'shell(wget:*)' \
-            --deny-tool 'shell(npm:*)' --deny-tool 'shell(npx:*)' --deny-tool 'url' \
-            --excluded-tools web_fetch web_search \
-            --disable-builtin-mcps \
-            --secret-env-vars COPILOT_GITHUB_TOKEN \
-            > "ai-review/verifiers/verifier-$RUN.txt"
+        run: bash .github/liftoff/review-agent.sh ai-review/verifier.md "ai-review/verifiers/verifier-$RUN.txt"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.candidates.outputs.has-candidates == 'true'
         with:

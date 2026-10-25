@@ -39,6 +39,11 @@ jobs:
       - run: npm run boundaries
       - run: npm run check:trace
       - run: npm run check:generated
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.1"
+      - name: Check the Python template lock matches its pyproject
+        run: node scripts/templates/lock-python.ts --check
 
   test:
     name: Test (${{ matrix.name }})
@@ -76,10 +81,101 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  generated:
+    name: Generated project (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            os: macos-15
+          - name: Windows x64
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.1"
+      - run: npm ci
+      - name: Create a project with every agent host
+        run: >-
+          node src/cli/main.ts init --name demo --workflow manual
+          --agents copilot,codex,claude --owners voyager163
+          --dir "$RUNNER_TEMP/demo" --yes
+      - name: Install, lint and test the generated project
+        working-directory: ${{ runner.temp }}/demo/backend
+        run: |
+          uv sync --locked
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run pytest
+      - name: Validate the generated project
+        run: node src/cli/main.ts validate --dir "$RUNNER_TEMP/demo"
+
+  package:
+    name: Native bundle (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            os: macos-15
+            bundle: liftoff-package-aarch64-apple-darwin
+          - name: Windows x64
+            os: windows-latest
+            bundle: liftoff-package-x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Build the bundle
+        run: node scripts/package/build-bundle.ts
+      - name: Run Liftoff from a copy of the bundle with no Node on PATH
+        env:
+          BUNDLE: ${{ matrix.bundle }}
+        run: |
+          install="$RUNNER_TEMP/install"
+          mkdir -p "$install" "$RUNNER_TEMP/smoke"
+          cp -R "out/$BUNDLE" "$install/"
+          cd "$RUNNER_TEMP/smoke"
+          export PATH="$install/$BUNDLE/bin:/usr/bin:/bin"
+          if command -v node; then echo "node is still on PATH"; exit 1; fi
+          liftoff --version
+          liftoff capabilities --json > capabilities.json
+          liftoff init --name smoke --workflow manual --agents claude --yes
+          liftoff validate --dir smoke
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.bundle }}
+          path: out/${{ matrix.bundle }}/
+          retention-days: 7
+          if-no-files-found: error
+
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [static, test]
+    needs: [static, test, generated, package]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

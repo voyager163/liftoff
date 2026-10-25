@@ -1,0 +1,6 @@
+# Normalize text files to LF on every host.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary

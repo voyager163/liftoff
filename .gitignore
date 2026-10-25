@@ -43,3 +43,6 @@ pnpm-debug.log*
 tmp/
 temp/
 .cache/
+
+# Packaged bundles
+out/

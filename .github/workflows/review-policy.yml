@@ -1,3 +1,4 @@
+# Managed by Liftoff. Change it through Liftoff rather than by hand.
 # The review-policy check: classifies each pull request by what it touches,
 # checks it has the human approvals its tier requires, and reports a
 # `review-policy` commit status on the pull request's head commit.

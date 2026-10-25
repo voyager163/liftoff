@@ -50,3 +50,15 @@ are used only for platform-independent checks (lint, types, boundaries,
 traceability, generated files, CodeQL), never as a supported CLI platform.
 
 Verification: test
+
+## PKG-001 The native bundle runs without a global Node
+
+The bundle for each supported platform (`liftoff-package-aarch64-apple-darwin`
+and `liftoff-package-x86_64-pc-windows-msvc`) contains a launcher built from
+an official Node.js runtime and the same application files as the npm
+package. CI builds it on macOS arm64 and Windows x64 and runs `--version`,
+`capabilities`, `init` and `validate` from a copy with no Node on the PATH.
+The launcher resolves its real location, so it also works through a symlink
+such as Homebrew's.
+
+Verification: live

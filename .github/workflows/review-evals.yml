@@ -67,7 +67,7 @@ jobs:
         run: |
           git apply --index "$CASE/change.patch"
           git -c user.name=liftoff-eval -c user.email=eval@liftoff.invalid commit --quiet -m "Evaluation change"
-      - name: Install Copilot CLI
+      - name: Install the review agent
         run: npm install --global "$COPILOT_CLI"
       - name: Find, verify and score
         env:
@@ -75,30 +75,17 @@ jobs:
           LIFTOFF_BASE_REF: develop
           LIFTOFF_RANGE: HEAD~1..HEAD
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          COPILOT_MODEL: ${{ vars.LIFTOFF_REVIEW_MODEL }}
+          LIFTOFF_REVIEW_MODEL: ${{ vars.LIFTOFF_REVIEW_MODEL }}
         run: |
-          agent() {
-            copilot -p "$(cat "$1")" -s \
-              --allow-all-tools \
-              --deny-tool write \
-              --deny-tool 'shell(git push)' --deny-tool 'shell(git commit)' \
-              --deny-tool 'shell(git checkout)' --deny-tool 'shell(git reset)' \
-              --deny-tool 'shell(gh:*)' --deny-tool 'shell(curl:*)' --deny-tool 'shell(wget:*)' \
-              --deny-tool 'shell(npm:*)' --deny-tool 'shell(npx:*)' --deny-tool 'url' \
-              --excluded-tools web_fetch web_search \
-              --disable-builtin-mcps \
-              --secret-env-vars COPILOT_GITHUB_TOKEN
-          }
           node .github/liftoff/ai-review.mjs eval-prepare
-          mkdir -p ai-review/finders ai-review/verifiers
           for prompt in ai-review/finder-*.md; do
             name=$(basename "$prompt" .md)
-            agent "$prompt" > "ai-review/finders/$name.txt"
+            bash .github/liftoff/review-agent.sh "$prompt" "ai-review/finders/$name.txt"
           done
           node .github/liftoff/ai-review.mjs verifier-prompt
           if [ -f ai-review/verifier.md ]; then
             for run in 0 1 2; do
-              agent ai-review/verifier.md > "ai-review/verifiers/verifier-$run.txt"
+              bash .github/liftoff/review-agent.sh ai-review/verifier.md "ai-review/verifiers/verifier-$run.txt"
             done
           fi
           node .github/liftoff/ai-review.mjs eval-score

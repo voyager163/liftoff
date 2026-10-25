@@ -173,7 +173,7 @@ describe("SKILL-004 the shipped skills cover the review model", () => {
 
 describe("SKILL-005 skills only mention real commands", () => {
   it("every liftoff command in a skill is registered", async () => {
-    const { skills } = await loadAgentSources(assets);
+    const { skills } = await loadAgentSources(assets, { projectSkills: true });
     const known = new Set(REGISTRY.map(commandName));
     const mentioned = new Set<string>();
     for (const skill of skills) {
@@ -185,10 +185,12 @@ describe("SKILL-005 skills only mention real commands", () => {
     }
     expect([...mentioned].filter((name) => !known.has(name))).toEqual([]);
     expect(mentioned).toContain("review classify");
+    expect(mentioned).toContain("doctor");
+    expect(mentioned).toContain("validate");
   });
 
   it("every skill that calls Liftoff negotiates capabilities first", async () => {
-    const { skills } = await loadAgentSources(assets);
+    const { skills } = await loadAgentSources(assets, { projectSkills: true });
     for (const skill of skills.filter((s) => s.body.includes("`liftoff "))) {
       expect(skill.body, skill.name).toContain("liftoff capabilities --json");
     }
@@ -197,7 +199,7 @@ describe("SKILL-005 skills only mention real commands", () => {
 
 describe("SKILL-006 Liftoff's own rendered skills are current", () => {
   it("passes the drift check", () => {
-    const output = execFileSync(process.execPath, ["scripts/render-own-skills.ts", "--check"], {
+    const output = execFileSync(process.execPath, ["scripts/render-own-files.ts", "--check"], {
       cwd: repoRoot,
       encoding: "utf8",
     });

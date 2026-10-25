@@ -146,8 +146,9 @@ async function prepare(
   };
   const event = JSON.parse(context.readFile(env.GITHUB_EVENT_PATH ?? "")) as PullRequestEvent;
   if (!event.pull_request) throw new Error("the event has no pull request");
-  if (env.COPILOT_CONFIGURED !== "true") {
-    return skip("not configured; add a COPILOT_GITHUB_TOKEN repository secret to enable it");
+  if (env.LIFTOFF_AGENT_CONFIGURED !== "true") {
+    const secret = env.LIFTOFF_AGENT_SECRET ?? "review agent";
+    return skip(`not configured; add a ${secret} repository secret to enable it`);
   }
   if (event.pull_request.head.repo?.full_name !== env.GITHUB_REPOSITORY) {
     return skip("the pull request comes from a fork, where repository secrets are unavailable");

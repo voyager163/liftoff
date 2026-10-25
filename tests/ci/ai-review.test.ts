@@ -125,7 +125,8 @@ function pipeline(
       GITHUB_TOKEN: "t",
       GITHUB_API_URL: url,
       GITHUB_OUTPUT: "out.txt",
-      COPILOT_CONFIGURED: "true",
+      LIFTOFF_AGENT_CONFIGURED: "true",
+      LIFTOFF_AGENT_SECRET: "COPILOT_GITHUB_TOKEN",
       LIFTOFF_BASE_REF: "develop",
       ...extra,
     },
@@ -258,16 +259,15 @@ describe("AIREVIEW-003 rounds", () => {
 });
 
 describe("AIREVIEW-004 the pipeline protects itself", () => {
-  it.each([[{ COPILOT_CONFIGURED: "false" }, "not configured"]])(
-    "does not run without the Copilot token %#",
-    async (env, reason) => {
-      const url = await fakeGitHub({ files: highRiskFiles, reviews: [], comments: [], posted: [] });
-      const { context, outputs } = pipeline(url, env);
-      expect(await main("prepare", context)).toBe(0);
-      expect(outputs()).toMatchObject({ run: "false", stop: "false" });
-      expect(outputs().reason).toContain(reason);
-    },
-  );
+  it.each([
+    [{ LIFTOFF_AGENT_CONFIGURED: "false" }, "add a COPILOT_GITHUB_TOKEN repository secret"],
+  ])("does not run without the Copilot token %#", async (env, reason) => {
+    const url = await fakeGitHub({ files: highRiskFiles, reviews: [], comments: [], posted: [] });
+    const { context, outputs } = pipeline(url, env);
+    expect(await main("prepare", context)).toBe(0);
+    expect(outputs()).toMatchObject({ run: "false", stop: "false" });
+    expect(outputs().reason).toContain(reason);
+  });
 
   it("does not run for a fork", async () => {
     const url = await fakeGitHub({ files: highRiskFiles, reviews: [], comments: [], posted: [] });

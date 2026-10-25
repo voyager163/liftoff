@@ -1,0 +1,53 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "{{liftoff.name}} API"
+requires-python = ">=3.14"
+dependencies = [
+  "alembic>=1.16,<2",
+  "fastapi>=0.120,<1",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic-settings>=2.10,<3",
+  "scalar-fastapi>=1.4,<2",
+  "sqlalchemy>=2.0.40,<3",
+  "uvicorn>=0.37,<1",
+]
+
+[dependency-groups]
+dev = [
+  "httpx2>=2.13,<3",
+  "pytest>=8.4,<10",
+  "pytest-cov>=7,<9",
+  "ruff>=0.14,<1",
+]
+
+[tool.uv]
+# An application, not a library: dependencies only, nothing to build or publish.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = [
+  "--strict-markers",
+  "-m", "not integration",
+  "--cov=app",
+  "--cov-branch",
+  "--cov-report=term-missing",
+  "--cov-fail-under=80",
+]
+markers = ["integration: needs a real PostgreSQL database named by APP_DATABASE_URL"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]

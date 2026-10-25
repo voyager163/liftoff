@@ -1,0 +1,156 @@
+import path from "node:path";
+import { sha256Hex } from "../../domain/plan/plan.ts";
+import {
+  CONFIG_FILE,
+  ConfigError,
+  type ProjectConfig,
+  parseConfig,
+} from "../../domain/project/config.ts";
+import {
+  MANIFEST_FILE,
+  type Manifest,
+  ManifestError,
+  parseManifest,
+} from "../../domain/project/manifest.ts";
+import { allPlugins, resolveSelection, SelectionError } from "../../plugins/registry.ts";
+import type { ProjectFsPort } from "../ports.ts";
+
+export type Severity = "error" | "warning" | "info";
+
+export interface Finding {
+  readonly severity: Severity;
+  readonly code: string;
+  readonly message: string;
+  readonly path?: string;
+}
+
+export interface ValidationResult {
+  readonly directory: string;
+  readonly valid: boolean;
+  readonly config?: ProjectConfig;
+  readonly manifest?: Manifest;
+  readonly findings: readonly Finding[];
+}
+
+/** Files only the Liftoff release before the rebuild wrote. */
+const LEGACY_FILES = ["liftoff.config.json", "liftoff.manifest.json"];
+
+/**
+ * Checks a project against its own configuration and manifest. It reads only:
+ * nothing is repaired, installed or reported anywhere.
+ */
+export async function validateProject(
+  fs: ProjectFsPort,
+  directory: string,
+): Promise<ValidationResult> {
+  const findings: Finding[] = [];
+  const read = (relative: string) => fs.readText(path.join(directory, ...relative.split("/")));
+  const result = (extra: Partial<ValidationResult> = {}): ValidationResult => ({
+    directory,
+    valid: !findings.some((finding) => finding.severity === "error"),
+    findings,
+    ...extra,
+  });
+
+  const configText = await read(CONFIG_FILE);
+  if (configText === undefined) {
+    for (const legacy of LEGACY_FILES) {
+      if ((await read(legacy)) !== undefined) {
+        findings.push({
+          severity: "error",
+          code: "pre-rebuild-project",
+          path: legacy,
+          message:
+            "this was made by a Liftoff release before the rebuild; this release cannot read or update it. Adopting existing projects comes in a later release.",
+        });
+        return result();
+      }
+    }
+    findings.push({
+      severity: "error",
+      code: "not-a-liftoff-project",
+      message: `no ${CONFIG_FILE} here`,
+    });
+    return result();
+  }
+
+  let config: ProjectConfig;
+  try {
+    config = parseConfig(configText);
+    resolveSelection(config);
+  } catch (error) {
+    if (!(error instanceof ConfigError || error instanceof SelectionError)) throw error;
+    findings.push({
+      severity: "error",
+      code: "invalid-config",
+      path: CONFIG_FILE,
+      message: error.message,
+    });
+    return result();
+  }
+
+  const manifestText = await read(MANIFEST_FILE);
+  if (manifestText === undefined) {
+    findings.push({
+      severity: "error",
+      code: "missing-manifest",
+      path: MANIFEST_FILE,
+      message: `${MANIFEST_FILE} is missing`,
+    });
+    return result({ config });
+  }
+  let manifest: Manifest;
+  try {
+    manifest = parseManifest(manifestText);
+  } catch (error) {
+    if (!(error instanceof ManifestError)) throw error;
+    findings.push({
+      severity: "error",
+      code: "invalid-manifest",
+      path: MANIFEST_FILE,
+      message: error.message,
+    });
+    return result({ config });
+  }
+
+  const known = new Map(allPlugins().map((plugin) => [plugin.id, plugin.version]));
+  for (const plugin of manifest.plugins) {
+    const current = known.get(plugin.id);
+    if (current === undefined) {
+      findings.push({
+        severity: "error",
+        code: "unknown-plugin",
+        message: `${plugin.id} is not part of this Liftoff release`,
+      });
+    } else if (current !== plugin.version) {
+      findings.push({
+        severity: "info",
+        code: "plugin-version",
+        message: `${plugin.id} was generated at version ${plugin.version}; this release has version ${current}`,
+      });
+    }
+  }
+
+  for (const file of manifest.files) {
+    const text = await read(file.path);
+    if (text === undefined) {
+      findings.push({
+        severity: file.ownership === "managed" ? "error" : "warning",
+        code: file.ownership === "managed" ? "managed-file-missing" : "seeded-file-missing",
+        path: file.path,
+        message:
+          file.ownership === "managed"
+            ? "a file Liftoff manages is missing"
+            : "a file Liftoff created is gone; that is fine if you removed it on purpose",
+      });
+    } else if (file.ownership === "managed" && sha256Hex(text) !== file.sha256) {
+      findings.push({
+        severity: "warning",
+        code: "managed-file-changed",
+        path: file.path,
+        message: "a file Liftoff manages was changed by hand; Liftoff would replace this change",
+      });
+    }
+  }
+  return result({ config, manifest });
+}

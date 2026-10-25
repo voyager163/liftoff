@@ -23,5 +23,30 @@ export interface WorkspacePort {
 export interface AssetPort {
   /** Names of the entries directly inside an asset directory, sorted. */
   list(relativeDirectory: string): Promise<string[]>;
+  /** Asset paths of every file under a directory, recursively and sorted. */
+  listTree(relativeDirectory: string): Promise<string[]>;
   readText(relativePath: string): Promise<string>;
+  /** The committed CI bundles shipped with this release, by file name. */
+  ciBundles(): Promise<Record<string, string>>;
+}
+
+export type PathState = "missing" | "empty-directory" | "directory" | "file";
+
+/** File system access for creating a project. */
+export interface ProjectFsPort {
+  state(path: string): Promise<PathState>;
+  /** Text of a file, or undefined when it does not exist. */
+  readText(path: string): Promise<string | undefined>;
+  /** A new empty directory beside `target`, on the same volume, for staging. */
+  createStaging(target: string): Promise<string>;
+  writeFile(path: string, content: string, executable: boolean): Promise<void>;
+  /** Moves the staged directory to `target`, which must be missing or empty. */
+  publish(staging: string, target: string): Promise<void>;
+  remove(path: string): Promise<void>;
+}
+
+/** Reads a tool's version without changing anything. */
+export interface ToolPort {
+  /** First line of the tool's version output, or undefined when it cannot run. */
+  version(command: string, args: readonly string[]): Promise<string | undefined>;
 }

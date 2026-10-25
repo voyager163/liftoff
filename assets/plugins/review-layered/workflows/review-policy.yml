@@ -1,0 +1,53 @@
+# Managed by Liftoff. Change it through Liftoff rather than by hand.
+# The review-policy check: classifies each pull request by what it touches,
+# checks it has the human approvals its tier requires, and reports a
+# `review-policy` commit status on the pull request's head commit.
+#
+# It runs on pull_request_target, or on workflow_dispatch from the pull
+# request's base branch, so the workflow, the policy and the bundled check all
+# come from the base: a pull request cannot change how it is judged. It never
+# checks out or runs pull request code; it only reads the changed files and
+# reviews through the API.
+name: Review policy
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to re-check
+        required: true
+        type: string
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-policy-${{ github.event.pull_request.number || inputs.pull_request || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review-policy:
+    name: review-policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Check out the base branch's policy and check only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/review-policy.yml
+            .github/liftoff
+          sparse-checkout-cone-mode: false
+      - name: Classify, count approvals and report the status
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/liftoff/review-policy.mjs
