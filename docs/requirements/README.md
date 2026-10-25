@@ -26,6 +26,9 @@ Verification: test
   GitHub, Azure or package-manager behavior. The test plan or release checklist
   records how and when it was observed; a fixture is never presented as
   live proof.
+- `npm run check:trace` prints how many requirements there are, how many are
+  covered by tests, and the IDs that can only be verified live, so those are
+  easy to find before a release.
 
 ## Areas
 
