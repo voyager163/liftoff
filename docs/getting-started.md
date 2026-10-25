@@ -50,7 +50,7 @@ one.
 | Option | Default | Choices in this release |
 | --- | --- | --- |
 | `--workload` | `api` | `api` |
-| `--stack` | `python-fastapi` | `python-fastapi`, `node-fastify` |
+| `--stack` | `python-fastapi` | `python-fastapi`, `node-fastify`, `go-huma` |
 | `--workflow` | `openspec` | `manual` (OpenSpec and Spec Kit come later) |
 | `--agents` | none | any of `copilot`, `codex`, `claude` |
 | `--governance` | `single-maintainer-gitflow` | `single-maintainer-gitflow`, `none` |
@@ -86,6 +86,7 @@ Both only read; neither installs nor changes anything.
 
 ## What you get
 
-See [Python API projects](projects/python-fastapi.md) or
-[Node.js API projects](projects/node-fastify.md) for the generated layout,
-what each file is for and who owns it.
+See [Python API projects](projects/python-fastapi.md),
+[Node.js API projects](projects/node-fastify.md) or
+[Go API projects](projects/go-huma.md) for the generated layout, what each
+file is for and who owns it.

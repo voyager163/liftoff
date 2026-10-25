@@ -91,7 +91,7 @@ jobs:
             os: macos-15
           - name: Windows x64
             os: windows-latest
-        stack: [python-fastapi, node-fastify]
+        stack: [python-fastapi, node-fastify, go-huma]
     runs-on: ${{ matrix.platform.os }}
     timeout-minutes: 20
     defaults:
@@ -110,6 +110,12 @@ jobs:
         if: matrix.stack == 'python-fastapi'
         with:
           version: "0.13.1"
+      # The generated project's go.mod names the Go it needs.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: matrix.stack == 'go-huma'
+        with:
+          go-version-file: assets/plugins/stack-go-huma/files/backend/go.mod
+          cache-dependency-path: assets/plugins/stack-go-huma/files/backend/go.sum
       - run: npm ci
       - name: Create a project with every agent host
         env:
@@ -135,8 +141,141 @@ jobs:
           npm run lint
           npm run typecheck
           npm test
+      - name: Format, vet, test and check coverage of the generated Go project
+        if: matrix.stack == 'go-huma'
+        working-directory: ${{ runner.temp }}/demo/backend
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "Not gofmt-formatted:"; echo "$unformatted"; exit 1; fi
+          go vet ./...
+          go vet -tags integration ./...
+          go test -coverpkg=./cmd/...,./internal/... -coverprofile=cover.out ./...
+          go run ./tools/coverage cover.out 80
       - name: Validate the generated project
         run: node src/cli/main.ts validate --dir "$RUNNER_TEMP/demo"
+
+  services:
+    name: Generated ${{ matrix.stack }} project with PostgreSQL and Docker
+    # Generated projects' integration tests and containers qualify a
+    # deployment target, not a CLI platform, so they run on Linux, where
+    # service containers and Docker are available.
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [python-fastapi, node-fastify, go-huma]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+        env:
+          POSTGRES_DB: app
+          POSTGRES_USER: app
+          # A throwaway database for this job only; not a secret.
+          POSTGRES_PASSWORD: ci-only
+        # Not 5432: the generated Compose file publishes its own database there.
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      STACK: ${{ matrix.stack }}
+      PGHOST: 127.0.0.1
+      PGPORT: "55432"
+      PGUSER: app
+      PGPASSWORD: ci-only
+      PGDATABASE: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: matrix.stack == 'python-fastapi'
+        with:
+          version: "0.13.1"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: matrix.stack == 'go-huma'
+        with:
+          go-version-file: assets/plugins/stack-go-huma/files/backend/go.mod
+          cache-dependency-path: assets/plugins/stack-go-huma/files/backend/go.sum
+      - run: npm ci
+      - name: Create the project
+        run: >-
+          node src/cli/main.ts init --name demo --stack "$STACK" --workflow manual
+          --dir "$RUNNER_TEMP/demo" --yes
+      - name: Put data in public that the integration tests must leave alone
+        run: >-
+          psql -v ON_ERROR_STOP=1
+          -c "CREATE TABLE items (id serial PRIMARY KEY, name text)"
+          -c "INSERT INTO items (name) VALUES ('keep me')"
+      - name: Run the integration tests against PostgreSQL
+        working-directory: ${{ runner.temp }}/demo/backend
+        run: |
+          case "$STACK" in
+            python-fastapi)
+              uv sync --locked
+              APP_DATABASE_URL="postgresql+psycopg://app:ci-only@127.0.0.1:55432/app" \
+                uv run pytest -m integration --no-cov ;;
+            node-fastify)
+              npm ci --no-audit --no-fund
+              APP_DATABASE_URL="postgresql://app:ci-only@127.0.0.1:55432/app" \
+                npm run test:integration ;;
+            go-huma)
+              APP_DATABASE_URL="postgresql://app:ci-only@127.0.0.1:55432/app" \
+                go test -count=1 -tags integration ./internal/integration ;;
+            *)
+              echo "No integration tests are known for $STACK"
+              exit 1 ;;
+          esac
+      - name: Check the integration tests left public and the database clean
+        run: |
+          test "$(psql -tAc "SELECT string_agg(name, ',') FROM public.items")" = "keep me"
+          test "$(psql -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")" = "1"
+          test "$(psql -tAc "SELECT count(*) FROM information_schema.schemata WHERE schema_name LIKE 'test%' OR schema_name = 'drizzle'")" = "0"
+      - name: Run the project with Docker Compose and check its health
+        working-directory: ${{ runner.temp }}/demo
+        run: |
+          sed 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=ci-only-compose/' .env.example > .env
+          docker compose up --build --wait --wait-timeout 300
+          user=$(docker inspect --format '{{.Config.User}}' "$(docker compose ps -q api)")
+          case "$user" in 10001|10001:*) ;; *) echo "the API runs as '$user', not 10001"; exit 1 ;; esac
+          api=http://127.0.0.1:8000
+          status() { curl --silent --output /dev/null --write-out '%{http_code}' --max-time "$2" "$api$1"; }
+          test "$(status /health/live 5)" = 200
+          test "$(status /health/ready 5)" = 200
+          created=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 \
+            -X POST -H 'content-type: application/json' -d '{"name":"from compose"}' "$api/items")
+          test "$created" = 201
+          curl --fail --silent --show-error --location --max-time 5 --output /dev/null "$api/docs"
+          curl --fail --silent --show-error --max-time 5 "$api/openapi.json" | grep -q '"openapi"'
+
+          docker compose pause database
+          start=$(date +%s)
+          ready=$(status /health/ready 20)
+          elapsed=$(( $(date +%s) - start ))
+          echo "readiness with the database paused: $ready after ${elapsed}s"
+          test "$ready" = 503
+          test "$elapsed" -le 10
+          test "$(status /health/live 5)" = 200
+          docker compose unpause database
+          for _ in $(seq 1 30); do
+            ready=$(status /health/ready 5)
+            [ "$ready" = 200 ] && break
+            sleep 1
+          done
+          echo "readiness after unpausing: $ready"
+          test "$ready" = 200
+      - name: Show the Compose logs
+        if: failure()
+        working-directory: ${{ runner.temp }}/demo
+        run: docker compose logs --no-color
 
   package:
     name: Native bundle (${{ matrix.name }})
@@ -202,7 +341,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [static, test, generated, package]
+    needs: [static, test, generated, services, package]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

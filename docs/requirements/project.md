@@ -107,6 +107,41 @@ with PostgreSQL. It contains no GenAI dependencies.
 
 Verification: test
 
+## PROJ-010 The Go API project follows the API contract
+
+A `go-huma` project is Go with Huma v2 on Chi, pgx and Goose, with a
+committed `go.mod` and `go.sum`. It listens on port 8000; separates
+`/health/live` (no dependencies) from `/health/ready` (checks PostgreSQL over
+a new connection with a time limit, 503 when it is unavailable or stops
+answering); serves OpenAPI and Scalar docs; has an initial Goose migration
+with a working down migration; reads configuration from the environment,
+then an explicitly named JSON file, then non-secret defaults, failing on a
+named file that is missing, malformed or has unknown settings; and ships
+`gofmt` and `go vet` checks, tests with an 80% statement coverage gate,
+integration tests in a throwaway schema, a Dockerfile that builds a static
+binary and runs it as an unprivileged user, and a Compose file with
+PostgreSQL. It contains no GenAI dependencies.
+
+Verification: test
+
+## PROJ-011 Generated projects work against PostgreSQL and in containers
+
+Liftoff's CI generates a project for every API stack on Linux, where service
+containers and Docker exist, and checks:
+
+- its integration tests pass against a real PostgreSQL and leave the data
+  and tables already in that database untouched;
+- `docker compose up` brings up PostgreSQL, the migrations and the API,
+  which runs as an unprivileged user and passes its container health check;
+- the API's live, ready, items, docs and OpenAPI endpoints answer;
+- with the database paused, readiness answers 503 within 10 seconds while
+  liveness stays up, and readiness recovers once the database is back.
+
+This qualifies the generated containers as a deployment target; Linux is not
+a supported platform for the Liftoff CLI.
+
+Verification: live
+
 ## INIT-001 Plans are read-only and tamper-evident
 
 `liftoff plan` changes nothing except the plan file named with `--out`. A

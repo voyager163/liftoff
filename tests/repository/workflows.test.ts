@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { STACKS } from "../../src/plugins/registry.ts";
 
 const directory = path.resolve(import.meta.dirname, "../../.github/workflows");
 const files = readdirSync(directory)
@@ -16,10 +17,11 @@ interface Step {
 }
 interface Job {
   "runs-on"?: string;
+  needs?: string[];
   permissions?: Record<string, string> | string;
   defaults?: { run?: { "working-directory"?: string } };
   steps?: Step[];
-  strategy?: { matrix?: { include?: { os?: string }[] } };
+  strategy?: { matrix?: { include?: { os?: string }[]; stack?: string[] } };
 }
 interface Workflow {
   on: Record<string, unknown> | string | string[];
@@ -140,6 +142,17 @@ describe("AIREVIEW-002 review jobs hand their files on reliably", () => {
       }
     },
   );
+});
+
+describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {
+  const ci = workflows.find((w) => w.name === "ci.yml")?.data;
+
+  it.each(["generated", "services"])("the %s job covers every stack and gates merging", (job) => {
+    expect([...(ci?.jobs[job]?.strategy?.matrix?.stack ?? [])].sort()).toEqual(
+      Object.keys(STACKS).sort(),
+    );
+    expect(ci?.jobs["ci-gate"]?.needs).toContain(job);
+  });
 });
 
 describe("REPO-006 tests run on the supported developer platforms", () => {
