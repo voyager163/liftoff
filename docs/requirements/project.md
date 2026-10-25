@@ -365,7 +365,9 @@ Each night Liftoff's CI lints every distinct GitHub Actions workflow and
 shell script that any supported combination generates, with actionlint and
 shellcheck. It also creates the widest project of each stack, with every
 coding agent and a framework's real initializer, and runs its checks on
-macOS arm64, Windows x64 and Linux.
+macOS arm64, Windows x64 and Linux. The check fails, rather than passing
+with nothing checked, for a missing project or one without a backend it
+knows, and on Linux for infrastructure without OpenTofu.
 
 Verification: live
 

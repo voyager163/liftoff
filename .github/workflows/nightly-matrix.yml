@@ -96,6 +96,9 @@ jobs:
             --agents copilot,codex,claude --owners voyager163,octocat \
             --dir "$RUNNER_TEMP/demo" --yes
       - name: Run the project's checks
+        env:
+          # OpenTofu is installed on Linux, so the infrastructure must be checked there.
+          REQUIRE_TOFU: ${{ runner.os == 'Linux' && '1' || '' }}
         run: bash scripts/matrix/check-project.sh "$RUNNER_TEMP/demo"
       - name: Validate the generated project
         run: node src/cli/main.ts validate --dir "$RUNNER_TEMP/demo"

@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # Runs a generated project's own checks, as its CI does, for the components
 # it has: the backend (Python, Node.js or Go), the frontend, and the OpenTofu
-# infrastructure when tofu is installed.
+# infrastructure. It fails when it finds no backend it knows, and, with
+# REQUIRE_TOFU=1, when the project has infrastructure but tofu is missing.
 # Usage: scripts/matrix/check-project.sh <project directory>
 set -euo pipefail
 
 project=${1:?usage: check-project.sh <project directory>}
+if [ ! -d "$project" ]; then
+  echo "check-project.sh: $project is not a directory" >&2
+  exit 1
+fi
 backend=$project/backend
 
 if [ -f "$backend/pyproject.toml" ]; then
@@ -35,6 +40,9 @@ elif [ -f "$backend/go.mod" ]; then
     go run ./tools/coverage cover.out 80
   )
   echo "::endgroup::"
+else
+  echo "check-project.sh: $project has no Python, Node.js or Go backend to check" >&2
+  exit 1
 fi
 
 if [ -d "$project/frontend" ]; then
@@ -52,7 +60,13 @@ if [ -d "$project/frontend" ]; then
 fi
 
 infrastructure=$project/infrastructure/opentofu/azure
-if [ -d "$infrastructure" ] && command -v tofu > /dev/null; then
+if [ -d "$infrastructure" ] && ! command -v tofu > /dev/null; then
+  if [ "${REQUIRE_TOFU:-}" = 1 ]; then
+    echo "check-project.sh: the project has infrastructure, but tofu is not installed" >&2
+    exit 1
+  fi
+  echo "::notice::OpenTofu is not installed here, so the infrastructure was not checked"
+elif [ -d "$infrastructure" ]; then
   echo "::group::Infrastructure"
   (
     cd "$infrastructure"
