@@ -396,6 +396,23 @@ keeps the end of the initializer's output, where the cause is.
 
 Verification: test
 
+## INIT-006 Init asks for each option in a terminal
+
+Run in a terminal with no project options and no plan, `liftoff init` asks
+one question for each option, named after it, and offers only what this
+release can generate with the earlier answers: a frontend and infrastructure
+only for stacks with a database, environments only with infrastructure,
+Spec Kit and AI review only with a coding agent, and a review engine only
+with several. It checks names and GitHub logins as the options do, then
+prints the command that gives the same answers, quoted for the shell (POSIX
+on macOS, PowerShell on Windows), which plans the same project. Questions go
+to stderr, so stdout holds only the result, such as the `--json` report.
+It then shows the plan and asks before writing, as with options. It never
+asks without a terminal or when any project option is given, and Ctrl+C at
+a question exits 4 (cancelled).
+
+Verification: test
+
 ## VALID-001 Validate reports what changed without repairing it
 
 `liftoff validate` checks the configuration, the plugins it names and every

@@ -4,9 +4,10 @@ import { applyInit, planInit } from "../../application/init/init-project.ts";
 import { type Plan, parsePlan } from "../../domain/plan/plan.ts";
 import { validateConfig } from "../../domain/project/config.ts";
 import { resolveSelection, SelectionError } from "../../plugins/registry.ts";
-import type { CommandResult, CommandSpec } from "../command.ts";
+import type { CommandResult, CommandSpec, Io, ParsedArgs } from "../command.ts";
 import { UnsupportedError, UsageError } from "../outcome.ts";
 import { hasProjectOptions, PROJECT_OPTIONS, projectFromOptions } from "../project-options.ts";
+import { askProjectOptions, equivalentCommand } from "../wizard.ts";
 import { defaultProjectPorts, type ProjectPorts } from "./project-ports.ts";
 
 /** Turns a selection problem into the right exit code: unsupported or a usage error. */
@@ -94,6 +95,25 @@ export function makePlanCommand(
   };
 }
 
+/**
+ * Asks for the project's options in a terminal and says which command gives
+ * the same answers, then hands them on as if they had been typed.
+ */
+async function ask(io: Io): Promise<ParsedArgs> {
+  io.stderr(
+    "Answer each question, or press Enter for the suggested answer. Each one is also an option of liftoff init.\n\n",
+  );
+  const answers = await askProjectOptions(io.prompts);
+  const shell = process.platform === "win32" ? "powershell" : "posix";
+  io.stderr(`\nThe same project without questions:\n  ${equivalentCommand(answers, shell)}\n\n`);
+  const given = Object.entries(answers).filter(([, value]) => value !== "");
+  return {
+    options: Object.fromEntries(given),
+    positionals: [],
+    given: new Set(given.map(([flag]) => flag)),
+  };
+}
+
 export function makeInitCommand(
   portsFor: (cwd: string) => ProjectPorts = defaultProjectPorts,
 ): CommandSpec {
@@ -101,7 +121,7 @@ export function makeInitCommand(
     path: ["init"],
     summary: "Create a new project.",
     description:
-      "Creates a new project in a new or empty directory, from a saved plan (--plan) or from the same options as `liftoff plan`. It shows what it will create and asks before writing anything; the default answer is no. In scripts, pass --yes. The project is written in one step, or not at all. With the OpenSpec or Spec Kit workflow, init also runs that framework's own initializer at a pinned version, which downloads it; nothing else is installed, run or sent anywhere.",
+      "Creates a new project in a new or empty directory, from a saved plan (--plan) or from the same options as `liftoff plan`. Run in a terminal without options, it asks for each option in turn and shows the command that gives the same answers. It shows what it will create and asks before writing anything; the default answer is no. In scripts, pass --yes. The project is written in one step, or not at all. With the OpenSpec or Spec Kit workflow, init also runs that framework's own initializer at a pinned version, which downloads it; nothing else is installed, run or sent anywhere.",
     readOnly: false,
     reportSchema: "liftoff.init-report/v1",
     options: {
@@ -114,6 +134,7 @@ export function makeInitCommand(
       yes: { type: "boolean", short: "y", description: "Create it without asking." },
     },
     examples: [
+      "liftoff init",
       "liftoff init --plan demo.plan.json",
       "liftoff init --name demo --workflow manual --agents claude --yes",
     ],
@@ -129,7 +150,10 @@ export function makeInitCommand(
         });
         plan = parsePlan(text);
       } else {
-        const { config, target } = projectFromOptions(args, io.cwd);
+        const { config, target } = projectFromOptions(
+          !hasProjectOptions(args) && io.interactive ? await ask(io) : args,
+          io.cwd,
+        );
         plan = await planInit(ports, {
           config,
           target,

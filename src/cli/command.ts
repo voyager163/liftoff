@@ -17,6 +17,41 @@ export interface BooleanOption {
 
 export type OptionSpec = StringOption | BooleanOption;
 
+/** One answer a question offers. */
+export interface Choice {
+  readonly value: string;
+  /** How the answer is shown, if not its value. */
+  readonly name?: string;
+  readonly description?: string;
+  /** Why it cannot be chosen with the earlier answers, if it cannot. */
+  readonly disabled?: string;
+}
+
+/**
+ * A question asked in a terminal. It is named after the command-line option
+ * that gives the same answer, so every answer can also be given as a flag.
+ */
+export interface Question {
+  readonly flag: string;
+  readonly message: string;
+}
+
+/** Questions for a person at a terminal. Only asked when `Io.interactive` is true. */
+export interface Prompts {
+  /** Free text; `validate` returns why an answer is not accepted. */
+  text(
+    question: Question & { default?: string; validate?: (value: string) => string | undefined },
+  ): Promise<string>;
+  select(question: Question & { choices: readonly Choice[]; default?: string }): Promise<string>;
+  /** Several answers; `required` refuses none. */
+  checkbox(
+    question: Question & {
+      choices: readonly (Choice & { checked?: boolean })[];
+      required?: boolean;
+    },
+  ): Promise<string[]>;
+}
+
 export interface Io {
   stdout(text: string): void;
   stderr(text: string): void;
@@ -27,6 +62,7 @@ export interface Io {
   readonly interactive: boolean;
   /** Asks a yes/no question; the default answer is always no. */
   confirm(question: string): Promise<boolean>;
+  readonly prompts: Prompts;
 }
 
 export interface ParsedArgs {

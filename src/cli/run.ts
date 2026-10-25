@@ -2,6 +2,7 @@ import { PolicyError } from "../domain/risk-policy/policy.ts";
 import type { CommandContext, CommandResult, CommandSpec, Io } from "./command.ts";
 import { renderCommandHelp, renderGroupHelp, renderRootHelp } from "./help.ts";
 import {
+  CancelledError,
   type ExitCode,
   exitCodeFor,
   type Outcome,
@@ -102,7 +103,7 @@ function emit(io: Io, json: boolean, schema: string, result: CommandResult): voi
 }
 
 function classifyError(error: unknown, io: Io): Outcome {
-  if (io.signal.aborted) return "cancelled";
+  if (io.signal.aborted || error instanceof CancelledError) return "cancelled";
   if (error instanceof UsageError) return "usage";
   if (error instanceof UnsupportedError) return "unsupported";
   if (error instanceof PolicyError) return "failure";

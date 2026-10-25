@@ -68,7 +68,7 @@ liftoff plan --name demo --workflow manual --agents copilot,claude --out demo.pl
 
 ## liftoff init
 
-Creates a new project in a new or empty directory, from a saved plan (--plan) or from the same options as `liftoff plan`. It shows what it will create and asks before writing anything; the default answer is no. In scripts, pass --yes. The project is written in one step, or not at all. With the OpenSpec or Spec Kit workflow, init also runs that framework's own initializer at a pinned version, which downloads it; nothing else is installed, run or sent anywhere.
+Creates a new project in a new or empty directory, from a saved plan (--plan) or from the same options as `liftoff plan`. Run in a terminal without options, it asks for each option in turn and shows the command that gives the same answers. It shows what it will create and asks before writing anything; the default answer is no. In scripts, pass --yes. The project is written in one step, or not at all. With the OpenSpec or Spec Kit workflow, init also runs that framework's own initializer at a pinned version, which downloads it; nothing else is installed, run or sent anywhere.
 
 Changes files; asks first unless `--yes` is given.
 
@@ -96,6 +96,7 @@ JSON report: `liftoff.init-report/v1`.
 | `--help` | Show help for this command. |
 
 ```bash
+liftoff init
 liftoff init --plan demo.plan.json
 liftoff init --name demo --workflow manual --agents claude --yes
 ```

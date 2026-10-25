@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { confirm } from "@inquirer/prompts";
 import { REGISTRY } from "./registry.ts";
 import { runCli } from "./run.ts";
+import { terminalPrompts } from "./terminal.ts";
 import { VERSION } from "./version.ts";
 
 const controller = new AbortController();
@@ -18,7 +18,7 @@ void runCli(
     env: process.env,
     signal: controller.signal,
     interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
-    confirm: (message) => confirm({ message, default: false }, { signal: controller.signal }),
+    ...terminalPrompts(controller.signal),
   },
   REGISTRY,
   VERSION,
