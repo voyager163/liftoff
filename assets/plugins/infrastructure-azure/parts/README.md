@@ -36,8 +36,9 @@ Checks, run from `infrastructure/opentofu/azure`:
 | `checkov --directory . --framework terraform` | Security scan; accepted findings are skipped next to the resource with their reason |
 
 To apply them yourself, apply `bootstrap/` first, which needs Owner or User
-Access Administrator on the subscription because it grants the identities
-AcrPull. Then apply each environment with a `backend.hcl` made from
-`backend.hcl.example` and a `terraform.tfvars` made from
-`terraform.tfvars.example`. Before each deployment of a new API image, start
-the environment's migrations job.
+Access Administrator on the subscription because it grants roles: AcrPull
+for the environments' identities, and Storage Blob Data Contributor on the
+state for you, since the state accepts only Microsoft Entra ID. Then apply
+each environment with a `backend.hcl` made from `backend.hcl.example` and a
+`terraform.tfvars` made from `terraform.tfvars.example`. Before each
+deployment of a new API image, start the environment's migrations job.

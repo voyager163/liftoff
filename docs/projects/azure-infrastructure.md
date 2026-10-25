@@ -14,7 +14,8 @@ you do.
 | `environments/<name>/` | A private network with a network security group per subnet; PostgreSQL Flexible Server reachable only from that network through private DNS; a Log Analytics workspace; and a Container Apps environment with the API, a job that runs the stack's migrations and, with a frontend, the frontend |
 
 With a frontend, the frontend is the only public entry point: it forwards
-`/api/` to the API, which has internal ingress only. Without one, the API is
+`/api/` to the API's internal HTTPS address, which is the API's only
+ingress. Without one, the API is
 public. The containers run as the environment's identity, so pulling images
 needs no password, and the database password lives only in a Container Apps
 secret and the environment's state.
@@ -28,6 +29,9 @@ Each environment differs only in its settings:
 | Backup retention | 7 days | 7 days | 35 days |
 | API replicas kept running | 0 | 1 | 1 |
 
+After a failover, the standby stays the primary: the next apply does not move
+the server back.
+
 There is no application storage account: the API does not use one, and no
 service is provisioned without a consumer. When the application needs
 storage, use LRS in dev and ZRS in staging and prod.
@@ -36,9 +40,15 @@ storage, use LRS in dev and ZRS in staging and prod.
 
 - **Names** come from the project, the environment and a short hash of the
   subscription (`modules/naming`), so the same inputs always give the same
-  names and two subscriptions never compete for a globally unique one.
+  names and two subscriptions never compete for a globally unique one. Runs
+  of hyphens become one, since some Azure names refuse `--`, and long project
+  names are shortened before the environment is added. Liftoff's
+  `npm run check:azure-names` checks every name against Azure's rules.
 - **State:** each environment root uses the azurerm backend with its own key
-  (`<environment>.tfstate`) in the storage bootstrap creates. Bootstrap's own
+  (`<environment>.tfstate`) in the storage bootstrap creates. The storage
+  accepts only Microsoft Entra ID, so bootstrap gives whoever applies it
+  Storage Blob Data Contributor on the state container; grant others the same
+  role. Role assignments can take a few minutes to apply. Bootstrap's own
   state starts out local.
 - **Locks:** each root commits a `.terraform.lock.hcl` pinning exactly its
   providers (azurerm, and random for the database password), with hashes for

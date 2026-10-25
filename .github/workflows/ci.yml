@@ -370,6 +370,8 @@ jobs:
         with:
           version: "0.13.1"
       - run: npm ci
+      - name: Check resource names against Azure's rules
+        run: npm run check:azure-names
       - name: Create the project
         env:
           OPTIONS: ${{ matrix.case.options }}

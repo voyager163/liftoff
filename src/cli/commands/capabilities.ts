@@ -51,12 +51,13 @@ export const capabilitiesCommand: CommandSpec = {
         workload: stack.workload,
         summary: stack.summary,
       })),
-      frontends: Object.values(FRONTENDS).map((frontend) => ({
-        id: frontend.id.replace(/^frontend\//, ""),
+      // Each id is the value the matching option accepts.
+      frontends: Object.entries(FRONTENDS).map(([id, frontend]) => ({
+        id,
         summary: frontend.summary,
       })),
-      infrastructure: Object.values(INFRASTRUCTURE).map((infrastructure) => ({
-        id: infrastructure.id.replace(/^infrastructure\//, ""),
+      infrastructure: Object.entries(INFRASTRUCTURE).map(([id, infrastructure]) => ({
+        id,
         summary: infrastructure.summary,
       })),
       environments: ENVIRONMENTS,

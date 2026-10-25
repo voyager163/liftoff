@@ -201,7 +201,7 @@ describe("CLI-003 capabilities", () => {
     );
     expect(report.infrastructure).toEqual([
       {
-        id: "azure-opentofu",
+        id: "azure",
         summary: "Azure infrastructure as OpenTofu code, with a root per environment",
       },
     ]);

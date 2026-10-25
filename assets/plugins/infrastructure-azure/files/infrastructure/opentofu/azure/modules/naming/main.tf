@@ -24,11 +24,17 @@ variable "subscription_id" {
 }
 
 locals {
-  suffix  = substr(sha256("${var.subscription_id}/${var.project}"), 0, 6)
+  suffix = substr(sha256("${var.subscription_id}/${var.project}"), 0, 6)
+  # Some Azure names refuse "--", so each run of hyphens becomes one.
+  project = replace(var.project, "/-+/", "-")
   letters = replace(var.project, "-", "")
-  scope   = var.environment == "" ? var.project : "${var.project}-${var.environment}"
+  scope   = var.environment == "" ? local.project : "${local.project}-${var.environment}"
+  # Where a length limit applies, the project part is cut first, so the
+  # environment always stays in the name.
+  head     = replace(substr(local.project, 0, 40), "/-+$/", "")
+  env_head = var.environment == "" ? local.head : "${local.head}-${var.environment}"
   # Container app and job names allow at most 32 characters.
-  short = replace(substr(var.project, 0, 16), "/-+$/", "")
+  short = replace(substr(local.project, 0, 16), "/-+$/", "")
 }
 
 output "suffix" {
@@ -67,16 +73,16 @@ output "virtual_network" {
 }
 
 output "container_app_environment" {
-  value = "cae-${replace(substr(local.scope, 0, 56), "/-+$/", "")}"
+  value = "cae-${local.env_head}"
 }
 
 output "postgres_server" {
   description = "Globally unique: at most 63 lowercase letters, digits and hyphens."
-  value       = "psql-${replace(substr(local.scope, 0, 50), "/-+$/", "")}-${local.suffix}"
+  value       = "psql-${local.env_head}-${local.suffix}"
 }
 
 output "postgres_dns_zone" {
-  value = "${replace(substr(local.scope, 0, 50), "/-+$/", "")}.private.postgres.database.azure.com"
+  value = "${local.env_head}.private.postgres.database.azure.com"
 }
 
 output "api_app" {

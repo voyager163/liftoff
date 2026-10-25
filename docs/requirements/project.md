@@ -229,7 +229,13 @@ none of it.
   no standby in dev and staging, and General Purpose with a zone-redundant
   standby in prod.
 - Resource names come from the project, the environment and a hash of the
-  subscription, so globally unique names do not collide.
+  subscription. They follow Azure's naming rules for every project name
+  Liftoff accepts, runs of hyphens and the longest names included, and
+  globally unique names differ between environments.
+- Whoever applies bootstrap gets blob access to the state, which accepts
+  only Microsoft Entra ID. A PostgreSQL failover is not undone by the next
+  apply. With a frontend, nginx reaches the API over its internal HTTPS
+  address with the API's own host name.
 - Each root commits a provider lock pinning exactly its providers, with
   hashes for macOS arm64, Windows x64 and Linux x64.
 - CI checks formatting, validates every root against its lock and runs
@@ -245,7 +251,9 @@ Liftoff's CI generates projects with Azure infrastructure, for every
 environment with a frontend and for production alone without one, and checks
 that `tofu fmt` finds nothing to change, that every root initializes from
 its committed lock and validates, and that Checkov reports no findings
-except those skipped next to the resource with a reason.
+except those skipped next to the resource with a reason. It also evaluates
+the naming module for the shortest, longest and most hyphenated project
+names and checks every name against Azure's rules.
 
 Verification: live
 

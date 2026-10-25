@@ -38,6 +38,7 @@
     "lock:python": "node scripts/templates/lock-python.ts",
     "lock:node": "node scripts/templates/lock-node.ts",
     "lock:opentofu": "node scripts/templates/lock-opentofu.ts",
+    "check:azure-names": "node scripts/templates/check-azure-names.ts",
     "bundle": "node scripts/package/build-bundle.ts"
   },
   "dependencies": {

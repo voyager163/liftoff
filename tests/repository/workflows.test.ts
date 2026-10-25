@@ -244,6 +244,7 @@ describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {
     expect(runs).toContain("tofu fmt -check -recursive");
     expect(runs).toContain("-lockfile=readonly");
     expect(runs).toContain("checkov");
+    expect(runs).toContain("npm run check:azure-names");
     expect(ci?.jobs["ci-gate"]?.needs).toContain("infrastructure");
   });
 

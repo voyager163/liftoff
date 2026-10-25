@@ -160,6 +160,12 @@ resource "azurerm_postgresql_flexible_server" "main" {
     }
   }
 
+  lifecycle {
+    # After a failover the standby is the primary; keep it there rather than
+    # moving the server back on the next apply.
+    ignore_changes = [zone, high_availability[0].standby_availability_zone]
+  }
+
   depends_on = [azurerm_private_dns_zone_virtual_network_link.database]
 }
 
@@ -343,10 +349,11 @@ resource "azurerm_container_app" "web" {
       cpu    = 0.25
       memory = "0.5Gi"
 
-      # Apps in one environment reach each other by name.
+      # The API's internal HTTPS address: ingress routes by host name, which
+      # nginx sends along, and redirects plain HTTP.
       env {
         name  = "API_UPSTREAM"
-        value = "http://${azurerm_container_app.api.name}"
+        value = "https://${azurerm_container_app.api.ingress[0].fqdn}"
       }
 
       liveness_probe {

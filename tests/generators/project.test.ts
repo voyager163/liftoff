@@ -889,6 +889,25 @@ describe("PROJ-015 Azure infrastructure as OpenTofu code", () => {
     expect(root("dev")).toContain("web_image = var.web_image");
   });
 
+  it("grants state access, keeps a failover, and routes the frontend to the API in Azure", async () => {
+    const project = await byPath(azure);
+    const text = (file: string) => project.get(`${base}/${file}`)?.content ?? "";
+    expect(text("bootstrap/main.tf")).toContain(
+      'role_definition_name = "Storage Blob Data Contributor"',
+    );
+    expect(text("modules/app/main.tf")).toContain(
+      "ignore_changes = [zone, high_availability[0].standby_availability_zone]",
+    );
+    expect(text("modules/app/main.tf")).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: an OpenTofu expression, kept verbatim.
+      'value = "https://${azurerm_container_app.api.ingress[0].fqdn}"',
+    );
+    const nginx = project.get("frontend/nginx/default.conf.template")?.content ?? "";
+    expect(nginx).toContain("proxy_set_header Host $proxy_host;");
+    expect(nginx).toContain("proxy_ssl_server_name on;");
+    expect(nginx).not.toContain("proxy_set_header Host $host;");
+  });
+
   it("locks exactly the providers each root pins, for every platform", async () => {
     const project = await byPath(azure);
     const pins = (versions: string) =>

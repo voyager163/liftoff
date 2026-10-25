@@ -64,6 +64,15 @@ resource "azurerm_storage_account" "state" {
   }
 }
 
+# Whoever applies bootstrap can read and write the state, which takes Microsoft
+# Entra ID roles because keys are disabled. Grant others the same role on the
+# container.
+resource "azurerm_role_assignment" "state" {
+  scope                = azurerm_storage_container.state.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
 resource "azurerm_storage_container" "state" {
   #checkov:skip=CKV2_AZURE_21:Blob read logging needs a diagnostic setting and workspace the shared resources do not have.
   name                  = module.shared.state_container
