@@ -1,6 +1,6 @@
 import path from "node:path";
 import { CONFIG_FILE, type ProjectConfig, parseConfig } from "../../domain/project/config.ts";
-import type { ComponentPlugin, ProjectTool } from "../../plugins/contracts/project-plugin.ts";
+import type { ProjectTool } from "../../plugins/contracts/project-plugin.ts";
 import { resolveSelection } from "../../plugins/registry.ts";
 import type { ProjectFsPort, ToolPort } from "../ports.ts";
 
@@ -53,13 +53,13 @@ function meetsMinimum(version: number[], minimum: number[]): boolean {
 }
 
 /**
- * The tools a project's components need, each command once and required if
- * any component requires it. Components that share a tool ask for the same
- * minimum version, which a test checks.
+ * The tools a project's components and workflow need, each command once and
+ * required if any of them requires it. Components that share a tool ask for
+ * the same minimum version, which a test checks.
  */
-function projectTools(components: readonly ComponentPlugin[]): ProjectTool[] {
+function projectTools(needs: readonly { readonly tools: readonly ProjectTool[] }[]): ProjectTool[] {
   const byCommand = new Map<string, ProjectTool>();
-  for (const tool of components.flatMap((component) => component.tools)) {
+  for (const tool of needs.flatMap((need) => need.tools)) {
     const seen = byCommand.get(tool.command);
     byCommand.set(
       tool.command,
@@ -80,11 +80,18 @@ export async function runDoctor(
   let config: ProjectConfig | undefined;
   const text = await ports.fs.readText(path.join(directory, CONFIG_FILE));
   if (text !== undefined) config = parseConfig(text);
-  const tools = config ? projectTools(resolveSelection(config).components) : BASE_TOOLS;
+  const selection = config ? resolveSelection(config) : undefined;
+  const tools = selection
+    ? projectTools([...selection.components, selection.workflow])
+    : BASE_TOOLS;
 
   const checks: ToolCheck[] = [];
   for (const tool of tools) {
-    const output = await ports.tools.version(tool.command, tool.versionArgs);
+    let output: string | undefined;
+    for (const command of [tool.command, ...(tool.alternatives ?? [])]) {
+      output = await ports.tools.version(command, tool.versionArgs);
+      if (output !== undefined) break;
+    }
     const base = {
       name: tool.name,
       required: tool.required,

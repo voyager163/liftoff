@@ -1,4 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { statSync } from "node:fs";
+import path from "node:path";
 
 export interface RunOptions {
   readonly cwd: string;
@@ -28,10 +30,73 @@ export class ProcessError extends Error {
 
 const isWindows = process.platform === "win32";
 
+export interface Launch {
+  readonly command: string;
+  readonly args: readonly string[];
+  /** Pass the arguments to Windows exactly as given, already quoted. */
+  readonly verbatim: boolean;
+}
+
+/** An environment variable, whatever the case of its name, as Windows treats it. */
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
+  return key === undefined ? undefined : env[key];
+}
+
+/** Arguments cmd.exe passes on unchanged: no spaces, quotes or characters it interprets. */
+const PLAIN_ARGUMENT = /^[\w@.,:/\\=+-]+$/;
+
+/**
+ * How to start a command on Windows. Tools that npm installs, such as npx,
+ * are batch files, which only cmd.exe can run. Those are found on PATH and run
+ * through cmd.exe, and only with plain arguments, since cmd.exe would
+ * interpret quotes and other special characters. Anything else starts directly.
+ */
+export function windowsLaunch(
+  command: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  isFile: (file: string) => boolean,
+): Launch {
+  const direct: Launch = { command, args, verbatim: false };
+  if (/[\\/]/.test(command) || path.win32.extname(command) !== "") return direct;
+  const directories = (envValue(env, "PATH") ?? "").split(";").filter(Boolean);
+  const extensions = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
+  for (const directory of directories) {
+    for (const extension of extensions) {
+      const file = path.win32.join(directory, `${command}${extension}`);
+      if (!isFile(file)) continue;
+      if (!/^\.(bat|cmd)$/i.test(extension)) return direct;
+      const unsafe = args.find((arg) => !PLAIN_ARGUMENT.test(arg));
+      if (unsafe !== undefined || /["%]/.test(file)) {
+        throw new ProcessError(
+          `cannot run ${command} through cmd.exe with ${JSON.stringify(unsafe ?? file)}`,
+        );
+      }
+      // /s strips the outer quotes, leaving the quoted file and its arguments.
+      return {
+        command: envValue(env, "COMSPEC") ?? "cmd.exe",
+        args: ["/d", "/s", "/c", `""${file}"${args.map((arg) => ` ${arg}`).join("")}"`],
+        verbatim: true,
+      };
+    }
+  }
+  return direct;
+}
+
+const isFile = (file: string): boolean => {
+  try {
+    return statSync(file).isFile();
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Runs a program without a shell, with a time limit and bounded output. On
  * macOS the child leads its own process group so cancelling kills everything
- * it started; on Windows the tree is killed with taskkill /T.
+ * it started; on Windows the tree is killed with taskkill /T, and batch files
+ * run through cmd.exe (see windowsLaunch).
  */
 export function run(
   command: string,
@@ -48,16 +113,25 @@ export function run(
     }
     let child: ChildProcess;
     try {
-      child = spawn(command, args, {
+      const env = options.env ?? process.env;
+      const launch = isWindows
+        ? windowsLaunch(command, args, env, isFile)
+        : { command, args, verbatim: false };
+      child = spawn(launch.command, launch.args, {
         cwd: options.cwd,
-        env: options.env ?? process.env,
+        env,
         shell: false,
         windowsHide: true,
+        windowsVerbatimArguments: launch.verbatim,
         detached: !isWindows,
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {
-      reject(new ProcessError(`could not start ${command}: ${(error as Error).message}`));
+      reject(
+        error instanceof ProcessError
+          ? error
+          : new ProcessError(`could not start ${command}: ${(error as Error).message}`),
+      );
       return;
     }
 

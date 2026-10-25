@@ -83,6 +83,12 @@ const CASES: Record<string, Record<string, unknown>> = {
     agents: ["copilot"],
     review: { ai: true },
   },
+  "openspec-claude": { workflow: "openspec", agents: ["claude"], review: { ai: true } },
+  "spec-kit-codex-copilot": {
+    workflow: "spec-kit",
+    agents: ["codex", "copilot"],
+    review: { ai: true },
+  },
 };
 
 const files = async (overrides: Record<string, unknown> = {}) =>
@@ -126,6 +132,7 @@ describe("PROJ-004 deterministic, collision-free generation", () => {
         liftoffVersion: "0.0.0",
         hosts: [],
         profile: selection.profile,
+        workflow: selection.workflow,
         stack: selection.stack,
         pattern: selection.pattern,
         frontend: selection.frontend,
@@ -758,6 +765,7 @@ describe("PROJ-014 shared files are assembled from each component's parts", () =
       liftoffVersion: "0.0.0",
       hosts: [],
       profile: selection.profile,
+      workflow: selection.workflow,
       stack: selection.stack,
       pattern: undefined,
       frontend: undefined,

@@ -1,4 +1,5 @@
 import type { ChangedFile } from "../domain/risk-policy/classify.ts";
+import type { InitializerStep } from "../plugins/contracts/project-plugin.ts";
 
 /** Read-only view of the Git repository a command runs in. */
 export interface GitPort {
@@ -32,6 +33,13 @@ export interface AssetPort {
 
 export type PathState = "missing" | "empty-directory" | "directory" | "file";
 
+/** Something under a directory other than a directory: a regular file, or anything else such as a link. */
+export interface TreeEntry {
+  /** Relative POSIX path. */
+  readonly path: string;
+  readonly kind: "file" | "other";
+}
+
 /** File system access for creating a project. */
 export interface ProjectFsPort {
   state(path: string): Promise<PathState>;
@@ -43,6 +51,28 @@ export interface ProjectFsPort {
   /** Moves the staged directory to `target`, which must be missing or empty. */
   publish(staging: string, target: string): Promise<void>;
   remove(path: string): Promise<void>;
+  /** Every entry under a directory except the directories themselves, sorted; links are not followed. */
+  listTree(directory: string): Promise<TreeEntry[]>;
+}
+
+export interface InitializerOutcome {
+  /** False when the command could not be started at all, for example because it is not installed. */
+  readonly started: boolean;
+  readonly exitCode: number | null;
+  readonly timedOut: boolean;
+  /** The end of what it printed, for an error message. */
+  readonly output: string;
+}
+
+/** Runs a development framework's own pinned initializer. */
+export interface InitializerPort {
+  /**
+   * Runs one step in `directory` with telemetry off and with temporary
+   * configuration directories, so the user's own configuration is untouched.
+   */
+  run(step: InitializerStep, directory: string, signal?: AbortSignal): Promise<InitializerOutcome>;
+  /** Paths particular to this machine, such as the home directory, that a project's files must never contain. */
+  machinePaths(): readonly string[];
 }
 
 /** Reads a tool's version without changing anything. */

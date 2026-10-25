@@ -55,15 +55,15 @@ one.
 | `--frontend` | `none` | `none`, `vue` |
 | `--infrastructure` | `none` | `none`, `azure` |
 | `--environments` | all three with `--infrastructure` | any of `dev`, `staging`, `prod` |
-| `--workflow` | `openspec` | `manual` (OpenSpec and Spec Kit come later) |
+| `--workflow` | `openspec` | `openspec`, `spec-kit`, `manual`; see [specification workflows](projects/spec-workflows.md) |
 | `--agents` | none | any of `copilot`, `codex`, `claude` |
 | `--governance` | `single-maintainer-gitflow` | `single-maintainer-gitflow`, `team-gitflow`, `risk-tiered-gitflow`, `none` |
 | `--ai-review` | `auto` | `auto`, `on`, `off` |
 | `--owners` | none | GitHub logins, for CODEOWNERS and the review policy |
 
 Choosing something the product supports but this release cannot generate yet,
-such as the OpenSpec workflow, stops with exit code 6 and says what to use
-instead. See the [command reference](reference/cli.md) for every option.
+such as a frontend for a GenAI project, stops with exit code 6 and says what
+to use instead. See the [command reference](reference/cli.md) for every option.
 
 ### Governance profiles
 
@@ -112,8 +112,9 @@ uv run pytest
 from the project with `node` rather than through `npm run`, which would run
 them in the Liftoff checkout.
 
-- `liftoff doctor` checks the tools the project needs (uv and Git; Docker is
-  optional) and says how to install anything missing.
+- `liftoff doctor` checks the tools the project needs (for example uv, Git
+  and the OpenSpec CLI; Docker is optional) and says how to install anything
+  missing.
 - `liftoff validate` checks the project's configuration and the files
   Liftoff manages, and reports anything changed by hand.
 
@@ -128,4 +129,5 @@ See [Python API projects](projects/python-fastapi.md),
 what each file is for and who owns it, [the Vue frontend](projects/vue-frontend.md)
 for what `--frontend vue` adds, and
 [Azure infrastructure](projects/azure-infrastructure.md) for what
-`--infrastructure azure` adds.
+`--infrastructure azure` adds. [Specification workflows](projects/spec-workflows.md)
+covers OpenSpec, Spec Kit and manual development.

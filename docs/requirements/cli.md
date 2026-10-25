@@ -47,7 +47,9 @@ Verification: test
 
 Liftoff runs other programs without a shell, with a time limit and capped
 output. A timeout or cancellation kills the whole process tree, including
-grandchildren, on macOS and Windows.
+grandchildren, on macOS and Windows. On Windows, tools installed as batch
+files, such as `npx`, run through `cmd.exe`, and only with arguments
+`cmd.exe` passes on unchanged.
 
 - Given a child that starts a grandchild and hangs, when the time limit passes,
   then both processes are gone.

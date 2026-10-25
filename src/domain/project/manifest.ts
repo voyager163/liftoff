@@ -11,10 +11,13 @@ export const MANIFEST_SCHEMA = "liftoff.manifest/v1";
  * - managed: Liftoff keeps it current; local edits are reported as drift.
  * - seeded: written once by Liftoff, then owned by the project. Liftoff never
  *   overwrites it.
+ * - framework: written by a development framework's own initializer, such as
+ *   OpenSpec's, and owned by that framework. Liftoff never changes it and
+ *   does not report edits to it.
  * Ownership is what the manifest declares, never inferred from a path or a
  * matching hash.
  */
-export const OWNERSHIP = ["managed", "seeded"] as const;
+export const OWNERSHIP = ["managed", "seeded", "framework"] as const;
 export type Ownership = (typeof OWNERSHIP)[number];
 
 const sha256 = z.string().check(z.regex(/^[0-9a-f]{64}$/, "must be a sha256 hex digest"));

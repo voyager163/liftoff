@@ -1,5 +1,8 @@
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ProcessError, run } from "../../src/adapters/process.ts";
+import { ProcessError, run, windowsLaunch } from "../../src/adapters/process.ts";
 
 const node = process.execPath;
 const cwd = process.cwd();
@@ -95,5 +98,81 @@ describe("CLI-010 bounded child processes", () => {
 
   it("reports a missing program as a ProcessError", async () => {
     await expect(run("liftoff-no-such-program", [], { cwd })).rejects.toThrow(/could not start/);
+  });
+});
+
+describe("CLI-010 batch files on Windows", () => {
+  // Windows file names ignore case, and PATHEXT lists extensions in capitals.
+  const files =
+    (...present: string[]) =>
+    (file: string) =>
+      present.some((candidate) => candidate.toLowerCase() === file.toLowerCase());
+  const env = { Path: "C:\\Tools;C:\\Program Files\\nodejs", PATHEXT: ".COM;.EXE;.BAT;.CMD" };
+
+  it("runs a batch file found on PATH through cmd.exe", () => {
+    const launch = windowsLaunch(
+      "npx",
+      ["--yes", "@fission-ai/openspec@1.14.3", "--tools", "claude,codex", "."],
+      { ...env, ComSpec: "C:\\Windows\\system32\\cmd.exe" },
+      files("C:\\Program Files\\nodejs\\npx.cmd"),
+    );
+    expect(launch).toEqual({
+      command: "C:\\Windows\\system32\\cmd.exe",
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        '""C:\\Program Files\\nodejs\\npx.CMD" --yes @fission-ai/openspec@1.14.3 --tools claude,codex ."',
+      ],
+      verbatim: true,
+    });
+  });
+
+  it("starts programs and explicit paths directly", () => {
+    const direct = { command: "git", args: ["--version"], verbatim: false };
+    expect(windowsLaunch("git", ["--version"], env, files("C:\\Tools\\git.exe"))).toEqual(direct);
+    // The first directory with a match wins, as on Windows.
+    expect(
+      windowsLaunch(
+        "git",
+        ["--version"],
+        env,
+        files("C:\\Tools\\git.exe", "C:\\Program Files\\nodejs\\git.cmd"),
+      ),
+    ).toEqual(direct);
+    expect(windowsLaunch("C:\\x\\npx", [], env, files()).command).toBe("C:\\x\\npx");
+    expect(windowsLaunch("npx.cmd", [], env, files()).verbatim).toBe(false);
+    expect(windowsLaunch("missing", [], env, files()).command).toBe("missing");
+    expect(windowsLaunch("npx", [], {}, files()).command).toBe("npx");
+  });
+
+  it("refuses arguments cmd.exe would interpret", () => {
+    const npx = files("C:\\Tools\\npx.cmd");
+    for (const unsafe of ["two words", "a&b", "%PATH%", '"quoted"', "a|b", ""]) {
+      expect(() => windowsLaunch("npx", [unsafe], env, npx)).toThrow(ProcessError);
+    }
+    expect(() =>
+      windowsLaunch("npx", [], { Path: "C:\\100%" }, files("C:\\100%\\npx.cmd")),
+    ).toThrow(/cmd.exe/);
+  });
+
+  it("finds a tool on PATH and passes its arguments unchanged", async () => {
+    const bin = mkdtempSync(path.join(tmpdir(), "liftoff-bin-"));
+    try {
+      if (process.platform === "win32") {
+        writeFileSync(path.join(bin, "liftoff-echo.cmd"), "@echo off\r\necho %*\r\n");
+      } else {
+        writeFileSync(path.join(bin, "liftoff-echo"), '#!/bin/sh\necho "$@"\n');
+        chmodSync(path.join(bin, "liftoff-echo"), 0o755);
+      }
+      const result = await run("liftoff-echo", ["--tools", "claude,codex", "--x=1", "."], {
+        cwd,
+        env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}` },
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("--tools claude,codex --x=1 .");
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
   });
 });

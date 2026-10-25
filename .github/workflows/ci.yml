@@ -409,6 +409,77 @@ jobs:
       - name: Validate the generated project
         run: node src/cli/main.ts validate --dir "$RUNNER_TEMP/demo"
 
+  spec-workflows:
+    name: Spec workflow (${{ matrix.workflow }}, ${{ matrix.platform.name }})
+    # Runs each framework's real initializer at its pinned version, on the
+    # platforms the CLI supports and on Linux.
+    strategy:
+      fail-fast: false
+      matrix:
+        workflow: [openspec, spec-kit]
+        platform:
+          - name: Linux x64
+            os: ubuntu-latest
+          - name: macOS arm64
+            os: macos-15
+          - name: Windows x64
+            os: windows-latest
+        include:
+          - workflow: openspec
+            files: >-
+              openspec/config.yaml
+              .claude/skills/openspec-propose/SKILL.md
+              .agents/skills/openspec-propose/SKILL.md
+              .github/skills/openspec-propose/SKILL.md
+          - workflow: spec-kit
+            files: >-
+              .specify/memory/constitution.md
+              .claude/skills/speckit-specify/SKILL.md
+              .agents/skills/speckit-specify/SKILL.md
+              .github/skills/speckit-specify/SKILL.md
+    runs-on: ${{ matrix.platform.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      WORKFLOW: ${{ matrix.workflow }}
+      FILES: ${{ matrix.files }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.1"
+      - run: npm ci
+      - name: Create the project with the framework's own initializer
+        run: >-
+          node src/cli/main.ts init --name demo --workflow "$WORKFLOW"
+          --agents copilot,codex,claude --owners voyager163
+          --dir "$RUNNER_TEMP/demo" --yes
+      - name: Check the framework's files are there and recorded as its own
+        working-directory: ${{ runner.temp }}/demo
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const manifest = JSON.parse(fs.readFileSync(".liftoff/manifest.json", "utf8"));
+            const owned = new Set(
+              manifest.files
+                .filter((f) => f.ownership === "framework" && f.plugin === "workflow/" + process.env.WORKFLOW)
+                .map((f) => f.path),
+            );
+            const missing = process.env.FILES.split(" ").filter((p) => !owned.has(p) || !fs.existsSync(p));
+            console.log(owned.size + " files recorded as the framework\x27s own");
+            if (missing.length > 0) { console.error("missing: " + missing.join(", ")); process.exit(1); }
+          '
+      - name: Validate the generated project
+        run: node src/cli/main.ts validate --dir "$RUNNER_TEMP/demo"
+
   infrastructure:
     name: Generated infrastructure (${{ matrix.case.name }})
     # Generated OpenTofu code is formatted, validated against its committed
@@ -528,7 +599,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [static, test, generated, services, genai, infrastructure, package]
+    needs: [static, test, generated, services, genai, spec-workflows, infrastructure, package]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

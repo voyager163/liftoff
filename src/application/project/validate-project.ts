@@ -132,6 +132,8 @@ export async function validateProject(
   }
 
   for (const file of manifest.files) {
+    // Framework files belong to the framework, which may change or remove them.
+    if (file.ownership === "framework") continue;
     const state = await fs.state(path.join(directory, ...file.path.split("/")));
     if (state === "directory" || state === "empty-directory") {
       findings.push({

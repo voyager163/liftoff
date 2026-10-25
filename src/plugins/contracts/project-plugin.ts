@@ -31,6 +31,7 @@ export interface GenerationContext {
   readonly liftoffVersion: string;
   readonly hosts: readonly AgentHostId[];
   readonly profile: ProfileId;
+  readonly workflow: WorkflowPlugin;
   readonly stack: StackPlugin;
   /** The selected GenAI pattern, for GenAI projects. */
   readonly pattern: PatternPlugin | undefined;
@@ -75,6 +76,8 @@ export interface ProjectPlugin {
 export interface ProjectTool {
   readonly name: string;
   readonly command: string;
+  /** Other commands that provide the same tool, tried in order when `command` cannot run. */
+  readonly alternatives?: readonly string[];
   readonly versionArgs: readonly string[];
   readonly required: boolean;
   /** Lowest version that works, as dotted numbers. */
@@ -155,6 +158,42 @@ export interface PatternPlugin extends ComponentPlugin {
 export interface FrontendPlugin extends ComponentPlugin {
   readonly kind: "frontend";
   readonly codeql: CodeqlLanguage;
+}
+
+/** One command of a framework's initializer, run in the new project's directory. */
+export interface InitializerStep {
+  readonly command: string;
+  readonly args: readonly string[];
+}
+
+/** A development framework's own pinned initializer, which writes the framework's files. */
+export interface WorkflowInitializer {
+  /** The framework's name, such as "OpenSpec". */
+  readonly name: string;
+  /** The exact version it runs. */
+  readonly version: string;
+  /** What has to be installed to run it, for the message when it cannot start. */
+  readonly needs: string;
+  /** The commands to run, in order, for the selected coding-agent hosts. */
+  steps(hosts: readonly AgentHostId[]): InitializerStep[];
+}
+
+/**
+ * How changes are specified before they are built: OpenSpec, Spec Kit or
+ * manual. A framework's files come from its own initializer, never from a
+ * copy kept by Liftoff.
+ */
+export interface WorkflowPlugin extends ProjectPlugin {
+  readonly kind: "workflow";
+  /** The workflow's name for people, such as "OpenSpec". */
+  readonly title: string;
+  /** Tools the workflow needs on the developer's machine, checked by `liftoff doctor`. */
+  readonly tools: readonly ProjectTool[];
+  /** How to work with it, as Markdown paragraphs for README and AGENTS.md; empty for none. */
+  readonly guide: readonly string[];
+  readonly initializer?: WorkflowInitializer;
+  /** Why it cannot be used with these hosts, if it cannot. */
+  unsupportedHosts?(hosts: readonly AgentHostId[]): string | undefined;
 }
 
 /** The deployment environments infrastructure can be generated for, in promotion order. */

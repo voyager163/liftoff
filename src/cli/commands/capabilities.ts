@@ -8,7 +8,6 @@ import {
   GOVERNANCE,
   INFRASTRUCTURE,
   PATTERNS,
-  PLANNED_WORKFLOWS,
   STACKS,
   WORKFLOWS,
   WORKLOADS,
@@ -67,10 +66,19 @@ export const capabilitiesCommand: CommandSpec = {
         summary: infrastructure.summary,
       })),
       environments: ENVIRONMENTS,
-      workflows: [
-        ...Object.keys(WORKFLOWS).map((id) => ({ id, available: true })),
-        ...Object.keys(PLANNED_WORKFLOWS).map((id) => ({ id, available: false })),
-      ],
+      workflows: Object.entries(WORKFLOWS).map(([id, workflow]) => ({
+        id,
+        available: true,
+        summary: workflow.summary,
+        ...(workflow.initializer
+          ? {
+              initializer: {
+                name: workflow.initializer.name,
+                version: workflow.initializer.version,
+              },
+            }
+          : {}),
+      })),
       defaultWorkflow: DEFAULT_WORKFLOW,
       agents: Object.values(AGENT_HOSTS).map((host) => ({ id: host.id, name: host.displayName })),
       governanceProfiles: Object.values(PROFILES).map((profile) => ({

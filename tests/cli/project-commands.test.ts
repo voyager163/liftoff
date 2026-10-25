@@ -3,9 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CommandSpec } from "../../src/cli/command.ts";
+import { makeInitCommand } from "../../src/cli/commands/plan-init.ts";
+import { defaultProjectPorts } from "../../src/cli/commands/project-ports.ts";
 import { makeDoctorCommand } from "../../src/cli/commands/validate-doctor.ts";
 import { REGISTRY } from "../../src/cli/registry.ts";
 import { runCli } from "../../src/cli/run.ts";
+import { FakeInitializer } from "../helpers/initializer.ts";
 import { captureIo } from "../helpers/io.ts";
 
 let work: string;
@@ -119,6 +122,81 @@ describe("INIT-001 plan changes nothing but the plan file", () => {
   });
 });
 
+describe("PROJ-020 the command line runs the workflow's own initializer", () => {
+  const OPENSPEC = ["--name", "demo", "--agents", "claude"];
+  const init = (initializer: FakeInitializer) => [
+    makeInitCommand((cwd) => ({ ...defaultProjectPorts(cwd), initializer })),
+  ];
+
+  it("shows the initializer and its exact command in the plan", async () => {
+    const { code, out } = await exec(["plan", ...OPENSPEC]);
+    expect(code).toBe(0);
+    expect(out).toContain("workflow openspec");
+    expect(out).toContain("Effects: write-files, run-initializer\n");
+    expect(out).toContain("runs OpenSpec 1.14.3's own initializer");
+    expect(out).toContain(
+      "    npx --yes @fission-ai/openspec@1.14.3 init --tools claude --no-animation --no-copilot-cloud .\n",
+    );
+    expect(out).toContain("nothing else is installed, run or sent anywhere");
+  });
+
+  it("asks before running it and counts the framework's files", async () => {
+    const initializer = new FakeInitializer(() => ({
+      files: { "openspec/config.yaml": "schema: spec-driven\n" },
+    }));
+    const declined = await exec(["init", ...OPENSPEC], false, init(initializer));
+    expect(declined.questions[0]).toMatch(/^Create \d+ files and run OpenSpec's initializer in /);
+    expect(initializer.runs).toEqual([]);
+
+    const { code, out } = await exec(
+      ["init", ...OPENSPEC, "--yes", "--json"],
+      undefined,
+      init(initializer),
+    );
+    expect(code).toBe(0);
+    expect(JSON.parse(out)).toMatchObject({ created: true, frameworkFiles: 1 });
+    const text = await exec(
+      ["init", ...OPENSPEC, "--dir", "again", "--yes"],
+      undefined,
+      init(initializer),
+    );
+    expect(text.out).toMatch(
+      /^Created \d+ files in .*again, 1 of them by OpenSpec's initializer\./,
+    );
+  });
+
+  it("fails with the initializer's output and creates nothing", async () => {
+    const initializer = new FakeInitializer(() => ({
+      outcome: { exitCode: 2, output: "npm error network" },
+    }));
+    const { code, err } = await exec(["init", ...OPENSPEC, "--yes"], undefined, init(initializer));
+    expect(code).toBe(1);
+    expect(err).toContain(
+      "OpenSpec 1.14.3's initializer failed with exit code 2:\nnpm error network",
+    );
+    expect(readdirSync(work)).toEqual([]);
+  });
+
+  it("lists every workflow and its initializer in capabilities", async () => {
+    const { out } = await exec(["capabilities", "--json"]);
+    const report = JSON.parse(out);
+    expect(report.defaultWorkflow).toBe("openspec");
+    expect(report.workflows).toEqual([
+      expect.objectContaining({
+        id: "openspec",
+        available: true,
+        initializer: { name: "OpenSpec", version: "1.14.3" },
+      }),
+      expect.objectContaining({
+        id: "spec-kit",
+        available: true,
+        initializer: { name: "Spec Kit", version: "1.2.1" },
+      }),
+      { id: "manual", available: true, summary: "No specification framework" },
+    ]);
+  });
+});
+
 describe("INIT-003 init asks before writing", () => {
   it("asks, and writes nothing when the answer is no", async () => {
     const { code, out, questions } = await exec(["init", ...PROJECT], false);
@@ -153,7 +231,7 @@ describe("INIT-003 init asks before writing", () => {
 
 describe("PROJ-003 selection errors map to exit codes", () => {
   it.each([
-    [["plan", "--name", "demo"], 6, "OpenSpec workflow is not available"],
+    [["plan", "--name", "demo", "--workflow", "spec-kit"], 2, "Spec Kit needs at least one"],
     [
       ["plan", "--name", "demo", "--workflow", "manual", "--stack", "cobol"],
       2,
@@ -254,6 +332,7 @@ describe("DOCTOR-001 doctor from the command line", () => {
       assets: undefined as never,
       fs: { state: async () => "missing", readText: async () => undefined } as never,
       tools: { version: async (command) => versions[command] },
+      initializer: undefined as never,
     }));
 
   it("is ready when the tools are present", async () => {
