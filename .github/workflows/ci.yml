@@ -325,6 +325,8 @@ jobs:
           done
           echo "readiness through the frontend: $ready"
           test "$ready" = 200
+          # The browser test saved an item, which the moved API still lists.
+          curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/api/items | grep -q '"name"'
       - name: Show the Compose logs
         if: failure()
         working-directory: ${{ runner.temp }}/demo
