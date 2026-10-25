@@ -142,6 +142,7 @@ Multi-step work run in the background, through messaging and a worker.
 - Workflows started with one request and run by a worker: a draft, then a review
 - Messaging and worker boundaries with in-process adapters
 - Each workflow's status and result
+- A bounded number of workflows: new ones are refused while all are in progress, never dropped
 
 What it does not do yet:
 

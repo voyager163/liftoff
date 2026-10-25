@@ -5,7 +5,10 @@ worker picks it up through the message bus and runs its steps: a drafting
 agent writes a draft, then a reviewing agent returns the final version.
 ``GET /v1/workflows/{id}`` reports the status, each step's output and the
 result. Workflows and messages live in memory: see ``app/ports`` for the
-boundaries to replace for durable, retried work.
+boundaries to replace for durable, retried work. At most ``MAX_WORKFLOWS``
+are kept: the oldest finished ones are forgotten first, and while every one
+is still queued or running, new workflows are refused with 503 rather than
+dropping work that was accepted.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ TOPIC = "workflow.started"
 MAX_WORKFLOWS = 1000
 
 Status = Literal["queued", "running", "succeeded", "failed"]
+FINISHED: tuple[Status, ...] = ("succeeded", "failed")
 
 
 class Workflow(BaseModel):
@@ -53,7 +57,7 @@ def install(app: FastAPI, settings: Settings, model: Model, bus: MessageBus | No
 
     async def handle(message: Message) -> None:
         workflow = workflows.get(message["id"])
-        if workflow is None:  # Forgotten before the worker got to it.
+        if workflow is None:  # Not a workflow this process started.
             return
         workflow.status = "running"
         request = inputs.pop(workflow.id, "")
@@ -76,14 +80,22 @@ def install(app: FastAPI, settings: Settings, model: Model, bus: MessageBus | No
     app.state.readiness["worker"] = lambda: worker.alive
     router = APIRouter(prefix="/v1/workflows", tags=["workflow"])
 
-    @router.post("", status_code=202)
+    def make_room() -> bool:
+        """Forgets the oldest finished workflows until one more fits; False if none has finished."""
+        while len(workflows) >= MAX_WORKFLOWS:
+            oldest = next((key for key, w in workflows.items() if w.status in FINISHED), None)
+            if oldest is None:
+                return False
+            del workflows[oldest]
+        return True
+
+    @router.post("", status_code=202, responses={503: {"description": "Too much work in progress"}})
     async def start(request: StartRequest) -> Workflow:
+        if not make_room():
+            raise HTTPException(503, "Too many workflows are queued or running; try again later.")
         workflow = Workflow(id=uuid4().hex, status="queued")
         workflows[workflow.id] = workflow
         inputs[workflow.id] = request.input
-        while len(workflows) > MAX_WORKFLOWS:
-            forgotten, _ = workflows.popitem(last=False)
-            inputs.pop(forgotten, None)
         await messages.publish(TOPIC, {"id": workflow.id})
         return workflow
 

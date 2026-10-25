@@ -1,10 +1,11 @@
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from app.config import Settings
 from app.main import create_app
-from app.pattern import InMemoryConversations, trim
+from app.pattern import InMemoryConversations, install, trim
 from app.ports.model import OFFLINE_ANSWER
 
 
@@ -53,11 +54,30 @@ def test_the_store_forgets_the_oldest_conversations() -> None:
     store = InMemoryConversations(max_conversations=2)
     first = store.create()
     second = store.create()
-    store.save(first, [])
+    assert store.save(first, [])
     third = store.create()
     assert store.history(second) is None
     assert store.history(first) == []
     assert store.history(third) == []
+
+
+def test_a_forgotten_conversation_is_never_saved_again() -> None:
+    store = InMemoryConversations(max_conversations=1)
+
+    def answer(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        # Another conversation starts while this reply is written.
+        store.create()
+        return ModelResponse(parts=[TextPart("late")])
+
+    app = FastAPI()
+    install(app, Settings(), FunctionModel(answer), store)
+    with TestClient(app) as client:
+        conversation = client.post("/v1/conversations").json()["id"]
+        response = client.post(f"/v1/conversations/{conversation}/messages", json={"content": "Hi"})
+        assert response.status_code == 404
+        assert client.get(f"/v1/conversations/{conversation}").status_code == 404
+    assert len(store._conversations) == 1
+    assert not store.save(conversation, [])
 
 
 def test_history_is_trimmed_to_start_with_a_request() -> None:

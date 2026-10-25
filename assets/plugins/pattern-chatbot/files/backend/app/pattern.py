@@ -32,7 +32,9 @@ class ConversationStore(Protocol):
 
     def history(self, conversation_id: str) -> list[ModelMessage] | None: ...
 
-    def save(self, conversation_id: str, messages: list[ModelMessage]) -> None: ...
+    def save(self, conversation_id: str, messages: list[ModelMessage]) -> bool:
+        """Stores the history; False if the conversation is gone, which is never recreated."""
+        ...
 
 
 def trim(messages: list[ModelMessage], limit: int) -> list[ModelMessage]:
@@ -64,9 +66,14 @@ class InMemoryConversations:
         messages = self._conversations.get(conversation_id)
         return None if messages is None else list(messages)
 
-    def save(self, conversation_id: str, messages: list[ModelMessage]) -> None:
+    def save(self, conversation_id: str, messages: list[ModelMessage]) -> bool:
+        # A conversation forgotten while its reply was written stays forgotten,
+        # so the store never holds more than max_conversations.
+        if conversation_id not in self._conversations:
+            return False
         self._conversations[conversation_id] = trim(messages, self.max_messages)
         self._conversations.move_to_end(conversation_id)
+        return True
 
 
 class Conversation(BaseModel):
@@ -134,7 +141,8 @@ def install(
         result = await within(
             settings.model_timeout_seconds, agent.run(request.content, message_history=before)
         )
-        conversations.save(conversation_id, result.all_messages())
+        if not conversations.save(conversation_id, result.all_messages()):
+            raise HTTPException(404, "The conversation was forgotten while the reply was written.")
         return Reply(reply=result.output)
 
     app.include_router(router)

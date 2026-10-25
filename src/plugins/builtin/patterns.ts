@@ -164,6 +164,7 @@ export const PATTERN_LIST: readonly PatternPlugin[] = [
         "Workflows started with one request and run by a worker: a draft, then a review",
         "Messaging and worker boundaries with in-process adapters",
         "Each workflow's status and result",
+        "A bounded number of workflows: new ones are refused while all are in progress, never dropped",
       ],
       notImplemented: [
         "Durability: messages and workflows live in memory and are lost on restart",

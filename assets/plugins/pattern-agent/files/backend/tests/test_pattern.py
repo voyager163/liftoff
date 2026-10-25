@@ -38,6 +38,11 @@ def test_calculates(expression: str, result: str) -> None:
     [
         ("__import__('os')", "only numbers"),
         ("2 ** 1000", "exponents above 100"),
+        ("((((9 ** 100) ** 100) ** 100) ** 100) ** 100", "numbers above 10 ** 100"),
+        ("10 ** 100 * 10", "numbers above 10 ** 100"),
+        ("1e999", "numbers above 10 ** 100"),
+        ("(-8) ** 0.5", "complex results"),
+        ("1 + " * 100 + "1", "longer than 200 characters"),
         ("1 / 0", "division by zero"),
         ("2 +", "invalid syntax"),
         ("'a' * 3", "only numbers"),

@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 
 import pytest
@@ -6,6 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from app import pattern
 from app.config import Settings
 from app.main import create_app
 from app.ports.messaging import InMemoryMessageBus, Message
@@ -53,6 +55,32 @@ def test_a_failing_step_fails_the_workflow_not_the_worker() -> None:
         assert client.get("/health/ready").status_code == 200
     assert body["status"] == "failed"
     assert body["error"] == "RuntimeError"
+
+
+def test_accepted_workflows_are_kept_until_they_finish(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pattern, "MAX_WORKFLOWS", 2)
+    release = threading.Event()
+
+    async def slow(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        while not release.is_set():
+            await asyncio.sleep(0.01)
+        return ModelResponse(parts=[TextPart("done")])
+
+    with TestClient(create_app(settings=Settings(), model=FunctionModel(slow))) as client:
+        first = client.post("/v1/workflows", json={"input": "one"}).json()["id"]
+        second = client.post("/v1/workflows", json={"input": "two"}).json()["id"]
+        # Both are still queued or running, so a third is refused, not dropped.
+        refused = client.post("/v1/workflows", json={"input": "three"})
+        assert refused.status_code == 503
+        release.set()
+        assert finished(client, first)["status"] == "succeeded"
+        assert finished(client, second)["status"] == "succeeded"
+        # Now the oldest finished workflow makes room.
+        third = client.post("/v1/workflows", json={"input": "three"})
+        assert third.status_code == 202
+        assert client.get(f"/v1/workflows/{first}").status_code == 404
+        assert client.get(f"/v1/workflows/{second}").json()["status"] == "succeeded"
+        assert finished(client, third.json()["id"])["status"] == "succeeded"
 
 
 def test_unknown_workflows_are_not_found(client: TestClient) -> None:

@@ -34,25 +34,40 @@ OPERATORS: dict[type, Callable[..., float]] = {
     ast.USub: operator.neg,
     ast.UAdd: operator.pos,
 }
+# Every number, including each intermediate result, stays within these
+# limits, so no expression can make the API compute a huge number: the
+# largest power that is ever computed is (10 ** 100) ** 100.
 MAX_EXPONENT = 100
+MAX_MAGNITUDE = 10**100
+MAX_LENGTH = 200
+
+
+def bounded(value: float) -> float:
+    if isinstance(value, complex):
+        raise ValueError("complex results are not supported")
+    if abs(value) > MAX_MAGNITUDE:
+        raise ValueError("numbers above 10 ** 100 are not allowed")
+    return value
 
 
 def evaluate(node: ast.AST) -> float:
     if isinstance(node, ast.Constant) and type(node.value) in (int, float):
-        return node.value
+        return bounded(node.value)
     if isinstance(node, ast.UnaryOp) and type(node.op) in OPERATORS:
-        return OPERATORS[type(node.op)](evaluate(node.operand))
+        return bounded(OPERATORS[type(node.op)](evaluate(node.operand)))
     if isinstance(node, ast.BinOp) and type(node.op) in OPERATORS:
         left, right = evaluate(node.left), evaluate(node.right)
         if isinstance(node.op, ast.Pow) and abs(right) > MAX_EXPONENT:
             raise ValueError(f"exponents above {MAX_EXPONENT} are not allowed")
-        return OPERATORS[type(node.op)](left, right)
+        return bounded(OPERATORS[type(node.op)](left, right))
     raise ValueError("only numbers, + - * / // % ** and parentheses are allowed")
 
 
 def calculate(expression: str) -> str:
     """Evaluates an arithmetic expression, such as "(2 + 3) * 4"."""
     try:
+        if len(expression) > MAX_LENGTH:
+            raise ValueError(f"expressions longer than {MAX_LENGTH} characters are not allowed")
         return str(evaluate(ast.parse(expression, mode="eval").body))
     except (SyntaxError, ValueError, ZeroDivisionError, OverflowError) as error:
         # Reported to the model, which can correct the expression.
