@@ -26,7 +26,7 @@ function readRequirements(): Requirement[] {
   const requirements: Requirement[] = [];
   for (const file of walk(path.join(root, "docs/requirements"), (f) => f.endsWith(".md"))) {
     const text = readFileSync(file, "utf8").replace(/^```[\s\S]*?^```/gm, "");
-    const sections = text.split(/^### /m).slice(1);
+    const sections = text.split(/^## /m).slice(1);
     for (const section of sections) {
       const id = /^([A-Z]{2,12}-\d{3}) /.exec(section)?.[1];
       if (!id) continue;

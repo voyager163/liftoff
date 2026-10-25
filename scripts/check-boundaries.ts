@@ -14,6 +14,7 @@ const IO_MODULES =
 const ENTRY_POINTS = [
   "src/cli/main.ts",
   "src/ci/review-policy-entry.ts",
+  "src/ci/governance-drift-entry.ts",
   "scripts/render-own-skills.ts",
 ];
 
@@ -97,7 +98,10 @@ for (const [input, info] of Object.entries(result.metafile.inputs)) {
     info.imports.map((entry) => entry.path),
   );
 }
-if (graph.size === 0 || graph.size < files.length + ENTRY_POINTS.length - 2) {
+if (
+  graph.size === 0 ||
+  graph.size < files.length + ENTRY_POINTS.filter((entry) => !entry.startsWith("src/")).length
+) {
   console.error(`boundaries: expected ${files.length} modules in the graph, found ${graph.size}`);
   process.exit(1);
 }

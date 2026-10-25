@@ -1,6 +1,6 @@
 # Command line
 
-### CLI-001 One registry drives every command
+## CLI-001 One registry drives every command
 
 Every command is declared once in the command registry. Parsing, `--help`,
 `liftoff help <command>`, `liftoff capabilities --json` and the CLI reference
@@ -13,7 +13,7 @@ exist.
 
 Verification: test
 
-### CLI-002 Strict arguments and fixed exit codes
+## CLI-002 Strict arguments and fixed exit codes
 
 Unknown options, stray positional arguments, missing or empty values and values
 outside a declared set are usage errors. Exit codes are fixed:
@@ -33,7 +33,7 @@ errors (`schema: "liftoff.error/v1"`); diagnostics go to stderr.
 
 Verification: test
 
-### CLI-003 Capability discovery
+## CLI-003 Capability discovery
 
 `liftoff capabilities --json` lists every command with its options, whether it
 is read-only and its report schema, plus the exit codes and governance profiles.
@@ -41,7 +41,7 @@ It never writes anything, contacts no network service and sends no telemetry.
 
 Verification: test
 
-### CLI-010 Bounded child processes
+## CLI-010 Bounded child processes
 
 Liftoff runs other programs without a shell, with a time limit and capped
 output. A timeout or cancellation kills the whole process tree, including

@@ -15,10 +15,20 @@ link the issue where the maintainer invited this change. -->
 
 <!-- Explain the problem and how this change solves it. -->
 
-## Validation
+## Testing
 
-<!-- List the checks you ran and their actual results. If a check was not run,
-say why. -->
+<!-- The checks you ran and their actual results, for example the output of
+`npm run check`. If a check was not run, say why. -->
+
+## Risk
+
+<!-- The tier from `liftoff review classify`, what could go wrong after
+merging, and who or what it would affect. -->
+
+## How to revert
+
+<!-- The exact steps, for example "revert this commit". Say so if reverting
+needs more than a revert, such as a data migration or a published package. -->
 
 ## Limitations and review notes
 

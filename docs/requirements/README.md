@@ -8,7 +8,7 @@ specification framework: the files are read by people, coding agents and
 ## Format
 
 ```markdown
-### AREA-001 Short title
+## AREA-001 Short title
 
 Statement of the requirement.
 

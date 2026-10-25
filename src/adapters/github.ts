@@ -38,6 +38,14 @@ export class GitHubClient {
     return (await response.json()) as T;
   }
 
+  async post<T>(route: string, body: unknown): Promise<T> {
+    const response = await this.request(`${this.apiUrl}${route}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return (await response.json()) as T;
+  }
+
   /** Fetches every page of a list endpoint, refusing to go past `maxItems`. */
   async list<T>(route: string, maxItems: number): Promise<T[]> {
     const items: T[] = [];
@@ -56,15 +64,17 @@ export class GitHubClient {
     return items;
   }
 
-  private async request(url: string): Promise<Response> {
+  private async request(url: string, write?: { method: "POST"; body: string }): Promise<Response> {
     let response: Response;
     try {
       response = await this.fetchImpl(url, {
+        ...(write ?? {}),
         headers: {
           accept: "application/vnd.github+json",
           authorization: `Bearer ${this.token}`,
           "x-github-api-version": "2022-11-28",
           "user-agent": "liftoff",
+          ...(write ? { "content-type": "application/json" } : {}),
         },
         redirect: "error",
         signal: AbortSignal.timeout(this.timeoutMs),

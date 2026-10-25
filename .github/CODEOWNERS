@@ -10,3 +10,15 @@
 /LICENSE @voyager163
 /SECURITY.md @voyager163
 /SUPPORT.md @voyager163
+
+# Instructions AI reviewers and coding agents read.
+/AGENTS.md @voyager163
+/CLAUDE.md @voyager163
+/REVIEW.md @voyager163
+/.claude/ @voyager163
+
+# Review and governance rules that generated projects inherit.
+/assets/skills/ @voyager163
+/assets/agents/ @voyager163
+/src/domain/risk-policy/ @voyager163
+/src/ci/ @voyager163

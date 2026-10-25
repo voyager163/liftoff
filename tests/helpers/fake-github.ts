@@ -10,6 +10,19 @@ export interface FakePullRequest {
     submitted_at?: string;
   }[];
   permissions: Record<string, string>;
+  /** Served for GET /repos/:repo/pulls/:number (workflow_dispatch runs). */
+  pull?: {
+    number: number;
+    state: string;
+    head: { sha: string };
+    base: { ref: string };
+    user: { login: string };
+  };
+}
+
+export interface PostedStatus {
+  sha: string;
+  body: { state: string; context: string; description: string; target_url?: string };
 }
 
 /**
@@ -21,8 +34,14 @@ export async function startFakeGitHub(
   number: number,
   pr: FakePullRequest,
   pageSize = 100,
-): Promise<{ url: string; requests: string[]; close: () => Promise<void> }> {
+): Promise<{
+  url: string;
+  requests: string[];
+  statuses: PostedStatus[];
+  close: () => Promise<void>;
+}> {
   const requests: string[] = [];
+  const statuses: PostedStatus[] = [];
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     requests.push(`${req.headers.authorization ?? ""} ${url.pathname}${url.search}`);
@@ -47,6 +66,20 @@ export async function startFakeGitHub(
       );
     };
 
+    const status = new RegExp(`^/repos/${repository}/statuses/([0-9a-z]+)$`).exec(url.pathname);
+    if (req.method === "POST" && status) {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        statuses.push({
+          sha: status[1] ?? "",
+          body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+        });
+        send(201, { id: statuses.length });
+      });
+      return;
+    }
+    if (url.pathname === base && pr.pull) return send(200, pr.pull);
     if (url.pathname === `${base}/files`) return page(pr.files);
     if (url.pathname === `${base}/reviews`) return page(pr.reviews);
     const permission = new RegExp(`^/repos/${repository}/collaborators/([^/]+)/permission$`).exec(
@@ -64,6 +97,7 @@ export async function startFakeGitHub(
   return {
     url: `http://127.0.0.1:${port}`,
     requests,
+    statuses,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
