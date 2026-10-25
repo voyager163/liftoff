@@ -208,7 +208,9 @@ describe("DOCTOR-001 doctor from the command line", () => {
     expect(text.out).toContain("install: https://git-scm.com/downloads");
   });
 
-  it("checks a real project's stack", async () => {
+  // Runs the real version commands (each capped at 10 seconds), which can take
+  // several seconds in total on Windows runners.
+  it("checks a real project's stack", { timeout: 30_000 }, async () => {
     await exec(["init", ...PROJECT, "--yes"]);
     const { out } = await exec(["doctor", "--dir", "demo"]);
     expect(out).toContain("Tools for demo (python-fastapi):");
