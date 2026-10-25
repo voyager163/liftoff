@@ -285,6 +285,16 @@ describe("REVIEW-006 approvals", () => {
     expect(result.approvers).toEqual([]);
   });
 
+  it("needs two different people for two approvals, in any letter case", () => {
+    const twice = evaluate(
+      [review({ submittedAt: 1 }), review({ reviewer: "Bob", submittedAt: 2 })],
+      2,
+    );
+    expect(twice).toMatchObject({ approvers: ["Bob"], satisfied: false });
+    const two = evaluate([review({}), review({ reviewer: "carol" })], 2);
+    expect(two).toMatchObject({ approvers: ["bob", "carol"], satisfied: true });
+  });
+
   it("keeps an approval after a later comment", () => {
     const result = evaluate([
       review({ submittedAt: 1 }),

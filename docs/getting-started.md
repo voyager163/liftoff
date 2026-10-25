@@ -90,8 +90,7 @@ rather than a collaborator set on getting around them. GOVERNANCE.md in the
 project says how to enforce a higher count natively.
 
 These two profiles are generated and tested, but their approval rules have
-not yet been observed on GitHub with a real second reviewer, so they are not
-yet qualified.
+not yet been observed on a GitHub repository, so they are not yet qualified.
 
 ## Check the project
 
