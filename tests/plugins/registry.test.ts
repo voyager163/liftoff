@@ -73,6 +73,17 @@ describe("PROJ-003 selections are checked first", () => {
     }
   });
 
+  it("puts a GenAI project's pattern after its stack", () => {
+    const selection = resolveSelection(
+      config({ workload: "genai", stack: "python-pydanticai", pattern: "multi-agent" }),
+    );
+    expect(selection.pattern?.id).toBe("pattern/multi-agent");
+    expect(selection.components.map((c) => c.id)).toEqual([
+      "stack/python-pydanticai",
+      "pattern/multi-agent",
+    ]);
+  });
+
   it("orders environments dev, staging, prod and puts the infrastructure last", () => {
     const selection = resolveSelection(
       config({ frontend: "vue", infrastructure: "azure", environments: ["prod", "dev"] }),
@@ -98,7 +109,7 @@ describe("PROJ-003 selections are checked first", () => {
   });
 
   it.each([
-    [{ workload: "genai" }, /unknown workload "genai"/, false],
+    [{ workload: "batch" }, /unknown workload "batch"/, false],
     [{ stack: "rust-axum" }, /unknown stack "rust-axum"/, false],
     [{ frontend: "react" }, /unknown frontend "react"; available: none, vue/, false],
     [
@@ -113,6 +124,34 @@ describe("PROJ-003 selections are checked first", () => {
     ],
     [{ infrastructure: "azure" }, /azure infrastructure needs at least one environment/, false],
     [{ environments: ["dev"] }, /environments need infrastructure/, false],
+    [{ pattern: "rag" }, /patterns are for genai projects, not api projects/, false],
+    [{ workload: "genai", stack: "python-pydanticai" }, /genai projects need a pattern/, false],
+    [
+      { workload: "genai", stack: "python-pydanticai", pattern: "poem" },
+      /unknown pattern "poem"/,
+      false,
+    ],
+    [
+      { workload: "genai", stack: "python-fastapi", pattern: "rag" },
+      /is for api projects, not genai/,
+      false,
+    ],
+    [
+      { workload: "genai", stack: "python-pydanticai", pattern: "rag", frontend: "vue" },
+      /the vue frontend is not available for genai projects/,
+      true,
+    ],
+    [
+      {
+        workload: "genai",
+        stack: "python-pydanticai",
+        pattern: "rag",
+        infrastructure: "azure",
+        environments: ["dev"],
+      },
+      /azure infrastructure is not available for genai projects/,
+      true,
+    ],
     [{ workflow: "waterfall" }, /unknown workflow "waterfall"/, false],
     [{ workflow: "openspec" }, /OpenSpec workflow is not available in this release yet/, true],
     [{ workflow: "spec-kit" }, /Spec Kit workflow is not available/, true],

@@ -78,9 +78,26 @@ function keysOf(mappings: readonly Part[], what: string, builtIn: readonly strin
   return [...owner.keys()];
 }
 
+/** How to start the application locally, at the top of compose.yaml. */
+const COMPOSE_HEADER = {
+  database: [
+    "# Local development: PostgreSQL and the application.",
+    "#   cp .env.example .env    # then set POSTGRES_PASSWORD",
+    "#   docker compose up --build",
+  ],
+  application: [
+    "# Local development: the application.",
+    "#   cp .env.example .env    # then adjust it if needed",
+    "#   docker compose up --build",
+  ],
+};
+
 function compose(context: GenerationContext): string {
+  // PostgreSQL is part of the project only when the stack uses it.
+  const database = context.stack.database !== undefined;
+  const builtIn = database ? ["database"] : [];
   const services = parts(context, "compose.yaml", "mapping");
-  const names = new Set(["database", ...keysOf(services, "Compose service", ["database"])]);
+  const names = new Set([...builtIn, ...keysOf(services, "Compose service", builtIn)]);
   for (const { component, data } of services) {
     for (const [name, service] of Object.entries(data as Record<string, { depends_on?: object }>)) {
       for (const needed of Object.keys(service.depends_on ?? {})) {
@@ -90,14 +107,30 @@ function compose(context: GenerationContext): string {
       }
     }
   }
+  const blocks = [
+    ...(database ? [context.templates.read(`${ROOT}/database.yaml`).trimEnd()] : []),
+    ...services.map(({ text }) => text),
+  ].map((text) => indent(text, 2));
   return renderTemplate(
     context.templates.read(`${ROOT}/compose.yaml`),
     {
       name: context.config.name,
-      services: services.map(({ text }) => indent(text, 2)).join("\n\n"),
+      header: COMPOSE_HEADER[database ? "database" : "application"].join("\n"),
+      body: `${blocks.join("\n\n")}${database ? "\n\nvolumes:\n  database:" : ""}`,
     },
     `${ROOT}/compose.yaml`,
   );
+}
+
+/** Local settings for Compose: the database password, then each component's. */
+function envExample(context: GenerationContext): string | undefined {
+  const sections = [
+    ...(context.stack.database ? [context.templates.read(`${ROOT}/database.env.example`)] : []),
+    ...withPart(context, "env.example").map(({ path }) =>
+      renderTemplate(context.templates.read(path), { name: context.config.name }, path),
+    ),
+  ].map((section) => section.trimEnd());
+  return sections.length === 0 ? undefined : `${sections.join("\n\n")}\n`;
 }
 
 function ci(context: GenerationContext): string {
@@ -162,8 +195,12 @@ function dependabot(context: GenerationContext): string {
 }
 
 function readme(context: GenerationContext): string {
-  const sections = withPart(context, "README.md").map(({ path }) =>
-    renderTemplate(context.templates.read(path), { name: context.config.name }, path),
+  const sections = withPart(context, "README.md").map(({ component, path }) =>
+    renderTemplate(
+      context.templates.read(path),
+      { name: context.config.name, ...component.readmeValues?.(context) },
+      path,
+    ),
   );
   return [
     ...sections.map((section) => `${section.trimEnd()}\n`),
@@ -188,8 +225,9 @@ export const deliveryPlugin: ProjectPlugin = {
       ownership: "seeded",
       content,
     });
+    const env = envExample(context);
     return [
-      file(".env.example", context.templates.read(`${ROOT}/.env.example`)),
+      ...(env === undefined ? [] : [file(".env.example", env)]),
       file("README.md", readme(context)),
       file("compose.yaml", compose(context)),
       file(".github/workflows/01-pr-ci.yml", ci(context)),

@@ -70,8 +70,7 @@ export const nodeFastifyStack: StackPlugin = {
     DOCUMENTATION_RULE,
   ],
   quickStart: { directory: "backend", command: "npm ci && npm test" },
-  migrateCommand: ["node", "src/migrate.ts"],
-  databaseUrlScheme: "postgresql",
+  database: { migrateCommand: ["node", "src/migrate.ts"], urlScheme: "postgresql" },
   layout: [
     { path: "backend/src/", purpose: "the Fastify application" },
     { path: "backend/drizzle/", purpose: "Drizzle database migrations" },

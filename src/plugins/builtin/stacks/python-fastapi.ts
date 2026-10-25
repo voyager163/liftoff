@@ -65,8 +65,7 @@ export const pythonFastapiStack: StackPlugin = {
     DOCUMENTATION_RULE,
   ],
   quickStart: { directory: "backend", command: "uv sync && uv run pytest" },
-  migrateCommand: ["alembic", "upgrade", "head"],
-  databaseUrlScheme: "postgresql+psycopg",
+  database: { migrateCommand: ["alembic", "upgrade", "head"], urlScheme: "postgresql+psycopg" },
   layout: [
     { path: "backend/app/", purpose: "the FastAPI application" },
     { path: "backend/migrations/", purpose: "Alembic database migrations" },

@@ -27,6 +27,8 @@ const configSchema = z.strictObject({
     ),
   workload: z.string().check(z.minLength(1)),
   stack: z.string().check(z.minLength(1)),
+  /** The GenAI pattern, or "none" for other workloads. */
+  pattern: z._default(z.string().check(z.minLength(1)), "none"),
   /** A web frontend, or "none". */
   frontend: z._default(z.string().check(z.minLength(1)), "none"),
   /** Infrastructure as code, or "none". */
@@ -96,6 +98,7 @@ export function serializeConfig(config: ProjectConfig): string {
     name: config.name,
     workload: config.workload,
     stack: config.stack,
+    pattern: config.pattern,
     frontend: config.frontend,
     infrastructure: config.infrastructure,
     environments: config.environments,

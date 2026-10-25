@@ -45,8 +45,9 @@ JSON report: `liftoff.plan-report/v1`.
 | --- | --- |
 | `--name <name>` | Project name: 2 to 50 lowercase letters, digits and single hyphens. |
 | `--dir <path>` | Directory to create. Defaults to ./<name>. |
-| `--workload <workload>` | Kind of project. (one of `api`; default `api`) |
-| `--stack <stack>` | Technology stack: python-fastapi, node-fastify, go-huma. (default `python-fastapi`) |
+| `--workload <workload>` | Kind of project: an API, or a GenAI API built around one pattern. (one of `api`, `genai`; default `api`) |
+| `--stack <stack>` | Technology stack: python-fastapi, node-fastify, go-huma, python-pydanticai. Defaults to python-fastapi for api and python-pydanticai for genai. |
+| `--pattern <pattern>` | GenAI pattern, for genai projects: generic, prompt, chatbot, rag, agent, multi-agent, fine-tuned, streaming, workflow. Defaults to generic. (one of `none`, `generic`, `prompt`, `chatbot`, `rag`, `agent`, `multi-agent`, `fine-tuned`, `streaming`, `workflow`) |
 | `--frontend <frontend>` | Web frontend, or none. (one of `none`, `vue`; default `none`) |
 | `--infrastructure <provider>` | Infrastructure as code, or none. azure generates OpenTofu for Azure. (one of `none`, `azure`; default `none`) |
 | `--environments <list>` | Environments to generate infrastructure for, comma-separated: dev, staging, prod. Defaults to all three with --infrastructure. |
@@ -77,8 +78,9 @@ JSON report: `liftoff.init-report/v1`.
 | --- | --- |
 | `--name <name>` | Project name: 2 to 50 lowercase letters, digits and single hyphens. |
 | `--dir <path>` | Directory to create. Defaults to ./<name>. |
-| `--workload <workload>` | Kind of project. (one of `api`; default `api`) |
-| `--stack <stack>` | Technology stack: python-fastapi, node-fastify, go-huma. (default `python-fastapi`) |
+| `--workload <workload>` | Kind of project: an API, or a GenAI API built around one pattern. (one of `api`, `genai`; default `api`) |
+| `--stack <stack>` | Technology stack: python-fastapi, node-fastify, go-huma, python-pydanticai. Defaults to python-fastapi for api and python-pydanticai for genai. |
+| `--pattern <pattern>` | GenAI pattern, for genai projects: generic, prompt, chatbot, rag, agent, multi-agent, fine-tuned, streaming, workflow. Defaults to generic. (one of `none`, `generic`, `prompt`, `chatbot`, `rag`, `agent`, `multi-agent`, `fine-tuned`, `streaming`, `workflow`) |
 | `--frontend <frontend>` | Web frontend, or none. (one of `none`, `vue`; default `none`) |
 | `--infrastructure <provider>` | Infrastructure as code, or none. azure generates OpenTofu for Azure. (one of `none`, `azure`; default `none`) |
 | `--environments <list>` | Environments to generate infrastructure for, comma-separated: dev, staging, prod. Defaults to all three with --infrastructure. |

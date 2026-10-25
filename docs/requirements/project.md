@@ -31,8 +31,9 @@ Verification: test
 
 ## PROJ-003 Selections are checked before anything is generated
 
-The workload, stack, frontend, infrastructure and its environments, workflow,
-agents, governance profile and review engine are checked against the plugins this release ships. An unknown value is a
+The workload, stack, GenAI pattern, frontend, infrastructure and its
+environments, workflow, agents, governance profile and review engine are
+checked against the plugins this release ships. An unknown value is a
 usage error (exit 2). A value the product supports but this release cannot
 generate yet, such as the OpenSpec workflow, is reported as unsupported
 (exit 6), never silently replaced. The review engine must be a
@@ -255,6 +256,55 @@ its committed lock and validates, and that Checkov reports no findings
 except those skipped next to the resource with a reason. It also evaluates
 the naming module for the shortest, longest and most hyphenated project
 names and checks every name against Azure's rules.
+
+Verification: live
+
+## PROJ-017 The GenAI project is a FastAPI and PydanticAI API
+
+`--workload genai` uses the `python-pydanticai` stack: a FastAPI API on port
+8000 with the same health, OpenAPI and Scalar docs, configuration precedence
+and container contract as the Python API stack, built around one GenAI
+pattern.
+
+- The model is a boundary: `APP_MODEL=test`, the default, is PydanticAI's
+  offline test model, so the API runs and its tests pass with no key; any
+  other value is a PydanticAI model name whose provider reads its own key
+  from the environment. A model that cannot be used stops the API at startup;
+  a slow model is a 504 and a failing one a 502, with details only in the
+  logs.
+- Tracing is off by default. Langfuse is an optional dependency, turned on
+  with `APP_TRACING=langfuse`; nothing else depends on it.
+- Readiness checks what the pattern needs and never calls the model.
+- The project has no PostgreSQL, Compose service or setting it does not use,
+  and API projects get no GenAI dependency. The Vue frontend and Azure
+  infrastructure are reported as not available for GenAI projects yet
+  (exit 6).
+
+Verification: test
+
+## PROJ-018 Nine GenAI patterns with an honest maturity matrix
+
+`--pattern` selects one of `generic` (the default), `prompt`, `chatbot`,
+`rag`, `agent`, `multi-agent`, `fine-tuned`, `streaming` and `workflow`.
+It applies only to GenAI projects.
+
+- Each pattern adds its endpoints and offline tests. Messaging and worker
+  boundaries, with in-process adapters, come only with the pattern that uses
+  them (`workflow`); retrieval only with `rag`, and it needs no vector
+  store.
+- Each pattern plugin declares whether it is complete or a foundation, what
+  it implements and what it does not. The project's README and
+  `docs/projects/genai-patterns.md` are generated from that metadata, so they
+  cannot drift; a check fails when the committed matrix is out of date.
+
+Verification: test
+
+## PROJ-019 Every GenAI pattern passes its own checks
+
+Liftoff's CI generates a GenAI project for every pattern on Linux and runs
+its locked install, lint, format and offline tests with coverage, then starts
+it with Docker Compose and checks its health, readiness and docs. It also runs
+the `generic` project's checks on macOS arm64 and Windows x64.
 
 Verification: live
 

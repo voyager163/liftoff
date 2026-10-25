@@ -45,6 +45,7 @@ export async function generate(
     hosts: selection.hosts,
     profile: selection.profile,
     stack: selection.stack,
+    pattern: selection.pattern,
     frontend: selection.frontend,
     infrastructure: selection.infrastructure,
     environments: selection.environments,

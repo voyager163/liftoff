@@ -12,6 +12,7 @@ import { GenerationError, generateProject } from "../../src/generators/project.t
 import { renderTemplate } from "../../src/generators/template.ts";
 import { deliveryPlugin } from "../../src/plugins/builtin/delivery.ts";
 import { vueFrontend } from "../../src/plugins/builtin/frontends/vue.ts";
+import { maturityMarkdown, PATTERN_LIST } from "../../src/plugins/builtin/patterns.ts";
 import type {
   ComponentPlugin,
   GenerationContext,
@@ -50,6 +51,13 @@ const CASES: Record<string, Record<string, unknown>> = {
   "claude-no-governance": { agents: ["claude"], review: { ai: true }, governance: "none" },
   "node-copilot": { stack: "node-fastify", agents: ["copilot"], review: { ai: true } },
   "go-codex": { stack: "go-huma", agents: ["codex"], review: { ai: true } },
+  "genai-rag-copilot": {
+    workload: "genai",
+    stack: "python-pydanticai",
+    pattern: "rag",
+    agents: ["copilot"],
+    review: { ai: true },
+  },
   "go-vue-azure": {
     stack: "go-huma",
     frontend: "vue",
@@ -119,6 +127,7 @@ describe("PROJ-004 deterministic, collision-free generation", () => {
         hosts: [],
         profile: selection.profile,
         stack: selection.stack,
+        pattern: selection.pattern,
         frontend: selection.frontend,
         infrastructure: selection.infrastructure,
         environments: selection.environments,
@@ -750,6 +759,7 @@ describe("PROJ-014 shared files are assembled from each component's parts", () =
       hosts: [],
       profile: selection.profile,
       stack: selection.stack,
+      pattern: undefined,
       frontend: undefined,
       infrastructure: undefined,
       environments: [],
@@ -966,5 +976,119 @@ describe("PROJ-015 Azure infrastructure as OpenTofu code", () => {
     expect([...project.keys()].filter((p) => p.startsWith("infrastructure/"))).toEqual([]);
     expect(project.get(".github/workflows/01-pr-ci.yml")?.content).not.toContain("tofu");
     expect(project.get(".github/dependabot.yml")?.content).not.toContain("opentofu");
+  });
+});
+
+describe("PROJ-017 the GenAI project", () => {
+  const genai = (pattern = "generic") => ({
+    workload: "genai",
+    stack: "python-pydanticai",
+    pattern,
+    agents: ["claude"],
+    review: { ai: true },
+  });
+
+  it("is a FastAPI and PydanticAI API with offline defaults, a lock and a container", async () => {
+    const project = await byPath(genai());
+    const text = (p: string) => project.get(p)?.content ?? "";
+    for (const required of [
+      "backend/app/main.py",
+      "backend/app/config.py",
+      "backend/app/health.py",
+      "backend/app/errors.py",
+      "backend/app/ports/model.py",
+      "backend/app/ports/tracing.py",
+      "backend/app/pattern.py",
+      "backend/tests/test_ports.py",
+      "backend/tests/test_pattern.py",
+      "backend/pyproject.toml",
+      "backend/uv.lock",
+      "backend/Dockerfile",
+      "compose.yaml",
+      ".env.example",
+    ]) {
+      expect(project.has(required), required).toBe(true);
+    }
+    expect(text("backend/app/config.py")).toContain('model: str = "test"');
+    expect(text("backend/app/config.py")).toContain(
+      'tracing: Literal["none", "langfuse"] = "none"',
+    );
+    expect(text("backend/pyproject.toml")).toContain('langfuse = ["langfuse>=5.0.2,<6"]');
+    expect(text("backend/Dockerfile")).toContain("USER 10001");
+    expect(text("backend/Dockerfile")).toMatch(/FROM python:\S+@sha256:[0-9a-f]{64}/);
+    expect(text("backend/uv.lock")).toContain('name = "pydantic-ai-slim"');
+    expect(text(".env.example")).toContain("APP_MODEL=test");
+    expect(text(".env.example")).not.toContain("POSTGRES_PASSWORD");
+  });
+
+  it("has no database and no GenAI dependency leaks into API projects", async () => {
+    const project = await byPath(genai());
+    const compose = parse(project.get("compose.yaml")?.content ?? "");
+    expect(Object.keys(compose.services)).toEqual(["api"]);
+    expect(compose.volumes).toBeUndefined();
+    expect([...project.keys()].filter((p) => /migrations|alembic|drizzle/.test(p))).toEqual([]);
+    for (const stack of ["python-fastapi", "node-fastify", "go-huma"]) {
+      const api = await byPath({ stack });
+      const manifests = [...api.entries()]
+        .filter(([p]) => /pyproject\.toml|package\.json|go\.mod/.test(p))
+        .map(([, file]) => file.content)
+        .join("\n");
+      expect(manifests, stack).not.toMatch(/pydantic-ai|langfuse|openai|anthropic/);
+    }
+  });
+
+  it("checks lint, format and offline tests in CI, and keeps the database out of Compose", async () => {
+    const project = await byPath(genai());
+    const ci = parse(project.get(".github/workflows/01-pr-ci.yml")?.content ?? "");
+    expect(Object.keys(ci.jobs)).toEqual(["lint", "test", "image", "dependencies", "ci-gate"]);
+    expect(project.get("compose.yaml")?.content).toContain("# Local development: the application.");
+    expect(project.get("README.md")?.content).toContain("## The model");
+  });
+});
+
+describe("PROJ-018 GenAI patterns and their maturity", () => {
+  it.each(PATTERN_LIST.map((pattern) => pattern.name))(
+    "generates the %s pattern with its maturity in the README",
+    async (name) => {
+      const project = await byPath({
+        workload: "genai",
+        stack: "python-pydanticai",
+        pattern: name,
+      });
+      const pattern = PATTERN_LIST.find((p) => p.name === name);
+      expect(project.get("backend/app/pattern.py")?.content).toContain("def install(");
+      expect(project.has("backend/tests/test_pattern.py")).toBe(true);
+      const readme = project.get("README.md")?.content ?? "";
+      expect(readme).toContain(`## Pattern: ${name}`);
+      expect(readme).toContain(
+        maturityMarkdown(
+          pattern?.maturity ?? { level: "complete", implemented: [], notImplemented: [] },
+        ),
+      );
+      expect(readme).not.toContain("{{liftoff.");
+      const ports = [...project.keys()].filter((p) => p.startsWith("backend/app/ports/"));
+      const messaging = ports.some((p) => p.endsWith("messaging.py"));
+      expect(messaging, "messaging only where the pattern uses it").toBe(name === "workflow");
+    },
+  );
+
+  it("lists every pattern in the committed maturity matrix", () => {
+    const matrix = readFileSync(path.join(repoRoot, "docs/projects/genai-patterns.md"), "utf8");
+    for (const pattern of PATTERN_LIST) {
+      expect(matrix).toContain(`| \`${pattern.name}\` | ${pattern.maturity.level} |`);
+      expect(pattern.maturity.implemented.length).toBeGreaterThan(0);
+      expect(pattern.maturity.notImplemented.length).toBeGreaterThan(0);
+    }
+    expect(PATTERN_LIST.map((p) => p.name)).toEqual([
+      "generic",
+      "prompt",
+      "chatbot",
+      "rag",
+      "agent",
+      "multi-agent",
+      "fine-tuned",
+      "streaming",
+      "workflow",
+    ]);
   });
 });

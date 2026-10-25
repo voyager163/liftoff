@@ -47,11 +47,14 @@ function webImage({ config, frontend }: GenerationContext): Record<string, strin
 }
 
 function environmentRoot(context: GenerationContext, environment: EnvironmentId): Artifact[] {
+  const { database } = context.stack;
+  // The registry only offers this infrastructure for stacks with a database.
+  if (!database) throw new Error(`${context.stack.id} has no database for the Azure module`);
   const values = {
     name: context.config.name,
     environment,
-    migrateCommand: hclList(context.stack.migrateCommand),
-    databaseUrlScheme: context.stack.databaseUrlScheme,
+    migrateCommand: hclList(database.migrateCommand),
+    databaseUrlScheme: database.urlScheme,
     ...SETTINGS[environment],
     ...webImage(context),
   };
