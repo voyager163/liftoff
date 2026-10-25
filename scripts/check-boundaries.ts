@@ -10,7 +10,12 @@ import { build } from "esbuild";
 const root = path.resolve(import.meta.dirname, "..");
 const IO_MODULES =
   /^(node:)?(fs|fs\/promises|child_process|net|http|https|dns|tls|os|worker_threads)$/;
-const ENTRY_POINTS = ["src/cli/main.ts", "src/ci/review-policy-entry.ts"];
+// Entry points outside src/ are build tooling that renders shipped assets.
+const ENTRY_POINTS = [
+  "src/cli/main.ts",
+  "src/ci/review-policy-entry.ts",
+  "scripts/render-own-skills.ts",
+];
 
 interface Rule {
   name: string;
@@ -73,7 +78,7 @@ function sourceFiles(dir: string): string[] {
 const files = sourceFiles("src");
 const result = await build({
   absWorkingDir: root,
-  entryPoints: files,
+  entryPoints: [...files, ...ENTRY_POINTS.filter((entry) => !entry.startsWith("src/"))],
   bundle: true,
   write: false,
   metafile: true,
@@ -86,13 +91,13 @@ const result = await build({
 
 const graph = new Map<string, string[]>();
 for (const [input, info] of Object.entries(result.metafile.inputs)) {
-  if (!input.startsWith("src/")) continue;
+  if (!input.startsWith("src/") && !ENTRY_POINTS.includes(input)) continue;
   graph.set(
     input,
     info.imports.map((entry) => entry.path),
   );
 }
-if (graph.size === 0 || graph.size < files.length) {
+if (graph.size === 0 || graph.size < files.length + ENTRY_POINTS.length - 2) {
   console.error(`boundaries: expected ${files.length} modules in the graph, found ${graph.size}`);
   process.exit(1);
 }

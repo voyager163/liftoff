@@ -32,7 +32,7 @@
     "test": "vitest run",
     "coverage": "vitest run --coverage",
     "check:trace": "node scripts/check-trace.ts",
-    "check:generated": "node scripts/build-ci-bundle.ts --check",
+    "check:generated": "node scripts/build-ci-bundle.ts --check && node scripts/render-own-skills.ts --check",
     "check": "npm run lint && npm run typecheck && npm run boundaries && npm run check:trace && npm run check:generated && npm run coverage"
   },
   "dependencies": {

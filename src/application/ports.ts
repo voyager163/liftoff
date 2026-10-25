@@ -18,3 +18,10 @@ export interface GitPort {
 export interface WorkspacePort {
   readText(relativePath: string): Promise<string | undefined>;
 }
+
+/** Read-only access to the assets shipped with this Liftoff release. */
+export interface AssetPort {
+  /** Names of the entries directly inside an asset directory, sorted. */
+  list(relativeDirectory: string): Promise<string[]>;
+  readText(relativePath: string): Promise<string>;
+}
