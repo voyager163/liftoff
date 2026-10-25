@@ -1,0 +1,53 @@
+{
+  "name": "liftoff-cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Developer platform CLI for governed API and GenAI projects.",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "homepage": "https://github.com/voyager163/liftoff#readme",
+  "bugs": {
+    "url": "https://github.com/voyager163/liftoff/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voyager163/liftoff.git"
+  },
+  "bin": {
+    "liftoff": "dist/cli/main.js"
+  },
+  "engines": {
+    "node": ">=26.12.0"
+  },
+  "packageManager": "npm@12.2.1",
+  "scripts": {
+    "liftoff": "node src/cli/main.ts",
+    "build": "node scripts/clean.ts dist && tsc -p tsconfig.build.json",
+    "build:ci-bundle": "node scripts/build-ci-bundle.ts",
+    "render:skills": "node scripts/render-own-skills.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "boundaries": "node --disable-warning=ExperimentalWarning scripts/check-boundaries.ts",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "check:trace": "node scripts/check-trace.ts",
+    "check:generated": "node scripts/build-ci-bundle.ts --check",
+    "check": "npm run lint && npm run typecheck && npm run boundaries && npm run check:trace && npm run check:generated && npm run coverage"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "8.7.3",
+    "picomatch": "4.0.7",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "26.6.5",
+    "@types/picomatch": "4.0.3",
+    "@vitest/coverage-v8": "5.0.5",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}
