@@ -10,11 +10,14 @@ import { parseManifest } from "../../src/domain/project/manifest.ts";
 import { parsePolicy } from "../../src/domain/risk-policy/policy.ts";
 import { GenerationError, generateProject } from "../../src/generators/project.ts";
 import { renderTemplate } from "../../src/generators/template.ts";
+import { deliveryPlugin } from "../../src/plugins/builtin/delivery.ts";
+import { vueFrontend } from "../../src/plugins/builtin/frontends/vue.ts";
 import type {
+  ComponentPlugin,
   GenerationContext,
   ProjectPlugin,
 } from "../../src/plugins/contracts/project-plugin.ts";
-import { resolveSelection } from "../../src/plugins/registry.ts";
+import { resolveSelection, STACKS } from "../../src/plugins/registry.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const assets = new PackageAssets(
@@ -47,6 +50,12 @@ const CASES: Record<string, Record<string, unknown>> = {
   "claude-no-governance": { agents: ["claude"], review: { ai: true }, governance: "none" },
   "node-copilot": { stack: "node-fastify", agents: ["copilot"], review: { ai: true } },
   "go-codex": { stack: "go-huma", agents: ["codex"], review: { ai: true } },
+  "node-vue-copilot": {
+    stack: "node-fastify",
+    frontend: "vue",
+    agents: ["copilot"],
+    review: { ai: true },
+  },
   "team-two-owners": {
     governance: "team-gitflow",
     owners: ["alice", "bob"],
@@ -102,6 +111,8 @@ describe("PROJ-004 deterministic, collision-free generation", () => {
         hosts: [],
         profile: selection.profile,
         stack: selection.stack,
+        frontend: selection.frontend,
+        components: selection.components,
         templates: { read: () => "", list: () => [] },
         skills: [],
         agents: [],
@@ -522,5 +533,231 @@ describe("PROJ-008 governance handoff", () => {
     ).toEqual([]);
     expect(project.get("README.md")?.content).not.toContain("GOVERNANCE.md");
     expect(parse(project.get("liftoff.yaml")?.content ?? "").governance).toBe("none");
+  });
+});
+
+describe("PROJ-013 the Vue frontend", () => {
+  const vue = { stack: "node-fastify", frontend: "vue", agents: ["claude"], review: { ai: true } };
+
+  it("contains the application, tests, lock, container and web server", async () => {
+    const project = await byPath(vue);
+    for (const required of [
+      "frontend/index.html",
+      "frontend/src/main.ts",
+      "frontend/src/App.vue",
+      "frontend/src/api.ts",
+      "frontend/src/__tests__/App.test.ts",
+      "frontend/e2e/smoke.spec.ts",
+      "frontend/package.json",
+      "frontend/package-lock.json",
+      "frontend/vite.config.ts",
+      "frontend/vitest.config.ts",
+      "frontend/playwright.config.ts",
+      "frontend/eslint.config.js",
+      "frontend/Dockerfile",
+      "frontend/nginx/default.conf.template",
+    ]) {
+      expect(project.has(required), required).toBe(true);
+    }
+    const text = (p: string) => project.get(p)?.content ?? "";
+    expect(text("frontend/index.html")).toContain("<title>demo</title>");
+    expect(text("frontend/src/App.vue")).toContain('const title = "demo";');
+    expect(text("frontend/src/api.ts")).toContain('const API = "/api";');
+    expect(text("frontend/vite.config.ts")).toContain(
+      'rewrite: (path: string) => path.replace(/^\\/api/, "")',
+    );
+    expect(text("frontend/vitest.config.ts")).toContain(
+      "thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 }",
+    );
+    const nginx = text("frontend/nginx/default.conf.template");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: an nginx template variable, kept verbatim.
+    expect(nginx).toContain("proxy_pass ${API_UPSTREAM}/;");
+    expect(nginx).toContain(`Content-Security-Policy "default-src 'self';`);
+    const dockerfile = text("frontend/Dockerfile");
+    expect(dockerfile).toMatch(/FROM node:\S+@sha256:[0-9a-f]{64} AS build/);
+    expect(dockerfile).toMatch(/FROM nginxinc\/nginx-unprivileged:\S+@sha256:[0-9a-f]{64}/);
+    expect(dockerfile).toContain("HEALTHCHECK");
+    expect(text("frontend/.node-version")).toBe(
+      readFileSync(path.join(repoRoot, ".node-version"), "utf8"),
+    );
+
+    const pkg = JSON.parse(text("frontend/package.json"));
+    const lock = JSON.parse(text("frontend/package-lock.json"));
+    expect(lock.packages[""].dependencies).toEqual(pkg.dependencies);
+    expect(lock.packages[""].devDependencies).toEqual(pkg.devDependencies);
+    for (const dependencies of [pkg.dependencies, pkg.devDependencies]) {
+      for (const version of Object.values(dependencies)) expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+    }
+    const packages = lock.packages as Record<string, { resolved?: string; inBundle?: boolean }>;
+    for (const [name, entry] of Object.entries(packages)) {
+      if (name === "" || entry.inBundle) continue;
+      expect(entry.resolved, name).toMatch(/^https:\/\/registry\.npmjs\.org\//);
+    }
+  });
+
+  it("adds the frontend to Compose, CI, CodeQL, Dependabot and the README", async () => {
+    const project = await byPath(vue);
+    const yaml = (p: string) => parse(project.get(p)?.content ?? "");
+    const compose = yaml("compose.yaml");
+    expect(Object.keys(compose.services)).toEqual(["database", "migrate", "api", "web"]);
+    expect(compose.services.web).toMatchObject({
+      build: "./frontend",
+      ports: ["127.0.0.1:8080:8080"],
+      depends_on: { api: { condition: "service_healthy" } },
+    });
+    const ci = yaml(".github/workflows/01-pr-ci.yml");
+    expect(Object.keys(ci.jobs)).toEqual([
+      "lint",
+      "test",
+      "integration",
+      "image",
+      "frontend-lint",
+      "frontend-test",
+      "frontend-browser",
+      "dependencies",
+      "ci-gate",
+    ]);
+    const browser = ci.jobs["frontend-browser"].steps.map((step: { run?: string }) => step.run);
+    expect(browser).toContain("npm run test:e2e");
+    const codeql = project.get(".github/workflows/02-codeql.yml")?.content ?? "";
+    expect(parse(codeql).jobs.analyze.strategy.matrix.include).toEqual([
+      { language: "javascript-typescript", "build-mode": "none" },
+      { language: "actions", "build-mode": "none" },
+    ]);
+    expect(codeql.replaceAll("\n# ", " ")).toContain(
+      "for the TypeScript code, the frontend's TypeScript and Vue code and the GitHub Actions workflows.",
+    );
+    const python = parse(
+      (await byPath({ frontend: "vue" })).get(".github/workflows/02-codeql.yml")?.content ?? "",
+    );
+    expect(
+      python.jobs.analyze.strategy.matrix.include.map(
+        (entry: { language: string }) => entry.language,
+      ),
+    ).toEqual(["python", "javascript-typescript", "actions"]);
+    const updates = yaml(".github/dependabot.yml").updates.map(
+      (update: Record<string, string>) => `${update["package-ecosystem"]} ${update.directory}`,
+    );
+    expect(updates).toEqual([
+      "npm /backend",
+      "docker /backend",
+      "npm /frontend",
+      "docker /frontend",
+      "github-actions /",
+    ]);
+    const readme = project.get("README.md")?.content ?? "";
+    expect(readme.indexOf("## Frontend")).toBeGreaterThan(readme.indexOf("## Checks"));
+    expect(readme.indexOf("## Frontend")).toBeLessThan(readme.indexOf("## How changes are made"));
+  });
+
+  it("adds the frontend's checks, layout and review rules", async () => {
+    const project = await byPath(vue);
+    const agents = project.get("AGENTS.md")?.content ?? "";
+    expect(agents).toContain(
+      "TypeScript API with Fastify, Drizzle ORM and npm; Vue frontend with Vite, Tailwind CSS and TypeScript.",
+    );
+    expect(agents).toContain("| `frontend` | `npm run test:e2e` |");
+    expect(agents).toContain("- `frontend/src/` the Vue application and its unit tests.");
+    const policy = parsePolicy(project.get(".github/review-policy.yml")?.content ?? "");
+    expect(policy.rules.find((rule) => rule.paths.includes("frontend/nginx/**"))?.tier).toBe(
+      "high",
+    );
+  });
+
+  it("adds nothing for a frontend by default", async () => {
+    const project = await byPath({ stack: "node-fastify" });
+    expect([...project.keys()].filter((p) => p.startsWith("frontend/"))).toEqual([]);
+    expect(Object.keys(parse(project.get("compose.yaml")?.content ?? "").services)).toEqual([
+      "database",
+      "migrate",
+      "api",
+    ]);
+    expect(project.get(".github/workflows/01-pr-ci.yml")?.content).not.toContain("frontend");
+    expect(project.get("README.md")?.content).not.toContain("## Frontend");
+  });
+});
+
+describe("PROJ-014 shared files are assembled from each component's parts", () => {
+  it.each([
+    [{}],
+    [{ frontend: "vue" }],
+    [{ stack: "node-fastify" }],
+    [{ stack: "go-huma", frontend: "vue" }],
+  ])("makes ci-gate need every other job for %j", async (overrides) => {
+    const ci = parse(
+      (await byPath(overrides)).get(".github/workflows/01-pr-ci.yml")?.content ?? "",
+    );
+    const jobs = Object.keys(ci.jobs).filter((job) => job !== "ci-gate");
+    expect(ci.jobs["ci-gate"].needs).toEqual(jobs);
+    expect(jobs).toContain("dependencies");
+  });
+
+  const VALID: Record<string, string> = {
+    "a/compose.yaml": "api:\n  image: a\n",
+    "a/ci-jobs.yml": "lint:\n  runs-on: ubuntu-latest\n",
+    "a/dependabot.yml": "- package-ecosystem: npm\n  directory: /a\n",
+    "a/README.md": "# a\n",
+    "b/compose.yaml":
+      "web:\n  image: b\n  depends_on:\n    api:\n      condition: service_healthy\n",
+    "b/ci-jobs.yml": "web-lint:\n  runs-on: ubuntu-latest\n",
+    "b/dependabot.yml": "- package-ecosystem: npm\n  directory: /b\n",
+    "b/README.md": "## b\n",
+  };
+
+  /** Runs the delivery plugin on two made-up components, a and b, with these parts. */
+  const assemble = (parts: Record<string, string>) => {
+    const stack = { ...STACKS["node-fastify"], id: "stack/a", parts: "a" } as ComponentPlugin;
+    const frontend: ComponentPlugin = { ...vueFrontend, id: "frontend/b", parts: "b" };
+    const selection = resolveSelection(config());
+    const context: GenerationContext = {
+      config: config(),
+      liftoffVersion: "0.0.0",
+      hosts: [],
+      profile: selection.profile,
+      stack: selection.stack,
+      frontend: undefined,
+      components: [stack, frontend],
+      templates: {
+        read: (p) => parts[p] ?? readFileSync(path.join(repoRoot, "assets", p), "utf8"),
+        list: () => [],
+      },
+      skills: [],
+      agents: [],
+      ciBundles: {},
+    };
+    return () =>
+      new Map(deliveryPlugin.artifacts(context).map((file) => [file.path, file.content]));
+  };
+
+  it("joins valid parts in component order", () => {
+    const files = assemble(VALID)();
+    expect(Object.keys(parse(files.get("compose.yaml") ?? "").services)).toEqual([
+      "database",
+      "api",
+      "web",
+    ]);
+    expect(parse(files.get(".github/workflows/01-pr-ci.yml") ?? "").jobs["ci-gate"].needs).toEqual([
+      "lint",
+      "web-lint",
+      "dependencies",
+    ]);
+    expect(files.get("README.md")).toMatch(/^# a\n\n## b\n\n## How changes are made\n/);
+  });
+
+  it.each([
+    [{ "b/ci-jobs.yml": "lint: {}\n" }, 'frontend/b and stack/a both define the CI job "lint"'],
+    [
+      { "b/compose.yaml": "api:\n  image: b\n" },
+      'frontend/b and stack/a both define the Compose service "api"',
+    ],
+    [{ "b/ci-jobs.yml": "ci-gate: {}\n" }, 'the CI job "ci-gate" is reserved'],
+    [
+      { "b/compose.yaml": "web:\n  depends_on:\n    cache: {}\n" },
+      `frontend/b's web service depends on unknown "cache"`,
+    ],
+    [{ "a/dependabot.yml": "npm: {}\n" }, "a/dependabot.yml must be a YAML list"],
+    [{ "a/compose.yaml": "- api\n" }, "a/compose.yaml must be a YAML mapping"],
+  ])("refuses parts that do not fit together %#", (change, message) => {
+    expect(assemble({ ...VALID, ...change })).toThrow(message);
   });
 });

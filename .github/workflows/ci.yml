@@ -101,7 +101,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Also the Node.js the node-fastify project asks for in backend/.node-version.
+      # Also the Node.js the generated frontend and the node-fastify project ask
+      # for in their .node-version files.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
@@ -117,12 +118,12 @@ jobs:
           go-version-file: assets/plugins/stack-go-huma/files/backend/go.mod
           cache-dependency-path: assets/plugins/stack-go-huma/files/backend/go.sum
       - run: npm ci
-      - name: Create a project with every agent host
+      - name: Create a project with the frontend and every agent host
         env:
           STACK: ${{ matrix.stack }}
         run: >-
-          node src/cli/main.ts init --name demo --stack "$STACK" --workflow manual
-          --agents copilot,codex,claude --owners voyager163
+          node src/cli/main.ts init --name demo --stack "$STACK" --frontend vue
+          --workflow manual --agents copilot,codex,claude --owners voyager163
           --dir "$RUNNER_TEMP/demo" --yes
       - name: Install, lint and test the generated Python project
         if: matrix.stack == 'python-fastapi'
@@ -151,6 +152,15 @@ jobs:
           go vet -tags integration ./...
           go test -coverpkg=./cmd/...,./internal/... -coverprofile=cover.out ./...
           go run ./tools/coverage cover.out 80
+      - name: Lint, type-check, test and build the generated frontend
+        working-directory: ${{ runner.temp }}/demo/frontend
+        run: |
+          test "$(node --version)" = "v$(cat .node-version)"
+          npm ci --no-audit --no-fund
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
       - name: Validate the generated project
         run: node src/cli/main.ts validate --dir "$RUNNER_TEMP/demo"
 
@@ -211,10 +221,10 @@ jobs:
           go-version-file: assets/plugins/stack-go-huma/files/backend/go.mod
           cache-dependency-path: assets/plugins/stack-go-huma/files/backend/go.sum
       - run: npm ci
-      - name: Create the project
+      - name: Create the project with the frontend
         run: >-
-          node src/cli/main.ts init --name demo --stack "$STACK" --workflow manual
-          --dir "$RUNNER_TEMP/demo" --yes
+          node src/cli/main.ts init --name demo --stack "$STACK" --frontend vue
+          --workflow manual --dir "$RUNNER_TEMP/demo" --yes
       - name: Put data in public that the integration tests must leave alone
         run: >-
           psql -v ON_ERROR_STOP=1
@@ -277,6 +287,19 @@ jobs:
           done
           echo "readiness after unpausing: $ready"
           test "$ready" = 200
+
+          uid=$(docker compose exec -T web id -u)
+          if [ "$uid" = 0 ]; then echo "the frontend runs as root"; exit 1; fi
+          web=http://127.0.0.1:8080
+          curl --fail --silent --show-error --max-time 5 "$web/" | grep -q '<div id="app">'
+          curl --fail --silent --show-error --max-time 5 --head "$web/" | grep -qi '^content-security-policy:'
+          curl --fail --silent --show-error --max-time 5 "$web/api/health/ready" | grep -q '"ready"'
+      - name: Run the frontend's browser test against the application
+        working-directory: ${{ runner.temp }}/demo/frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          npm run test:e2e
       - name: Show the Compose logs
         if: failure()
         working-directory: ${{ runner.temp }}/demo

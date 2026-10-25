@@ -5,7 +5,14 @@ import {
   type ProjectConfig,
   validateConfig,
 } from "../domain/project/config.ts";
-import { DEFAULT_GOVERNANCE, DEFAULT_WORKFLOW, GOVERNANCE, STACKS } from "../plugins/registry.ts";
+import {
+  DEFAULT_GOVERNANCE,
+  DEFAULT_WORKFLOW,
+  FRONTENDS,
+  GOVERNANCE,
+  NO_FRONTEND,
+  STACKS,
+} from "../plugins/registry.ts";
 import type { OptionSpec, ParsedArgs } from "./command.ts";
 import { UsageError } from "./outcome.ts";
 
@@ -33,6 +40,13 @@ export const PROJECT_OPTIONS: Readonly<Record<string, OptionSpec>> = {
     valueName: "stack",
     default: "python-fastapi",
     description: `Technology stack: ${Object.keys(STACKS).join(", ")}.`,
+  },
+  frontend: {
+    type: "string",
+    valueName: "frontend",
+    default: NO_FRONTEND,
+    choices: [NO_FRONTEND, ...Object.keys(FRONTENDS)],
+    description: "Web frontend, or none.",
   },
   workflow: {
     type: "string",
@@ -101,6 +115,7 @@ export function projectFromOptions(
         name,
         workload: option("workload"),
         stack: option("stack"),
+        frontend: option("frontend"),
         workflow: option("workflow"),
         agents,
         governance: option("governance"),

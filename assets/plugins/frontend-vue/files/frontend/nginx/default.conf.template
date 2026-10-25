@@ -1,0 +1,30 @@
+# Serves the built frontend and forwards /api/ to the API, so the browser talks
+# to a single origin and the API needs no CORS settings. When the container
+# starts, nginx fills in API_UPSTREAM from the environment.
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    location /api/ {
+        proxy_pass ${API_UPSTREAM}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Anything else is the application. Unknown paths get index.html, so routes
+    # the application handles in the browser still load when opened directly.
+    location / {
+        add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        try_files $uri $uri/ /index.html;
+    }
+}

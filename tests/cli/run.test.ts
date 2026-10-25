@@ -199,6 +199,9 @@ describe("CLI-003 capabilities", () => {
     expect(report.governanceProfiles.map((p: { id: string }) => p.id)).toContain(
       "risk-tiered-gitflow",
     );
+    expect(report.frontends).toEqual([
+      { id: "vue", summary: "Vue frontend with Vite, Tailwind CSS and TypeScript" },
+    ]);
   });
 
   it("prints a readable list without --json", async () => {

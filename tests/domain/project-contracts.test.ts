@@ -40,9 +40,13 @@ describe("PROJ-001 project configuration", () => {
     expect(text.startsWith("# Liftoff project configuration")).toBe(true);
   });
 
-  it("defaults owners and keeps an explicit review engine", () => {
+  it("defaults owners and the frontend, and keeps an explicit review engine", () => {
     const { owners: _owners, ...withoutOwners } = config;
     expect(validateConfig(withoutOwners).owners).toEqual([]);
+    expect(validateConfig(config).frontend).toBe("none");
+    expect(serializeConfig(validateConfig({ ...config, frontend: "vue" }))).toContain(
+      "stack: python-fastapi\nfrontend: vue\n",
+    );
     const withEngine = validateConfig({ ...config, review: { ai: true, engine: "claude" } });
     expect(serializeConfig(withEngine)).toContain("engine: claude");
   });

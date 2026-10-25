@@ -51,6 +51,7 @@ one.
 | --- | --- | --- |
 | `--workload` | `api` | `api` |
 | `--stack` | `python-fastapi` | `python-fastapi`, `node-fastify`, `go-huma` |
+| `--frontend` | `none` | `none`, `vue` |
 | `--workflow` | `openspec` | `manual` (OpenSpec and Spec Kit come later) |
 | `--agents` | none | any of `copilot`, `codex`, `claude` |
 | `--governance` | `single-maintainer-gitflow` | `single-maintainer-gitflow`, `team-gitflow`, `risk-tiered-gitflow`, `none` |
@@ -120,4 +121,5 @@ Both only read; neither installs nor changes anything.
 See [Python API projects](projects/python-fastapi.md),
 [Node.js API projects](projects/node-fastify.md) or
 [Go API projects](projects/go-huma.md) for the generated layout, what each
-file is for and who owns it.
+file is for and who owns it, and [the Vue frontend](projects/vue-frontend.md)
+for what `--frontend vue` adds.

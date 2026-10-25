@@ -236,6 +236,15 @@ describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {
     );
     expect(ci?.jobs["ci-gate"]?.needs).toContain(job);
   });
+
+  it("checks the frontend with every stack, in a browser on Linux", () => {
+    const runs = (job: string) =>
+      (ci?.jobs[job]?.steps ?? []).map((step) => step.run ?? "").join("\n");
+    expect(runs("generated")).toContain("--frontend vue");
+    expect(runs("generated")).toContain("npm run build");
+    expect(runs("services")).toContain("--frontend vue");
+    expect(runs("services")).toContain("npm run test:e2e");
+  });
 });
 
 describe("REPO-006 tests run on the supported developer platforms", () => {

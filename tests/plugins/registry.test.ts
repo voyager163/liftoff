@@ -5,7 +5,13 @@ import {
   REVIEW_ENGINES,
   reviewAgentScript,
 } from "../../src/plugins/builtin/review/engines.ts";
-import { allPlugins, resolveSelection, SelectionError } from "../../src/plugins/registry.ts";
+import {
+  allPlugins,
+  FRONTENDS,
+  resolveSelection,
+  SelectionError,
+  STACKS,
+} from "../../src/plugins/registry.ts";
 
 const config = (overrides: Record<string, unknown> = {}) =>
   validateConfig({
@@ -32,19 +38,42 @@ describe("PROJ-003 selections are checked first", () => {
     const selection = resolveSelection(config({ agents: ["codex", "copilot"] }));
     expect(selection.stack.id).toBe("stack/python-fastapi");
     expect(selection.hosts).toEqual(["codex", "copilot"]);
-    expect(selection.plugins.map((p) => p.kind)).toEqual([
-      "common",
-      "stack",
-      "workflow",
-      "agents",
-      "review",
-      "governance",
+    expect(selection.plugins.map((p) => p.id)).toEqual([
+      "common/repository",
+      "stack/python-fastapi",
+      "common/delivery",
+      "workflow/manual",
+      "agents/integration",
+      "review/layered",
+      "governance/single-maintainer-gitflow",
+    ]);
+    expect(selection.frontend).toBeUndefined();
+    expect(selection.components).toEqual([selection.stack]);
+  });
+
+  it("has components that share a tool ask for the same minimum version", () => {
+    const tools = [...Object.values(STACKS), ...Object.values(FRONTENDS)].flatMap((c) => c.tools);
+    for (const tool of tools) {
+      const same = tools.filter((other) => other.command === tool.command);
+      expect(new Set(same.map((other) => other.minimum)).size, tool.command).toBe(1);
+    }
+  });
+
+  it("places a selected frontend after the stack", () => {
+    const selection = resolveSelection(config({ stack: "go-huma", frontend: "vue" }));
+    expect(selection.frontend?.id).toBe("frontend/vue");
+    expect(selection.components.map((c) => c.id)).toEqual(["stack/go-huma", "frontend/vue"]);
+    expect(selection.plugins.map((p) => p.id).slice(1, 4)).toEqual([
+      "stack/go-huma",
+      "frontend/vue",
+      "common/delivery",
     ]);
   });
 
   it.each([
     [{ workload: "genai" }, /unknown workload "genai"/, false],
     [{ stack: "rust-axum" }, /unknown stack "rust-axum"/, false],
+    [{ frontend: "react" }, /unknown frontend "react"; available: none, vue/, false],
     [{ workflow: "waterfall" }, /unknown workflow "waterfall"/, false],
     [{ workflow: "openspec" }, /OpenSpec workflow is not available in this release yet/, true],
     [{ workflow: "spec-kit" }, /Spec Kit workflow is not available/, true],

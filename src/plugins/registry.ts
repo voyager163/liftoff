@@ -3,6 +3,8 @@ import { PROFILE_IDS, type ProfileId } from "../domain/risk-policy/policy.ts";
 import { AGENT_HOSTS } from "./builtin/agents/hosts.ts";
 import { agentsPlugin } from "./builtin/agents.ts";
 import { commonPlugin } from "./builtin/common.ts";
+import { deliveryPlugin } from "./builtin/delivery.ts";
+import { vueFrontend } from "./builtin/frontends/vue.ts";
 import { gitflowGovernance, noGovernance } from "./builtin/governance/gitflow.ts";
 import { reviewPlugin } from "./builtin/review/review.ts";
 import { goHumaStack } from "./builtin/stacks/go-huma.ts";
@@ -10,7 +12,12 @@ import { nodeFastifyStack } from "./builtin/stacks/node-fastify.ts";
 import { pythonFastapiStack } from "./builtin/stacks/python-fastapi.ts";
 import { manualWorkflow } from "./builtin/workflows.ts";
 import type { AgentHostId } from "./contracts/agent-host.ts";
-import type { ProjectPlugin, StackPlugin } from "./contracts/project-plugin.ts";
+import type {
+  ComponentPlugin,
+  FrontendPlugin,
+  ProjectPlugin,
+  StackPlugin,
+} from "./contracts/project-plugin.ts";
 
 /**
  * Every plugin this release ships. Plugins are bundled and listed here;
@@ -22,6 +29,9 @@ export const STACKS: Readonly<Record<string, StackPlugin>> = {
   "node-fastify": nodeFastifyStack,
   "go-huma": goHumaStack,
 };
+/** Web frontends; "none" selects no frontend. */
+export const FRONTENDS: Readonly<Record<string, FrontendPlugin>> = { vue: vueFrontend };
+export const NO_FRONTEND = "none";
 export const WORKFLOWS: Readonly<Record<string, ProjectPlugin>> = { manual: manualWorkflow };
 /** Workflows the product supports but this release cannot generate yet. */
 export const PLANNED_WORKFLOWS: Readonly<Record<string, string>> = {
@@ -50,6 +60,9 @@ export class SelectionError extends Error {
 
 export interface Selection {
   readonly stack: StackPlugin;
+  readonly frontend: FrontendPlugin | undefined;
+  /** The stack, then the frontend if one is selected. */
+  readonly components: readonly ComponentPlugin[];
   readonly hosts: readonly AgentHostId[];
   readonly profile: ProfileId;
   /** In generation order. */
@@ -74,6 +87,16 @@ export function resolveSelection(config: ProjectConfig): Selection {
     throw new SelectionError(
       `stack "${config.stack}" is for ${stack.workload} projects, not ${config.workload}`,
     );
+  }
+
+  let frontend: FrontendPlugin | undefined;
+  if (config.frontend !== NO_FRONTEND) {
+    frontend = FRONTENDS[config.frontend];
+    if (!frontend) {
+      throw new SelectionError(
+        `unknown frontend "${config.frontend}"; available: ${list([NO_FRONTEND, ...Object.keys(FRONTENDS)])}`,
+      );
+    }
   }
 
   const workflow = WORKFLOWS[config.workflow];
@@ -119,11 +142,22 @@ export function resolveSelection(config: ProjectConfig): Selection {
     );
   }
 
+  const components = frontend ? [stack, frontend] : [stack];
   return {
     stack,
+    frontend,
+    components,
     hosts,
     profile,
-    plugins: [commonPlugin, stack, workflow, agentsPlugin, reviewPlugin, governance],
+    plugins: [
+      commonPlugin,
+      ...components,
+      deliveryPlugin,
+      workflow,
+      agentsPlugin,
+      reviewPlugin,
+      governance,
+    ],
   };
 }
 
@@ -132,6 +166,8 @@ export function allPlugins(): ProjectPlugin[] {
   const plugins = [
     commonPlugin,
     ...Object.values(STACKS),
+    ...Object.values(FRONTENDS),
+    deliveryPlugin,
     ...Object.values(WORKFLOWS),
     agentsPlugin,
     reviewPlugin,

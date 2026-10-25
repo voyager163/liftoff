@@ -1,6 +1,6 @@
 import path from "node:path";
 import { CONFIG_FILE, type ProjectConfig, parseConfig } from "../../domain/project/config.ts";
-import type { ProjectTool } from "../../plugins/contracts/project-plugin.ts";
+import type { ComponentPlugin, ProjectTool } from "../../plugins/contracts/project-plugin.ts";
 import { resolveSelection } from "../../plugins/registry.ts";
 import type { ProjectFsPort, ToolPort } from "../ports.ts";
 
@@ -53,6 +53,23 @@ function meetsMinimum(version: number[], minimum: number[]): boolean {
 }
 
 /**
+ * The tools a project's components need, each command once and required if
+ * any component requires it. Components that share a tool ask for the same
+ * minimum version, which a test checks.
+ */
+function projectTools(components: readonly ComponentPlugin[]): ProjectTool[] {
+  const byCommand = new Map<string, ProjectTool>();
+  for (const tool of components.flatMap((component) => component.tools)) {
+    const seen = byCommand.get(tool.command);
+    byCommand.set(
+      tool.command,
+      seen ? { ...seen, required: seen.required || tool.required } : tool,
+    );
+  }
+  return [...byCommand.values()];
+}
+
+/**
  * Checks the tools the project in `directory` needs. It only runs version
  * commands: nothing is installed or changed.
  */
@@ -63,7 +80,7 @@ export async function runDoctor(
   let config: ProjectConfig | undefined;
   const text = await ports.fs.readText(path.join(directory, CONFIG_FILE));
   if (text !== undefined) config = parseConfig(text);
-  const tools = config ? resolveSelection(config).stack.tools : BASE_TOOLS;
+  const tools = config ? projectTools(resolveSelection(config).components) : BASE_TOOLS;
 
   const checks: ToolCheck[] = [];
   for (const tool of tools) {

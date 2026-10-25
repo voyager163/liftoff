@@ -36,7 +36,8 @@ Verification: test
 ## CLI-003 Capability discovery
 
 `liftoff capabilities --json` lists every command with its options, whether it
-is read-only and its report schema, plus the exit codes and governance profiles.
+is read-only and its report schema, plus the exit codes, stacks, frontends and
+governance profiles.
 It never writes anything, contacts no network service and sends no telemetry.
 
 Verification: test

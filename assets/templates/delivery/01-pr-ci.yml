@@ -1,0 +1,66 @@
+# Checks every change: each part of the application with its own checks, and
+# a review of new dependencies. Branch rules require one aggregate status,
+# ci-gate, which fails unless every job succeeded: skipped, cancelled or
+# missing jobs are failures, never passes.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Cancel superseded pull request runs only; never a branch or queue run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+{{liftoff.jobs}}
+
+  dependencies:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Explain non-pull-request runs
+        if: github.event_name != 'pull_request'
+        run: echo "Dependencies are reviewed on pull requests; nothing new to review here."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        if: github.event_name == 'pull_request'
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  ci-gate:
+    name: ci-gate
+    if: always()
+    needs: [{{liftoff.gateNeeds}}]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node -e '
+            const needs = JSON.parse(process.env.RESULTS);
+            const names = Object.keys(needs);
+            if (names.length === 0) { console.error("no jobs reported"); process.exit(1); }
+            let failed = false;
+            for (const name of names) {
+              const result = needs[name].result;
+              console.log(name + ": " + result);
+              if (result !== "success") failed = true;
+            }
+            process.exit(failed ? 1 : 0);
+          '

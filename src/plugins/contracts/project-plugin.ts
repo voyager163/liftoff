@@ -32,6 +32,10 @@ export interface GenerationContext {
   readonly hosts: readonly AgentHostId[];
   readonly profile: ProfileId;
   readonly stack: StackPlugin;
+  /** The selected frontend, if any. */
+  readonly frontend: FrontendPlugin | undefined;
+  /** The stack, then the frontend if one is selected. */
+  readonly components: readonly ComponentPlugin[];
   readonly templates: TemplateSet;
   readonly skills: readonly SkillSource[];
   readonly agents: readonly AgentSource[];
@@ -39,7 +43,14 @@ export interface GenerationContext {
   readonly ciBundles: Readonly<Record<string, string>>;
 }
 
-export type PluginKind = "common" | "stack" | "workflow" | "agents" | "review" | "governance";
+export type PluginKind =
+  | "common"
+  | "stack"
+  | "frontend"
+  | "workflow"
+  | "agents"
+  | "review"
+  | "governance";
 
 export interface ProjectPlugin {
   readonly id: string;
@@ -64,15 +75,46 @@ export interface ProjectTool {
   readonly install: string;
 }
 
-export interface StackPlugin extends ProjectPlugin {
-  readonly kind: "stack";
-  readonly workload: string;
+/** A language CodeQL analyzes, as its workflow names it. */
+export interface CodeqlLanguage {
+  readonly language: string;
+  readonly buildMode: "none" | "autobuild";
+  /** What it covers, for the workflow's description, such as "the Go code". */
+  readonly subject: string;
+}
+
+/**
+ * A part of the application with its own directory, checks and container:
+ * the API stack or a frontend. Files every part contributes to, such as
+ * compose.yaml and the CI workflow, are assembled from each component's
+ * parts directory:
+ *
+ * - `compose.yaml`: Compose services, a YAML mapping;
+ * - `ci-jobs.yml`: CI jobs, a YAML mapping of job ids to jobs;
+ * - `dependabot.yml`: Dependabot update entries, a YAML list;
+ * - `README.md`: the component's README sections.
+ */
+export interface ComponentPlugin extends ProjectPlugin {
+  readonly kind: "stack" | "frontend";
   readonly checks: readonly ProjectCheck[];
   readonly tools: readonly ProjectTool[];
-  /** Stack-specific review policy rules, added after the built-in ones. */
+  /** Review policy rules for the component's files, added after the built-in ones. */
   readonly reviewRules: readonly PolicyRule[];
-  /** The first commands to run in a new project, from its root, such as installing and testing. */
-  readonly quickStart: string;
+  /** The first commands to run in a new project, such as installing and testing, and where. */
+  readonly quickStart: { readonly directory: string; readonly command: string };
   /** Short description of the generated layout for README and AGENTS.md. */
   readonly layout: readonly { readonly path: string; readonly purpose: string }[];
+  /** Asset directory holding the component's parts of the shared files. */
+  readonly parts: string;
+  readonly codeql: CodeqlLanguage;
+}
+
+export interface StackPlugin extends ComponentPlugin {
+  readonly kind: "stack";
+  readonly workload: string;
+}
+
+/** A web frontend. It reaches the API through the `api` service every stack runs. */
+export interface FrontendPlugin extends ComponentPlugin {
+  readonly kind: "frontend";
 }

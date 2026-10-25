@@ -71,19 +71,21 @@ merging, and who or what it would affect. -->
 needs more than a revert, such as a data migration. -->
 `;
 
-function reviewPolicy({ config, profile, stack }: GenerationContext): string {
+function reviewPolicy({ config, profile, components }: GenerationContext): string {
   const body = {
     version: 1,
     profile,
     trusted_authors: config.owners,
     default_tier: "medium",
     untrusted_author_tier: "medium",
-    rules: stack.reviewRules.map((rule) => ({
-      paths: [...rule.paths],
-      tier: rule.tier,
-      ...(rule.always_human ? { always_human: true } : {}),
-      reason: rule.reason,
-    })),
+    rules: components
+      .flatMap((component) => component.reviewRules)
+      .map((rule) => ({
+        paths: [...rule.paths],
+        tier: rule.tier,
+        ...(rule.always_human ? { always_human: true } : {}),
+        reason: rule.reason,
+      })),
   };
   return [
     "# Review policy: how much review a change needs, from what it touches.",

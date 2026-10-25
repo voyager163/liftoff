@@ -42,8 +42,8 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(work, { recursive: true, force: true }));
 
-const create = async (target = path.join(work, "demo")) => {
-  const plan = await planInit({ assets, fs }, { config, target, liftoffVersion: "1.0.0" });
+const create = async (target = path.join(work, "demo"), project = config) => {
+  const plan = await planInit({ assets, fs }, { config: project, target, liftoffVersion: "1.0.0" });
   await applyInit({ assets, fs }, plan, "1.0.0");
   return target;
 };
@@ -277,6 +277,30 @@ describe("DOCTOR-001 doctor checks the tools the project needs", () => {
       ["Docker", "missing", undefined],
     ]);
     expect(result.ready).toBe(false);
+  });
+
+  it("adds the frontend's tools, each tool once", async () => {
+    const versions = tools({
+      uv: "uv 0.13.1",
+      git: "git version 2.54.0",
+      docker: "Docker version 29.9.2",
+      node: "v26.12.1",
+    });
+    const python = await create(path.join(work, "python"), { ...config, frontend: "vue" });
+    const result = await runDoctor({ fs, tools: versions }, python);
+    expect(result.tools.map((t) => [t.name, t.status])).toEqual([
+      ["uv", "ok"],
+      ["Git", "ok"],
+      ["Docker", "ok"],
+      ["Node.js", "ok"],
+    ]);
+    const node = await create(path.join(work, "node"), {
+      ...config,
+      stack: "node-fastify",
+      frontend: "vue",
+    });
+    const names = (await runDoctor({ fs, tools: versions }, node)).tools.map((t) => t.name);
+    expect(names).toEqual(["Node.js", "Git", "Docker"]);
   });
 
   it("checks only Git outside a project, and is ready when it is present", async () => {

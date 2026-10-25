@@ -1,0 +1,15 @@
+# Proposes dependency updates weekly, waiting a week after each release so a
+# broken or compromised release has time to be caught upstream.
+version: 2
+updates:
+{{liftoff.updates}}
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
