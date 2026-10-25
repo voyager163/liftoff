@@ -12,6 +12,7 @@ export const BUNDLES: Readonly<Record<string, string>> = {
   ".github/liftoff/governance-drift.mjs": "src/ci/governance-drift-entry.ts",
   ".github/liftoff/ai-review.mjs": "src/ci/ai-review-entry.ts",
   ".github/liftoff/review-metrics.mjs": "src/ci/review-metrics-entry.ts",
+  ".github/liftoff/branch-policy.mjs": "src/ci/branch-policy-entry.ts",
 };
 
 export async function bundle(entry: string): Promise<string> {

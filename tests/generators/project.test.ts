@@ -1,5 +1,6 @@
-import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -646,6 +647,8 @@ describe("PROJ-013 the Vue frontend", () => {
       "frontend-lint",
       "frontend-test",
       "frontend-browser",
+      "branch-policy",
+      "release-lineage",
       "dependencies",
       "ci-gate",
     ]);
@@ -794,6 +797,8 @@ describe("PROJ-014 shared files are assembled from each component's parts", () =
     expect(parse(files.get(".github/workflows/01-pr-ci.yml") ?? "").jobs["ci-gate"].needs).toEqual([
       "lint",
       "web-lint",
+      "branch-policy",
+      "release-lineage",
       "dependencies",
     ]);
     expect(files.get("README.md")).toMatch(/^# a\n\n## b\n\n## How changes are made\n/);
@@ -1048,7 +1053,15 @@ describe("PROJ-017 the GenAI project", () => {
   it("checks lint, format and offline tests in CI, and keeps the database out of Compose", async () => {
     const project = await byPath(genai());
     const ci = parse(project.get(".github/workflows/01-pr-ci.yml")?.content ?? "");
-    expect(Object.keys(ci.jobs)).toEqual(["lint", "test", "image", "dependencies", "ci-gate"]);
+    expect(Object.keys(ci.jobs)).toEqual([
+      "lint",
+      "test",
+      "image",
+      "branch-policy",
+      "release-lineage",
+      "dependencies",
+      "ci-gate",
+    ]);
     expect(project.get("compose.yaml")?.content).toContain("# Local development: the application.");
     expect(project.get("README.md")?.content).toContain("## The model");
   });
@@ -1098,5 +1111,100 @@ describe("PROJ-018 GenAI patterns and their maturity", () => {
       "streaming",
       "workflow",
     ]);
+  });
+});
+
+describe("FLOW-001 GitFlow projects check branches and release lineage in CI", () => {
+  const ci = async (overrides: Record<string, unknown>) => {
+    const generated = await byPath(overrides);
+    const workflow = parse(generated.get(".github/workflows/01-pr-ci.yml")?.content ?? "") as {
+      jobs: Record<
+        string,
+        {
+          needs?: string[];
+          permissions?: Record<string, string>;
+          steps?: { env?: Record<string, string>; run?: string }[];
+        }
+      >;
+    };
+    return { generated, jobs: workflow.jobs };
+  };
+
+  it("adds both checks to CI and ci-gate, with the selected agents' branches", async () => {
+    const { generated, jobs } = await ci({ agents: ["copilot", "codex"], review: { ai: true } });
+    expect(jobs["ci-gate"]?.needs).toEqual(
+      expect.arrayContaining(["branch-policy", "release-lineage"]),
+    );
+    const branch = jobs["branch-policy"]?.steps?.find((step) => step.run);
+    expect(branch?.run).toContain("node .github/liftoff/branch-policy.mjs branch\n");
+    expect(branch?.env?.AUTOMATION_BRANCHES).toBe("dependabot,copilot,codex");
+    expect(jobs["release-lineage"]?.steps?.find((step) => step.run)?.run).toContain(
+      "node .github/liftoff/branch-policy.mjs lineage\n",
+    );
+    // Both read the pull request through the API.
+    for (const job of ["branch-policy", "release-lineage"]) {
+      expect(jobs[job]?.permissions).toMatchObject({
+        contents: "read",
+        "pull-requests": "read",
+      });
+    }
+    expect(generated.get(".github/liftoff/branch-policy.mjs")?.ownership).toBe("managed");
+    // Both run the base branch's check, and run again when the description changes.
+    const text = generated.get(".github/workflows/01-pr-ci.yml")?.content ?? "";
+    expect(
+      text.match(/ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.sha \}\}/g),
+    ).toHaveLength(2);
+    expect(text).toContain("types: [opened, synchronize, reopened, edited]");
+  });
+
+  // Runs the job's script in a checkout of the base branch holding `files`,
+  // with node replaced by a function that prints what it was asked to run.
+  const onBase = (script: string, files: Record<string, string>) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "liftoff-base-"));
+    try {
+      for (const [file, content] of Object.entries(files)) {
+        mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+        writeFileSync(path.join(dir, file), content);
+      }
+      writeFileSync(path.join(dir, "check.sh"), `node() { echo "ran $*"; }\n${script}`);
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "check.sh"], {
+        cwd: dir,
+        encoding: "utf8",
+      });
+      return { status: result.status, stdout: result.stdout };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("lets only the pull request that adds the checks through without them", async () => {
+    const { jobs } = await ci({});
+    for (const [job, mode] of [
+      ["branch-policy", "branch"],
+      ["release-lineage", "lineage"],
+    ] as const) {
+      const script = jobs[job]?.steps?.find((step) => step.run)?.run ?? "";
+      const bundle = ".github/liftoff/branch-policy.mjs";
+      const workflow = ".github/workflows/01-pr-ci.yml";
+      const ran = onBase(script, { [bundle]: "", [workflow]: `run: node ${bundle}` });
+      expect(ran).toEqual({ status: 0, stdout: `ran ${bundle} ${mode}\n` });
+
+      const missing = onBase(script, { [workflow]: `run: node ${bundle}` });
+      expect(missing.status).toBe(1);
+      expect(missing.stdout).toContain("::error::The base branch's CI runs this check");
+
+      for (const files of [{ [workflow]: "jobs: {}" }, {}]) {
+        const first = onBase(script, files);
+        expect(first.status).toBe(0);
+        expect(first.stdout).toContain("::notice::The base branch does not have");
+      }
+    }
+  });
+
+  it("adds neither without a GitFlow profile", async () => {
+    const { generated, jobs } = await ci({ governance: "none" });
+    expect(Object.keys(jobs)).not.toContain("branch-policy");
+    expect(jobs["ci-gate"]?.needs).not.toContain("release-lineage");
+    expect(generated.has(".github/liftoff/branch-policy.mjs")).toBe(false);
   });
 });

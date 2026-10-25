@@ -17,6 +17,7 @@ const ENTRY_POINTS = [
   "src/ci/governance-drift-entry.ts",
   "src/ci/ai-review-entry.ts",
   "src/ci/review-metrics-entry.ts",
+  "src/ci/branch-policy-entry.ts",
   "scripts/render-own-files.ts",
   "scripts/render-cli-reference.ts",
 ];

@@ -133,14 +133,36 @@ function envExample(context: GenerationContext): string | undefined {
   return sections.length === 0 ? undefined : `${sections.join("\n\n")}\n`;
 }
 
+/** Jobs the GitFlow profiles add to CI, which ci-gate also needs. */
+const GOVERNANCE_JOBS = ["branch-policy", "release-lineage"];
+
+/** Branch prefixes of the tools that open pull requests into develop. */
+const automationBranches = (context: GenerationContext): string[] => [
+  "dependabot",
+  ...context.hosts,
+];
+
 function ci(context: GenerationContext): string {
   const jobs = parts(context, "ci-jobs.yml", "mapping");
-  const ids = keysOf(jobs, "CI job", ["dependencies", "ci-gate"]);
+  const governed = context.profile !== "none";
+  const ids = keysOf(jobs, "CI job", [
+    "dependencies",
+    "ci-gate",
+    ...(governed ? GOVERNANCE_JOBS : []),
+  ]);
+  const governanceJobs = governed
+    ? renderTemplate(
+        context.templates.read(`${ROOT}/branch-policy-jobs.yml`),
+        { automation: automationBranches(context).join(",") },
+        `${ROOT}/branch-policy-jobs.yml`,
+      )
+    : "";
   return renderTemplate(
     context.templates.read(`${ROOT}/01-pr-ci.yml`),
     {
       jobs: jobs.map(({ text }) => indent(text, 2)).join("\n\n"),
-      gateNeeds: [...ids, "dependencies"].join(", "),
+      governanceJobs: governanceJobs === "" ? "" : `\n${indent(governanceJobs.trimEnd(), 2)}\n`,
+      gateNeeds: [...ids, ...(governed ? GOVERNANCE_JOBS : []), "dependencies"].join(", "),
     },
     `${ROOT}/01-pr-ci.yml`,
   );
