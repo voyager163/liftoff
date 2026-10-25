@@ -29,8 +29,10 @@ The API then listens on `http://127.0.0.1:8000`, with the API reference at
 
 - `GET /health/live` says the process is running. It never checks
   dependencies, so a database outage does not restart the API.
-- `GET /health/ready` checks the database and answers `503` when it is
-  unavailable, so traffic is only sent when requests can be served.
+- `GET /health/ready` checks the database over a new connection and answers
+  `503` when it is unavailable or does not answer within
+  `APP_DATABASE_TIMEOUT_SECONDS`, so traffic is only sent when requests can
+  be served.
 
 ## Configuration
 

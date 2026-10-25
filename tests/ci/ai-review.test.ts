@@ -9,6 +9,7 @@ import {
 } from "../../src/application/ai-review/review-pull-request.ts";
 import { main, type PipelineEnvironment } from "../../src/ci/ai-review.ts";
 import { fingerprint, JSON_END, JSON_START } from "../../src/domain/ai-review/findings.ts";
+import { codexHost } from "../../src/plugins/builtin/agents/hosts.ts";
 
 const POLICY = `
 version: 1
@@ -362,6 +363,30 @@ describe("AIREVIEW-002 the end-to-end pipeline", () => {
       expect.objectContaining({ path: "src/app.ts", line: 2, side: "RIGHT" }),
     ]);
     expect(logs.join("")).toContain("AI review, round 1");
+  });
+
+  it("verifies with the Codex agent's instructions when Codex is the only host", async () => {
+    const url = await fakeGitHub({ files: highRiskFiles, reviews: [], comments: [], posted: [] });
+    const codexAgent = codexHost.renderAgent({
+      name: "liftoff-verifier",
+      description: "Checks one finding.",
+      capabilities: ["read"],
+      instructions: "You verify one finding, the Codex way.",
+    });
+    const { context, files } = pipeline(
+      url,
+      {},
+      {
+        "show origin/develop:.github/agents/liftoff-verifier.agent.md": undefined as never,
+        [`show origin/develop:${codexAgent.path}`]: codexAgent.content,
+      },
+    );
+    await main("prepare", context);
+    files.set("ai-review/finders/finder-0.txt", block({ candidates: [candidate] }));
+    expect(await main("verifier-prompt", context)).toBe(0);
+    const prompt = files.get("ai-review/verifier.md") ?? "";
+    expect(prompt.startsWith("You verify one finding, the Codex way.\n")).toBe(true);
+    expect(prompt).not.toContain("developer_instructions");
   });
 
   it("publishes a clean result when no finder found anything", async () => {

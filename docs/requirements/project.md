@@ -102,8 +102,10 @@ Verification: test
 
 `liftoff init` creates projects only in a new or empty directory. All files
 are written into a staging directory beside the target and published with one
-rename; if anything fails, the staging directory is removed and nothing is
-created. The new directory gets normal permissions.
+rename; if anything fails or the command is cancelled, the staging directory
+is removed and nothing is created. The new directory gets normal permissions.
+The target is never the current directory or one that contains it, because
+publishing replaces the target directory.
 
 Verification: test
 
@@ -126,8 +128,9 @@ Verification: test
 
 `liftoff validate` checks the configuration, the plugins it names and every
 file in the manifest. Missing or hand-edited managed files and missing seeded
-files are reported; unknown plugins and invalid files are errors; newer plugin
-versions are information. It exits 3 when there is anything to act on and
+files are reported, as is a directory where a generated file should be;
+unknown plugins and invalid files are errors; newer plugin versions are
+information. It exits 3 when there is anything to act on and
 changes nothing.
 
 Verification: test

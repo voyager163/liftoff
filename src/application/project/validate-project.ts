@@ -132,6 +132,16 @@ export async function validateProject(
   }
 
   for (const file of manifest.files) {
+    const state = await fs.state(path.join(directory, ...file.path.split("/")));
+    if (state === "directory" || state === "empty-directory") {
+      findings.push({
+        severity: "error",
+        code: "not-a-file",
+        path: file.path,
+        message: "this should be a file Liftoff created, but it is a directory",
+      });
+      continue;
+    }
     const text = await read(file.path);
     if (text === undefined) {
       findings.push({

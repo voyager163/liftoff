@@ -19,10 +19,10 @@ const isExecutable = (file: ProjectFile) => file.path.endsWith(".sh");
  */
 export async function planInit(
   ports: { assets: AssetPort; fs: ProjectFsPort },
-  request: { config: ProjectConfig; target: string; liftoffVersion: string },
+  request: { config: ProjectConfig; target: string; liftoffVersion: string; cwd?: string },
 ): Promise<Plan> {
   const target = path.resolve(request.target);
-  await checkTarget(ports.fs, target);
+  await checkTarget(ports.fs, target, request.cwd);
   const { files } = await generate(ports.assets, request.config, request.liftoffVersion);
   return sealPlan({
     schema: PLAN_SCHEMA,
@@ -45,6 +45,13 @@ export interface InitResult {
   readonly files: number;
 }
 
+export interface ApplyOptions {
+  /** The caller's working directory, which must not be the target or inside it. */
+  readonly cwd?: string;
+  /** Stops before publishing; the staged files are removed. */
+  readonly signal?: AbortSignal;
+}
+
 /**
  * Creates the project exactly as planned. Every file is regenerated and must
  * match the plan byte for byte; then all of them are written into a staging
@@ -55,6 +62,7 @@ export async function applyInit(
   ports: { assets: AssetPort; fs: ProjectFsPort },
   plan: Plan,
   liftoffVersion: string,
+  options: ApplyOptions = {},
 ): Promise<InitResult> {
   if (plan.liftoff !== liftoffVersion) {
     throw new PlanError(
@@ -72,17 +80,20 @@ export async function applyInit(
       "this Liftoff would now generate different files than the plan lists; make a new plan",
     );
   }
-  await checkTarget(ports.fs, plan.target);
+  await checkTarget(ports.fs, plan.target, options.cwd);
 
+  options.signal?.throwIfAborted();
   const staging = await ports.fs.createStaging(plan.target);
   try {
     for (const file of files) {
+      options.signal?.throwIfAborted();
       await ports.fs.writeFile(
         path.join(staging, ...file.path.split("/")),
         file.content,
         isExecutable(file),
       );
     }
+    options.signal?.throwIfAborted();
     await ports.fs.publish(staging, plan.target);
   } catch (error) {
     await ports.fs.remove(staging);
@@ -91,8 +102,20 @@ export async function applyInit(
   return { target: plan.target, files: files.length };
 }
 
-/** A project is only ever created in a new or empty directory. */
-async function checkTarget(fs: ProjectFsPort, target: string): Promise<void> {
+/**
+ * A project is only ever created in a new or empty directory, and never in
+ * the caller's working directory: publishing replaces the target directory,
+ * which would leave the caller's shell in a deleted one.
+ */
+async function checkTarget(fs: ProjectFsPort, target: string, cwd?: string): Promise<void> {
+  if (cwd !== undefined) {
+    const inside = path.relative(target, path.resolve(cwd));
+    if (inside === "" || !(inside.startsWith("..") || path.isAbsolute(inside))) {
+      throw new InitTargetError(
+        `${target} is the current directory or contains it; run init from the directory that should hold the project`,
+      );
+    }
+  }
   const state = await fs.state(target);
   if (state === "file") throw new InitTargetError(`${target} is a file`);
   if (state === "directory") {

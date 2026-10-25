@@ -66,6 +66,7 @@ export function makePlanCommand(
         config,
         target,
         liftoffVersion: version,
+        cwd: io.cwd,
       }).catch(selectionToCli);
       const out = args.options.out as string | undefined;
       const lines = summarize(plan);
@@ -121,9 +122,12 @@ export function makeInitCommand(
         plan = parsePlan(text);
       } else {
         const { config, target } = projectFromOptions(args, io.cwd);
-        plan = await planInit(ports, { config, target, liftoffVersion: version }).catch(
-          selectionToCli,
-        );
+        plan = await planInit(ports, {
+          config,
+          target,
+          liftoffVersion: version,
+          cwd: io.cwd,
+        }).catch(selectionToCli);
       }
 
       io.stderr(`${summarize(plan).join("\n")}\n`);
@@ -143,7 +147,7 @@ export function makeInitCommand(
       }
 
       try {
-        const result = await applyInit(ports, plan, version);
+        const result = await applyInit(ports, plan, version, { cwd: io.cwd, signal: io.signal });
         const relative = path.relative(io.cwd, result.target) || ".";
         return {
           outcome: "success",

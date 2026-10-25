@@ -10,7 +10,7 @@ for Python and the locked dependencies.
 | --- | --- |
 | Port | 8000 (`APP_PORT`); binds to `127.0.0.1` locally and `0.0.0.0` in the container |
 | Liveness | `GET /health/live`: the process is up; never checks dependencies |
-| Readiness | `GET /health/ready`: checks PostgreSQL; `503` with `"not-ready"` when it is unavailable |
+| Readiness | `GET /health/ready`: checks PostgreSQL over a new connection; `503` with `"not-ready"` when it is unavailable or does not answer within `APP_DATABASE_TIMEOUT_SECONDS` |
 | API reference | Scalar at `/docs`, OpenAPI at `/openapi.json`; `APP_DOCS_ENABLED=false` turns both off |
 | Database | PostgreSQL through SQLAlchemy and psycopg 3; an initial Alembic migration with a working downgrade |
 | Configuration | environment (`APP_*`) over a TOML file named by `APP_CONFIG_FILE` over non-secret defaults |

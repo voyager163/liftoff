@@ -112,6 +112,50 @@ describe("INIT-002 projects are created in one step or not at all", () => {
   });
 });
 
+describe("INIT-002 the working directory and cancellation", () => {
+  it("refuses the current directory, or a directory that contains it", async () => {
+    const here = path.join(work, "here");
+    mkdirSync(here);
+    await expect(
+      planInit({ assets, fs }, { config, target: here, liftoffVersion: "1.0.0", cwd: here }),
+    ).rejects.toThrow(/is the current directory or contains it/);
+    const plan = await planInit(
+      { assets, fs },
+      { config, target: path.join(work, "demo"), liftoffVersion: "1.0.0" },
+    );
+    await expect(
+      applyInit({ assets, fs }, plan, "1.0.0", { cwd: path.join(work, "demo", "sub") }),
+    ).rejects.toThrow(InitTargetError);
+    expect(readdirSync(work)).toEqual(["here"]);
+  });
+
+  it("stops writing when cancelled and leaves nothing behind", async () => {
+    const plan = await planInit(
+      { assets, fs },
+      { config, target: path.join(work, "demo"), liftoffVersion: "1.0.0" },
+    );
+    const controller = new AbortController();
+    let writes = 0;
+    const interrupted: ProjectFsPort = {
+      ...fs,
+      state: (p) => fs.state(p),
+      readText: (p) => fs.readText(p),
+      createStaging: (p) => fs.createStaging(p),
+      publish: (s, t) => fs.publish(s, t),
+      remove: (p) => fs.remove(p),
+      writeFile: async (p, c, x) => {
+        if (++writes === 3) controller.abort();
+        return fs.writeFile(p, c, x);
+      },
+    };
+    await expect(
+      applyInit({ assets, fs: interrupted }, plan, "1.0.0", { signal: controller.signal }),
+    ).rejects.toThrow(expect.objectContaining({ name: "AbortError" }));
+    expect(writes).toBe(3);
+    expect(readdirSync(work)).toEqual([]);
+  });
+});
+
 describe("INIT-004 stale plans are refused", () => {
   it("refuses a plan from another Liftoff version", async () => {
     const plan = await planInit(
@@ -158,6 +202,19 @@ describe("VALID-001 validate reports without repairing", () => {
     expect(readFileSync(path.join(target, ".claude/skills/liftoff-verify/SKILL.md"), "utf8")).toBe(
       "edited",
     );
+  });
+
+  it("reports a directory where a generated file should be, and keeps checking", async () => {
+    const target = await create();
+    rmSync(path.join(target, ".github/liftoff/review-policy.mjs"));
+    mkdirSync(path.join(target, ".github/liftoff/review-policy.mjs"));
+    rmSync(path.join(target, "README.md"));
+    const result = await validateProject(fs, target);
+    expect(result.findings.map((f) => [f.code, f.path])).toEqual([
+      ["not-a-file", ".github/liftoff/review-policy.mjs"],
+      ["seeded-file-missing", "README.md"],
+    ]);
+    expect(result.valid).toBe(false);
   });
 
   it("reports invalid configuration, manifests and plugins", async () => {

@@ -25,6 +25,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None) -
     )
     app.state.settings = settings
     app.state.engine = engine
+    app.state.probe = health.probe_engine(engine, settings.database_timeout_seconds)
     app.state.sessions = sessionmaker(engine, expire_on_commit=False)
     app.include_router(health.router)
     app.include_router(items.router)

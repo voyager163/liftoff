@@ -130,6 +130,17 @@ describe("PROJ-003 selection errors map to exit codes", () => {
     [["init", "--plan", "x.json", "--name", "demo"], 2, "either --plan or project options"],
     [["init", "--plan", "x.json", "--governance", "none"], 2, "either --plan or project options"],
     [["init", "--plan", "x.json", "--workflow", "manual"], 2, "either --plan or project options"],
+    [
+      ["init", "--plan", "x.json", "--stack", "python-fastapi"],
+      2,
+      "either --plan or project options",
+    ],
+    [["init", "--plan", "x.json", "--ai-review", "off"], 2, "either --plan or project options"],
+    [
+      ["init", "--name", "demo", "--workflow", "manual", "--dir", ".", "--yes"],
+      1,
+      "is the current directory or contains it",
+    ],
   ])("%j exits %i", async (argv, expected, message) => {
     const { code, err } = await exec(argv);
     expect(code).toBe(expected);

@@ -56,6 +56,7 @@ const SKILL_PATHS = [".claude/skills", ".agents/skills", ".github/skills"].map(
 const VERIFIER_PATHS = [
   ".github/agents/liftoff-verifier.agent.md",
   ".claude/agents/liftoff-verifier.md",
+  ".codex/agents/liftoff-verifier.toml",
 ];
 
 interface PullRequestEvent {
@@ -130,6 +131,25 @@ async function fromBase(
 }
 
 const stripFrontmatter = (text: string) => text.replace(/^---\n[\s\S]*?\n---\n/, "");
+
+/**
+ * The verifier agent's instructions from whichever host's copy the base
+ * branch has: Markdown with frontmatter, or Codex's TOML, where they are the
+ * literal string in developer_instructions.
+ */
+async function verifierInstructions(
+  context: PipelineEnvironment,
+  baseRef: string,
+): Promise<string> {
+  for (const path of VERIFIER_PATHS) {
+    const text = await context.git(["show", `origin/${baseRef}:${path}`]);
+    if (text === undefined) continue;
+    if (!path.endsWith(".toml")) return stripFrontmatter(text);
+    const instructions = /^developer_instructions = '''\n([\s\S]*?)'''$/m.exec(text)?.[1];
+    if (instructions) return instructions;
+  }
+  throw new Error(`the base branch has none of ${VERIFIER_PATHS.join(", ")}`);
+}
 
 const reviewSource = (context: PipelineEnvironment, work: string): ReviewSource => ({
   diff: `${work}/diff.patch`,
@@ -251,7 +271,7 @@ async function writeVerifierPrompt(
     );
     return 0;
   }
-  const instructions = stripFrontmatter(await fromBase(context, pr.baseRef, VERIFIER_PATHS));
+  const instructions = await verifierInstructions(context, pr.baseRef);
   context.writeFile(
     `${work}/verifier.md`,
     verifierPrompt({ ...reviewSource(context, work), instructions, candidates }),
