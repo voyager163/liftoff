@@ -1,0 +1,3 @@
+[codespell]
+skip = ./.git,./LICENSE,*.svg,./node_modules
+check-hidden = true

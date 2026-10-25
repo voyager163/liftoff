@@ -1,0 +1,17 @@
+// https://github.com/DavidAnson/markdownlint-cli2
+{
+  "config": {
+    "default": true,
+    // Prose is wrapped by hand; long links and tables are fine.
+    "MD013": false,
+    // The README uses an HTML block to center the hero image.
+    "MD033": false,
+    // The README starts with that block rather than a heading.
+    "MD041": false
+  },
+  "ignores": [
+    "node_modules/**",
+    // Kept as the official Contributor Covenant text.
+    "CODE_OF_CONDUCT.md"
+  ]
+}
