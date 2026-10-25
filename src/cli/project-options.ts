@@ -24,7 +24,7 @@ export const PROJECT_OPTIONS: Readonly<Record<string, OptionSpec>> = {
   name: {
     type: "string",
     valueName: "name",
-    description: "Project name: lowercase letters, digits and hyphens.",
+    description: "Project name: 2 to 50 lowercase letters, digits and single hyphens.",
   },
   dir: {
     type: "string",

@@ -40,9 +40,9 @@ storage, use LRS in dev and ZRS in staging and prod.
 
 - **Names** come from the project, the environment and a short hash of the
   subscription (`modules/naming`), so the same inputs always give the same
-  names and two subscriptions never compete for a globally unique one. Runs
-  of hyphens become one, since some Azure names refuse `--`, and long project
-  names are shortened before the environment is added. Liftoff's
+  names and two subscriptions never compete for a globally unique one.
+  Project names have no runs of hyphens, which some Azure names refuse, and
+  long project names are shortened before the environment is added. Liftoff's
   `npm run check:azure-names` checks every name against Azure's rules.
 - **State:** each environment root uses the azurerm backend with its own key
   (`<environment>.tfstate`) in the storage bootstrap creates. The storage

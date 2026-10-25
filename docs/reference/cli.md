@@ -43,7 +43,7 @@ JSON report: `liftoff.plan-report/v1`.
 
 | Option | Description |
 | --- | --- |
-| `--name <name>` | Project name: lowercase letters, digits and hyphens. |
+| `--name <name>` | Project name: 2 to 50 lowercase letters, digits and single hyphens. |
 | `--dir <path>` | Directory to create. Defaults to ./<name>. |
 | `--workload <workload>` | Kind of project. (one of `api`; default `api`) |
 | `--stack <stack>` | Technology stack: python-fastapi, node-fastify, go-huma. (default `python-fastapi`) |
@@ -75,7 +75,7 @@ JSON report: `liftoff.init-report/v1`.
 
 | Option | Description |
 | --- | --- |
-| `--name <name>` | Project name: lowercase letters, digits and hyphens. |
+| `--name <name>` | Project name: 2 to 50 lowercase letters, digits and single hyphens. |
 | `--dir <path>` | Directory to create. Defaults to ./<name>. |
 | `--workload <workload>` | Kind of project. (one of `api`; default `api`) |
 | `--stack <stack>` | Technology stack: python-fastapi, node-fastify, go-huma. (default `python-fastapi`) |

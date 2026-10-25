@@ -7,8 +7,9 @@ contains.
 ## PROJ-001 The project configuration is strict and versioned
 
 `liftoff.yaml` holds the project's desired state with
-`schema: liftoff.config/v1`. Unknown keys, invalid names and duplicate agents
-or owners are rejected with a message naming the field. The same
+`schema: liftoff.config/v1`. Unknown keys, invalid names (2 to 50 lowercase
+letters, digits and single hyphens) and duplicate agents or owners are
+rejected with a message naming the field. The same
 configuration always serializes to the same bytes.
 
 Verification: test
@@ -230,7 +231,7 @@ none of it.
   standby in prod.
 - Resource names come from the project, the environment and a hash of the
   subscription. They follow Azure's naming rules for every project name
-  Liftoff accepts, runs of hyphens and the longest names included, and
+  Liftoff accepts, the longest and most hyphenated included, and
   globally unique names differ between environments.
 - Whoever applies bootstrap gets blob access to the state, which accepts
   only Microsoft Entra ID. A PostgreSQL failover is not undone by the next

@@ -1,6 +1,6 @@
 // Checks the Azure infrastructure template's resource names against Azure's
 // naming rules, for the project names most likely to break them: the
-// shortest, the longest Liftoff accepts, and ones with runs of hyphens. It
+// shortest, the longest Liftoff accepts, and ones full of hyphens. It
 // evaluates the template's own naming module with OpenTofu, which needs no
 // cloud access because the module creates nothing. Names that must be
 // globally unique must also differ between environments.
@@ -14,7 +14,8 @@ const naming = path.join(
   root,
   "assets/plugins/infrastructure-azure/files/infrastructure/opentofu/azure/modules/naming",
 );
-const PROJECTS = ["ab", "a".repeat(50), "z-".repeat(24) + "zz", "demo--api", "a-b--c---d-e"];
+// Liftoff project names have no runs of hyphens, so neither do these.
+const PROJECTS = ["ab", "a".repeat(50), `${"z-".repeat(24)}zz`, `${"a".repeat(15)}-b`, "a-b-c-d-e"];
 const ENVIRONMENTS = ["", "dev", "staging", "prod"];
 const SUBSCRIPTION = "00000000-0000-0000-0000-000000000000";
 

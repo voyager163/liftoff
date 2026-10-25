@@ -8,8 +8,11 @@ z.config(en());
 export const CONFIG_FILE = "liftoff.yaml";
 export const CONFIG_SCHEMA = "liftoff.config/v1";
 
-/** Project names become directory, container and package names, so keep them simple. */
-const NAME = /^[a-z][a-z0-9-]{0,48}[a-z0-9]$/;
+/**
+ * Project names become directory, container, package and Azure resource names,
+ * so keep them simple: no runs of hyphens, which some of those refuse.
+ */
+const NAME = /^(?=.{2,50}$)[a-z](?:-?[a-z0-9])*$/;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
 const configSchema = z.strictObject({
@@ -17,7 +20,10 @@ const configSchema = z.strictObject({
   name: z
     .string()
     .check(
-      z.regex(NAME, "must be 2 to 50 lowercase letters, digits or hyphens, starting with a letter"),
+      z.regex(
+        NAME,
+        "must be 2 to 50 lowercase letters, digits or single hyphens, starting with a letter and ending with a letter or digit",
+      ),
     ),
   workload: z.string().check(z.minLength(1)),
   stack: z.string().check(z.minLength(1)),

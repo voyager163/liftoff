@@ -3,7 +3,7 @@
 # subscriptions never compete for a globally unique name.
 
 variable "project" {
-  description = "The project's name: lowercase letters, digits and hyphens."
+  description = "The project's name: lowercase letters, digits and single hyphens."
   type        = string
 }
 
@@ -24,9 +24,8 @@ variable "subscription_id" {
 }
 
 locals {
-  suffix = substr(sha256("${var.subscription_id}/${var.project}"), 0, 6)
-  # Some Azure names refuse "--", so each run of hyphens becomes one.
-  project = replace(var.project, "/-+/", "-")
+  suffix  = substr(sha256("${var.subscription_id}/${var.project}"), 0, 6)
+  project = var.project
   letters = replace(var.project, "-", "")
   scope   = var.environment == "" ? local.project : "${local.project}-${var.environment}"
   # Where a length limit applies, the project part is cut first, so the

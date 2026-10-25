@@ -56,6 +56,9 @@ describe("PROJ-001 project configuration", () => {
   it.each([
     [{ ...config, surprise: 1 }, "surprise"],
     [{ ...config, name: "Not Valid" }, "name"],
+    [{ ...config, name: "demo--api" }, "single hyphens"],
+    [{ ...config, name: "demo-" }, "single hyphens"],
+    [{ ...config, name: `a${"b".repeat(50)}` }, "2 to 50"],
     [{ ...config, schema: "liftoff.config/v2" }, "schema"],
     [{ ...config, agents: ["claude", "claude"] }, "each agent may be listed once"],
     [{ ...config, environments: ["dev", "dev"] }, "each environment may be listed once"],
