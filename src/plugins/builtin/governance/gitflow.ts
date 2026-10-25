@@ -202,7 +202,11 @@ not active until you apply them, and they should only be applied after every
 check they require (\`ci-gate\` and \`review-policy\`) has run successfully on a
 real pull request, so a new rule never waits on a check that does not exist.
 
-Apply one with the GitHub CLI, for example:
+\`liftoff governance assess\` shows how far that has got, and
+\`liftoff governance apply-next\` takes the next step Liftoff can take, such as
+applying the rulesets, after you agree. Both use your GitHub CLI login.
+\`liftoff governance verify --prove\` then checks that GitHub refuses direct,
+forced and deleting pushes. To apply a ruleset yourself instead:
 
 \`\`\`bash
 gh api --method POST repos/OWNER/REPO/rulesets --input .github/rulesets/develop.json

@@ -52,6 +52,13 @@ export class LocalProjectFs implements ProjectFsPort {
     if (executable && process.platform !== "win32") await chmod(file, 0o755);
   }
 
+  async replaceFile(file: string, content: string): Promise<void> {
+    await mkdir(path.dirname(file), { recursive: true });
+    const temporary = `${file}.${process.pid}.tmp`;
+    await writeFile(temporary, content);
+    await rename(temporary, file);
+  }
+
   async publish(staging: string, target: string): Promise<void> {
     // rename() will not replace a non-empty directory, so nothing existing is
     // ever overwritten. An empty target is removed first; if something else

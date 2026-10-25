@@ -160,3 +160,131 @@ liftoff review classify
 liftoff review classify --base main --json
 liftoff review classify --author octocat --committed
 ```
+
+## liftoff governance status
+
+Reads .liftoff/governance.json: each action Liftoff took on GitHub, its outcome, and the proof. It does not contact GitHub; use `liftoff governance assess` for the live state.
+
+Read-only.
+
+JSON report: `liftoff.governance-status/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff governance status
+liftoff governance status --dir demo --json
+```
+
+## liftoff governance assess
+
+Reads the repository on GitHub with your GitHub CLI login, after you agree, and checks each step from the committed governance files to rules GitHub enforces: the branches, the workflows on develop, a real successful run of every required check, the rulesets, their readback, the drift job and the proof. It changes nothing.
+
+Read-only.
+
+JSON report: `liftoff.governance-assessment/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--repo <owner/name>` | The GitHub repository. Defaults to the one the project's origin remote points at. |
+| `--use-gh` | Let Liftoff use your GitHub CLI login to reach GitHub, without asking. Liftoff never sees or stores your credentials. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff governance assess
+liftoff governance assess --repo octo/demo --use-gh --json
+```
+
+## liftoff governance plan
+
+Assesses the repository as `liftoff governance assess` does and lists every checkpoint not yet done: the ones Liftoff can take with `liftoff governance apply-next`, one at a time after you agree, and the ones you take yourself. With --out it saves the plan, bound to the repository and its next step, for apply-next --plan. It changes nothing on GitHub.
+
+Read-only.
+
+JSON report: `liftoff.governance-plan-report/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--repo <owner/name>` | The GitHub repository. Defaults to the one the project's origin remote points at. |
+| `--use-gh` | Let Liftoff use your GitHub CLI login to reach GitHub, without asking. Liftoff never sees or stores your credentials. |
+| `--out <file>` | Save the plan to this file. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff governance plan
+liftoff governance plan --use-gh --out governance.plan.json
+```
+
+## liftoff governance apply-next
+
+Assesses the repository again and, if the next checkpoint is one Liftoff can take, says exactly what it will do on GitHub and asks; the default answer is no. It takes that one step only: creating develop, making develop the default branch, applying the rulesets (only after every required check has run, and never changing a ruleset Liftoff did not create), or running the drift job. The step is recorded in .liftoff/governance.json before and after. With --plan, the step must be the one the plan expects. In scripts, pass --yes.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.governance-apply/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--repo <owner/name>` | The GitHub repository. Defaults to the one the project's origin remote points at. |
+| `--use-gh` | Let Liftoff use your GitHub CLI login to reach GitHub, without asking. Liftoff never sees or stores your credentials. |
+| `--plan <file>` | Take the step this saved plan expects, and refuse if the next step differs. |
+| `--yes` | Take the step without asking. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff governance apply-next
+liftoff governance apply-next --plan governance.plan.json --use-gh --yes
+```
+
+## liftoff governance resume
+
+If .liftoff/governance.json records a step that never finished, assesses the repository again and records whether GitHub shows it done. Nothing is repeated or sent: a step that did not happen is offered again by the next `liftoff governance apply-next`, which asks first. It changes only .liftoff/governance.json.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.governance-resume/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--repo <owner/name>` | The GitHub repository. Defaults to the one the project's origin remote points at. |
+| `--use-gh` | Let Liftoff use your GitHub CLI login to reach GitHub, without asking. Liftoff never sees or stores your credentials. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff governance resume
+```
+
+## liftoff governance verify
+
+Compares the rules GitHub enforces on each protected branch with the committed rulesets. With --prove, after you agree, it also tries each change the rules forbid on every protected branch: an empty commit pushed on top, a commit forced in beside the head, and deleting the branch. Each must be refused; anything GitHub allows is put back at once. The outcome is recorded in .liftoff/governance.json. Without --prove it changes nothing.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.governance-verify/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--repo <owner/name>` | The GitHub repository. Defaults to the one the project's origin remote points at. |
+| `--use-gh` | Let Liftoff use your GitHub CLI login to reach GitHub, without asking. Liftoff never sees or stores your credentials. |
+| `--prove` | Also try the changes the rules forbid, and record whether each was refused. |
+| `--yes` | Run the proof without asking. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff governance verify
+liftoff governance verify --prove
+```

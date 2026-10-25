@@ -1,5 +1,13 @@
 import type { CommandSpec } from "./command.ts";
 import { capabilitiesCommand } from "./commands/capabilities.ts";
+import {
+  makeGovernanceApplyNextCommand,
+  makeGovernanceAssessCommand,
+  makeGovernancePlanCommand,
+  makeGovernanceResumeCommand,
+  makeGovernanceStatusCommand,
+  makeGovernanceVerifyCommand,
+} from "./commands/governance.ts";
 import { makeInitCommand, makePlanCommand } from "./commands/plan-init.ts";
 import { makeReviewClassifyCommand } from "./commands/review-classify.ts";
 import { makeDoctorCommand, makeValidateCommand } from "./commands/validate-doctor.ts";
@@ -16,4 +24,10 @@ export const REGISTRY: readonly CommandSpec[] = [
   makeValidateCommand(),
   makeDoctorCommand(),
   makeReviewClassifyCommand(),
+  makeGovernanceStatusCommand(),
+  makeGovernanceAssessCommand(),
+  makeGovernancePlanCommand(),
+  makeGovernanceApplyNextCommand(),
+  makeGovernanceResumeCommand(),
+  makeGovernanceVerifyCommand(),
 ];
