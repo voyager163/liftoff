@@ -58,4 +58,23 @@ describe("the database probe", () => {
       );
     await vi.waitFor(async () => expect(await open()).toBe(0));
   });
+
+  it("reports a connection lost during the check instead of crashing", async () => {
+    // Completes the PostgreSQL startup handshake (AuthenticationOk, then
+    // ReadyForQuery), then drops the connection when the query arrives.
+    const handshake = Buffer.from([0x52, 0, 0, 0, 8, 0, 0, 0, 0, 0x5a, 0, 0, 0, 5, 0x49]);
+    const dropping = createServer((socket) => {
+      let started = false;
+      socket.on("data", () => {
+        if (started) socket.destroy();
+        else socket.write(handshake);
+        started = true;
+      });
+    });
+    await new Promise<void>((resolve) => dropping.listen(0, "127.0.0.1", resolve));
+    const { port: dropPort } = dropping.address() as { port: number };
+    const probe = databaseProbe(`postgresql://app:unused@127.0.0.1:${dropPort}/app`, 2);
+    await expect(probe()).rejects.toThrow("Connection terminated unexpectedly");
+    await new Promise((resolve) => dropping.close(resolve));
+  });
 });

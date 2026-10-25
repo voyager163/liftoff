@@ -25,6 +25,9 @@ export function databaseProbe(url: string, timeoutSeconds: number): DatabaseProb
       query_timeout: timeout,
       statement_timeout: timeout,
     });
+    // A connection lost mid-check also rejects the pending call, which
+    // reports it; the error event would otherwise stop the process.
+    client.on("error", () => undefined);
     try {
       await client.connect();
       await client.query("SELECT 1");
