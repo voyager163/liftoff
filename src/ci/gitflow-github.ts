@@ -4,6 +4,7 @@ import { type GitHubClient, GitHubError } from "../adapters/github.ts";
 /** The workflows of a generated project the release flow relies on. */
 export const WORKFLOWS = {
   ci: ".github/workflows/01-pr-ci.yml",
+  codeql: ".github/workflows/02-codeql.yml",
   reviewPolicy: ".github/workflows/03-review-policy.yml",
   build: ".github/workflows/10-build.yml",
 } as const;

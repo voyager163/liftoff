@@ -10,12 +10,20 @@ on:
   merge_group:
   schedule:
     - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: >-
+          The pull request to analyze, when the release workflows start CodeQL
+          for one they opened (GitHub starts no workflows for those)
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  group: codeql-${{ github.event.pull_request.number || inputs.pull_request || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -25,6 +33,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+      pull-requests: read
       security-events: write
     strategy:
       fail-fast: false
@@ -32,9 +41,26 @@ jobs:
         include:
 {{liftoff.codeqlLanguages}}
     steps:
+      # A run the release workflows started names its pull request instead.
+      - name: Find the pull request's head
+        id: pr
+        if: github.event_name == 'workflow_dispatch' && inputs.pull_request != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ inputs.pull_request }}
+        run: |
+          case "$PULL_REQUEST" in
+            "" | 0* | *[!0-9]*)
+              echo "::error::pull_request must be a pull request number, not \"$PULL_REQUEST\"."
+              exit 1
+              ;;
+          esac
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST" --jq '"head=\(.head.sha)"' >> "$GITHUB_OUTPUT"
+          echo "ref=refs/pull/$PULL_REQUEST/head" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ steps.pr.outputs.head }}
       - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           languages: ${{ matrix.language }}
@@ -46,3 +72,7 @@ jobs:
       - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           category: /language:${{ matrix.language }}
+          # A dispatched run reports on the pull request, as its own would;
+          # both are empty otherwise.
+          ref: ${{ steps.pr.outputs.ref }}
+          sha: ${{ steps.pr.outputs.head }}

@@ -4,6 +4,8 @@
  * against GitHub separately.
  */
 
+import { isVersion } from "./release.ts";
+
 /** Prefixes of branches that carry everyday work into `develop`. */
 export const WORK_PREFIXES = ["feature", "fix", "chore", "docs", "ci"] as const;
 
@@ -27,7 +29,7 @@ export interface BranchRequest {
 }
 
 const NAME = "[A-Za-z0-9][A-Za-z0-9._/-]*";
-const VERSION = /^(?:release|hotfix)\/(\d+\.\d+\.\d+)$/;
+const VERSIONED = /^(release|hotfix)\/(.+)$/;
 /** A line such as "Incident: INC-123" or "Incident: https://…", with the reference on that line. */
 const INCIDENT = /^[ \t]*Incident:[ \t]*\S/im;
 
@@ -54,11 +56,13 @@ export function checkBranch(request: BranchRequest): BranchDecision {
     };
   }
   if (base === "main") {
-    const version = VERSION.exec(head)?.[1];
-    if (version !== undefined && head.startsWith("release/")) {
+    // The same versions a release can be published under, so nothing that
+    // merges fails to publish.
+    const [, kind, version = ""] = VERSIONED.exec(head) ?? [];
+    if (kind === "release" && isVersion(version)) {
       return { allowed: true, kind: "release", version, reason: `${head} releases ${version}` };
     }
-    if (version !== undefined) {
+    if (kind === "hotfix" && isVersion(version)) {
       return INCIDENT.test(request.body)
         ? {
             allowed: true,
@@ -76,7 +80,7 @@ export function checkBranch(request: BranchRequest): BranchDecision {
     return {
       allowed: false,
       kind: "other",
-      reason: `${head} cannot merge into main: only release/X.Y.Z and hotfix/X.Y.Z branches can`,
+      reason: `${head} cannot merge into main: only release/X.Y.Z and hotfix/X.Y.Z branches can, with no leading zeros`,
     };
   }
   return { allowed: true, kind: "other", reason: `${base} is not a protected branch` };

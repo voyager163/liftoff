@@ -68,15 +68,27 @@ publishes it and brings it back into `develop`.
 
 GitHub starts no workflows for pull requests opened with the workflow token.
 Create a GitHub App with read and write access to contents and pull
-requests and read access to actions, install it on the repository, and set the `RELEASE_APP_CLIENT_ID`
-variable and the `RELEASE_APP_PRIVATE_KEY` secret: release and sync pull
-requests are then opened with the app and start their checks like any other.
+requests and read access to actions, install it on the repository, and set
+the `RELEASE_APP_CLIENT_ID` variable and the `RELEASE_APP_PRIVATE_KEY`
+secret: release and sync pull requests are then opened with the app and
+start their checks like any other.
 
 Without an app, the workflows open them with the workflow token and start CI
-(`01-pr-ci.yml`) on the pull request's branch and the review policy on its
-base themselves, naming the pull request. Those runs report on the pull
-request's exact head commit; no check is ever reported as passed without
-running.
+(`01-pr-ci.yml`) and CodeQL (`02-codeql.yml`) on the pull request's branch
+and the review policy on its base themselves, naming the pull request. Those
+runs check it as GitHub's own would: the branch checks run its base's copy,
+dependency review compares its base and head, and CodeQL reports on the pull
+request. They report on its exact head commit; no check is ever reported as
+passed without running.
+
+If a release or hotfix pull request's CI runs before its build has finished,
+the branch check fails; when the build passes, the Build workflow starts CI
+again for every open pull request into `main` at that commit.
+
+A sync pull request whose `develop` has moved on since the release also
+merges `develop` in, so it is up to date and its checks cover what merging it
+gives. If the two conflict, its description says to merge `develop` into it
+and resolve them.
 
 ## Release manifest
 

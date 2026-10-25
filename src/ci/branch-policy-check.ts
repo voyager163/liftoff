@@ -97,6 +97,9 @@ export async function main(mode: Mode, context: CheckEnvironment): Promise<numbe
   }
 }
 
+/** The Build workflow starts CI again for pull requests into main once it passes. */
+const STILL_BUILDING = "; if it is still running, CI checks again when it passes";
+
 async function branchProblems(
   client: GitHubClient,
   repository: string,
@@ -127,7 +130,7 @@ async function branchProblems(
       ] as const) {
         if (!(await workflowPassed(client, repository, pr.head.sha, workflow, "develop"))) {
           problems.push(
-            `${what} has not passed on develop for ${pr.head.sha}, the commit being released`,
+            `${what} has not passed on develop for ${pr.head.sha}, the commit being released${workflow === WORKFLOWS.build ? STILL_BUILDING : ""}`,
           );
         }
       }
@@ -139,7 +142,9 @@ async function branchProblems(
       problems.push(`${pr.head.ref} does not start from the current main; rebase it onto main`);
     }
     if (!(await workflowPassed(client, repository, pr.head.sha, WORKFLOWS.build, pr.head.ref))) {
-      problems.push(`the build has not passed for ${pr.head.sha}, so there is no image to release`);
+      problems.push(
+        `the build has not passed for ${pr.head.sha}, so there is no image to release${STILL_BUILDING}`,
+      );
     }
   }
   if (

@@ -14,6 +14,8 @@ interface Repo {
   releases?: Record<string, string>;
   /** Open pull requests, by head branch. */
   open?: Record<string, number>;
+  /** Whether merging develop into a sync branch conflicts. */
+  conflict?: boolean;
   develop?: string;
   /** compare/<base>...<sha> answers, by base. */
   compare?: Record<string, { ahead_by: number; behind_by: number }>;
@@ -43,6 +45,9 @@ function fakeGitHub(repo: Repo, calls: Call[]) {
     const path = url.pathname;
     if (method === "POST" && path.endsWith("/dispatches")) return json(null, 204);
     if (method === "POST" && path.endsWith("/git/refs")) return json({}, 201);
+    if (method === "POST" && path.endsWith("/merges")) {
+      return repo.conflict ? json({ message: "Merge conflict" }, 409) : json({}, 201);
+    }
     if (method === "POST" && path.endsWith("/pulls")) {
       return json({ number: 21, html_url: "https://github.com/o/r/pull/21" }, 201);
     }
@@ -148,6 +153,11 @@ describe("FLOW-004 cutting a release", () => {
       },
       {
         method: "POST",
+        path: "/repos/o/r/actions/workflows/02-codeql.yml/dispatches",
+        body: { ref: "release/1.2.0", inputs: { pull_request: "21" } },
+      },
+      {
+        method: "POST",
         path: "/repos/o/r/actions/workflows/03-review-policy.yml/dispatches",
         body: { ref: "main", inputs: { pull_request: "21" } },
       },
@@ -182,6 +192,7 @@ describe("FLOW-004 cutting a release", () => {
     expect(both.code).toBe(0);
     expect(writes(both.calls).map((call) => call.path)).toEqual([
       "/repos/o/r/actions/workflows/01-pr-ci.yml/dispatches",
+      "/repos/o/r/actions/workflows/02-codeql.yml/dispatches",
       "/repos/o/r/actions/workflows/03-review-policy.yml/dispatches",
     ]);
     expect(both.outputs).toContain("pull-request=30");
@@ -253,7 +264,12 @@ describe("FLOW-005 after a release merges into main", () => {
   });
 
   it("has nothing to do for other pushes to main", async () => {
-    for (const pulls of [[], [merged("sync/x")], [merged("release/1.2.0", "a".repeat(40))]]) {
+    for (const pulls of [
+      [],
+      [merged("sync/x")],
+      [merged("release/1.2.0", "a".repeat(40))],
+      [merged("hotfix/01.2.3")],
+    ]) {
       const { code, outputs } = await run("identify", { GITHUB_SHA: MAIN }, { pulls });
       expect(code).toBe(0);
       expect(outputs).toEqual(["release=false"]);
@@ -398,8 +414,32 @@ describe("FLOW-005 after a release merges into main", () => {
       ["/repos/o/r/git/refs", "refs/heads/sync/main-into-develop-1.2.0"],
       ["/repos/o/r/pulls", "develop"],
       ["/repos/o/r/actions/workflows/01-pr-ci.yml/dispatches", "sync/main-into-develop-1.2.0"],
+      ["/repos/o/r/actions/workflows/02-codeql.yml/dispatches", "sync/main-into-develop-1.2.0"],
       ["/repos/o/r/actions/workflows/03-review-policy.yml/dispatches", "develop"],
     ]);
+  });
+
+  it("merges develop into the sync branch when develop moved on", async () => {
+    const diverged = { compare: { develop: { ahead_by: 1, behind_by: 2 } } };
+    const env = { GITHUB_SHA: MAIN, VERSION: "1.2.0", DISPATCH: "false" };
+    const merged = await run("sync", env, diverged);
+    expect(merged.code).toBe(0);
+    expect(
+      writes(merged.calls).map((call) => [call.path, call.body?.base ?? call.body?.ref]),
+    ).toEqual([
+      ["/repos/o/r/git/refs", "refs/heads/sync/main-into-develop-1.2.0"],
+      ["/repos/o/r/merges", "sync/main-into-develop-1.2.0"],
+      ["/repos/o/r/pulls", "develop"],
+    ]);
+    expect(writes(merged.calls)[1]?.body?.head).toBe("develop");
+    expect(String(writes(merged.calls)[2]?.body?.body)).not.toContain("conflict");
+
+    const conflicting = await run("sync", env, { ...diverged, conflict: true });
+    expect(conflicting.code).toBe(0);
+    expect(String(writes(conflicting.calls).at(-1)?.body?.body)).toContain(
+      "develop has changes that conflict with main",
+    );
+    expect(conflicting.log).toContain("resolve that in the pull request");
   });
 
   it("reuses the sync branch and pull request an earlier run opened", async () => {

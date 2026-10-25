@@ -6,8 +6,8 @@
 # With a release app (the RELEASE_APP_CLIENT_ID variable and
 # RELEASE_APP_PRIVATE_KEY secret), the pull request starts its checks like
 # any other. Without one it is opened with the workflow token, which starts
-# no workflows, so this starts CI and the review policy for it at its exact
-# head commit.
+# no workflows, so this starts CI, CodeQL and the review policy for it at its
+# exact head commit.
 name: Release
 
 on:

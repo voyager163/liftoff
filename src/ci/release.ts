@@ -15,10 +15,10 @@
 // rather than refusing it or doing it twice.
 //
 // GitHub starts no workflows for pull requests opened with the workflow
-// token. With DISPATCH=true, open-release and sync start CI and the review
-// policy for the new pull request themselves, at its exact head commit; they
-// never report a check as passed.
-import { GitHubClient } from "../adapters/github.ts";
+// token. With DISPATCH=true, open-release and sync start CI, CodeQL and the
+// review policy for the new pull request themselves, at its exact head
+// commit; they never report a check as passed.
+import { GitHubClient, GitHubError } from "../adapters/github.ts";
 import {
   isVersion,
   parseImages,
@@ -162,8 +162,8 @@ async function identify(context: Context): Promise<void> {
   const merged = pulls.find(
     (pr) => pr.base.ref === "main" && pr.merged_at && pr.merge_commit_sha === sha,
   );
-  const match = /^(release|hotfix)\/(\d+\.\d+\.\d+)$/.exec(merged?.head.ref ?? "");
-  if (!merged || !match) {
+  const match = /^(release|hotfix)\/(.+)$/.exec(merged?.head.ref ?? "");
+  if (!merged || !match || !isVersion(match[2] ?? "")) {
     context.output("release", "false");
     context.summary("## Release\n\nThis push to main did not merge a release or hotfix.\n");
     return;
@@ -275,21 +275,47 @@ async function sync(context: Context): Promise<void> {
   const sha = required(env, "GITHUB_SHA");
   const version = required(env, "VERSION");
   const branch = `sync/main-into-develop-${version}`;
-  if ((await compare(client, repository, "develop", sha)).ahead_by === 0) {
+  const diverged = await compare(client, repository, "develop", sha);
+  if (diverged.ahead_by === 0) {
     context.summary("## Sync\n\ndevelop already has everything on main.\n");
     return;
   }
   if (!(await refExists(client, repository, `heads/${branch}`))) {
     await client.post(`/repos/${repository}/git/refs`, { ref: `refs/heads/${branch}`, sha });
   }
+  // When develop moved on, the branch also takes it in: it is then up to
+  // date with develop, and its checks cover exactly what merging gives.
+  let conflicts = false;
+  if (diverged.behind_by > 0) {
+    try {
+      await client.post(`/repos/${repository}/merges`, {
+        base: branch,
+        head: "develop",
+        commit_message: `Merge develop into ${branch}`,
+      });
+    } catch (error) {
+      if (!(error instanceof GitHubError && error.status === 409)) throw error;
+      conflicts = true;
+    }
+  }
   const pr = await openPullRequest(context, {
     title: `Bring ${version} back into develop`,
     head: branch,
     base: "develop",
-    body: `Merges main at ${sha}, after ${version}, back into develop. Merge it with a merge commit, never a squash, so develop keeps main's history.`,
+    body: [
+      `Merges main at ${sha}, after ${version}, back into develop. Merge it with a merge commit, never a squash, so develop keeps main's history.`,
+      ...(conflicts
+        ? [
+            "",
+            "develop has changes that conflict with main. Merge develop into this branch, resolve them and push.",
+          ]
+        : []),
+    ].join("\n"),
   });
   await startChecks(context, pr.number, branch, "develop");
-  context.summary(`## Sync\n\nThe pull request into develop is [#${pr.number}](${pr.html_url}).\n`);
+  context.summary(
+    `## Sync\n\nThe pull request into develop is [#${pr.number}](${pr.html_url}).${conflicts ? " develop conflicts with main; resolve that in the pull request." : ""}\n`,
+  );
 }
 
 /** Opens a pull request, or finds the one an earlier run opened from the same branch. */
@@ -314,9 +340,10 @@ async function startChecks(context: Context, pr: number, head: string, base: str
   const { client, repository } = context;
   const inputs = { pull_request: String(pr) };
   await dispatch(client, repository, WORKFLOWS.ci, head, inputs);
+  await dispatch(client, repository, WORKFLOWS.codeql, head, inputs);
   await dispatch(client, repository, WORKFLOWS.reviewPolicy, base, inputs);
   context.summary(
-    `Started CI and the review policy for #${pr}: pull requests opened with the workflow token start no workflows themselves.\n\n`,
+    `Started CI, CodeQL and the review policy for #${pr}: pull requests opened with the workflow token start no workflows themselves.\n\n`,
   );
 }
 

@@ -1213,49 +1213,54 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
   });
 });
 
-describe("FLOW-004 CI the release workflows start checks the pull request like GitHub's own", () => {
-  interface Step {
-    id?: string;
-    if?: string;
-    uses?: string;
-    run?: string;
-    env?: Record<string, string>;
-    with?: Record<string, string>;
-  }
+interface Step {
+  id?: string;
+  name?: string;
+  if?: string;
+  uses?: string;
+  run?: string;
+  env?: Record<string, string>;
+  with?: Record<string, string>;
+}
 
-  // Runs a step's script with gh replaced by a function that records its
-  // arguments and prints `answer`, as `gh api --jq` would.
-  const runStep = (step: Step | undefined, pullRequest: string, answer: string) => {
-    const dir = mkdtempSync(path.join(tmpdir(), "liftoff-dispatch-"));
-    try {
-      const calls = path.join(dir, "calls.txt");
-      const output = path.join(dir, "output.txt");
-      writeFileSync(
-        path.join(dir, "step.sh"),
-        `gh() { printf '%s\\n' "$*" >> "$CALLS"; printf '${answer}'; }\n${step?.run ?? ""}`,
-      );
-      const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "step.sh"], {
-        cwd: dir,
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          CALLS: calls,
-          GITHUB_OUTPUT: output,
-          GITHUB_REPOSITORY: "acme/app",
-          PULL_REQUEST: pullRequest,
-        },
-      });
-      const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
-      return {
-        status: result.status,
-        stdout: result.stdout,
-        calls: read(calls),
-        output: read(output),
-      };
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  };
+// Runs a workflow step's script with bash, after `shims`: shell functions
+// standing in for gh, docker and the like, which record calls in $CALLS.
+const runScript = (script: string, shims: string, env: Record<string, string> = {}) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "liftoff-step-"));
+  try {
+    const calls = path.join(dir, "calls.txt");
+    const output = path.join(dir, "output.txt");
+    writeFileSync(path.join(dir, "step.sh"), `${shims}\n${script}`);
+    const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "step.sh"], {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CALLS: calls,
+        GITHUB_OUTPUT: output,
+        GITHUB_REPOSITORY: "acme/app",
+        ...env,
+      },
+    });
+    const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
+    return {
+      status: result.status,
+      stdout: result.stdout,
+      calls: read(calls),
+      output: read(output),
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+describe("FLOW-004 CI the release workflows start checks the pull request like GitHub's own", () => {
+  // Runs a step that looks up the pull request, with gh printing `answer` as
+  // `gh api --jq` would.
+  const runStep = (step: Step | undefined, pullRequest: string, answer: string) =>
+    runScript(step?.run ?? "", `gh() { printf '%s\\n' "$*" >> "$CALLS"; printf '${answer}'; }`, {
+      PULL_REQUEST: pullRequest,
+    });
 
   it("runs the branch checks from the dispatched pull request's base", async () => {
     const generated = await byPath({});
@@ -1307,6 +1312,29 @@ describe("FLOW-004 CI the release workflows start checks the pull request like G
       "base-ref": `\${{ steps.pr.outputs.base }}`,
       "head-ref": `\${{ steps.pr.outputs.head }}`,
     });
+  });
+
+  it("runs CodeQL for the dispatched pull request and reports on it", async () => {
+    const generated = await byPath({});
+    const codeql = parse(generated.get(".github/workflows/02-codeql.yml")?.content ?? "") as {
+      on: { workflow_dispatch: { inputs: Record<string, unknown> } };
+      jobs: { analyze: { permissions: Record<string, string>; steps: Step[] } };
+    };
+    expect(Object.keys(codeql.on.workflow_dispatch.inputs)).toEqual(["pull_request"]);
+    const { permissions, steps } = codeql.jobs.analyze;
+    expect(permissions).toMatchObject({ "pull-requests": "read", "security-events": "write" });
+    const found = runStep(
+      steps.find((step) => step.id === "pr"),
+      "7",
+      "head=h1\\n",
+    );
+    expect(found.output).toBe("head=h1\nref=refs/pull/7/head\n");
+    expect(steps.find((step) => step.uses?.startsWith("actions/checkout@"))?.with?.ref).toBe(
+      `\${{ steps.pr.outputs.head }}`,
+    );
+    expect(
+      steps.find((step) => step.uses?.startsWith("github/codeql-action/analyze@"))?.with,
+    ).toMatchObject({ ref: `\${{ steps.pr.outputs.ref }}`, sha: `\${{ steps.pr.outputs.head }}` });
   });
 
   it("asks the release app's token to read the workflow runs it checks", async () => {
@@ -1365,6 +1393,65 @@ describe("FLOW-003 GitFlow projects build once and release through main", () => 
       .identify;
     expect(identify.permissions).toEqual({ contents: "read", "pull-requests": "read" });
     expect(generated.get("GOVERNANCE.md")?.content).toContain("## Releases");
+  });
+
+  const build = async () =>
+    (
+      parse((await byPath({})).get(".github/workflows/10-build.yml")?.content ?? "") as {
+        jobs: Record<string, { needs?: string; permissions?: unknown; steps: Step[] }>;
+      }
+    ).jobs;
+
+  it("keeps an image already built and attested for the commit on a re-run", async () => {
+    const steps = (await build()).image?.steps ?? [];
+    const at = steps.findIndex((step) => step.id === "existing");
+    expect(at).toBeGreaterThan(0);
+    for (const step of steps.slice(at + 1)) {
+      expect(step.if, step.name ?? step.uses).toBe("steps.existing.outputs.built != 'true'");
+    }
+    const sha = "c".repeat(40);
+    const look = (digest: string, attested: boolean) =>
+      runScript(
+        steps[at]?.run ?? "",
+        [
+          `docker() { [ -n "${digest}" ] && printf '"%s"\\n' "${digest}"; }`,
+          `gh() { printf '%s\\n' "$*" >> "$CALLS"; ${attested ? "true" : "false"}; }`,
+        ].join("\n"),
+        { IMAGE: "ghcr.io/acme/app/api", GITHUB_SHA: sha },
+      );
+    const missing = look("", true);
+    expect(missing).toMatchObject({ status: 0, output: "", calls: "" });
+    const kept = look("sha256:abc", true);
+    expect(kept).toMatchObject({ status: 0, output: "built=true\n" });
+    expect(kept.calls).toBe(
+      `attestation verify oci://ghcr.io/acme/app/api@sha256:abc --repo acme/app --signer-workflow acme/app/.github/workflows/10-build.yml --source-digest ${sha}\n`,
+    );
+    const unattested = look("sha256:abc", false);
+    expect(unattested).toMatchObject({ status: 0, output: "" });
+    expect(unattested.stdout).toContain("building it again");
+  });
+
+  it("starts CI again for pull requests into main at the built commit", async () => {
+    const recheck = (await build()).recheck;
+    expect(recheck?.needs).toBe("image");
+    expect(recheck?.permissions).toEqual({ actions: "write", "pull-requests": "read" });
+    const shims = `gh() { printf '%s\\n' "$*" >> "$CALLS"; [ "$1" != api ] || printf '%b' "$PULLS"; }`;
+    const env = { GITHUB_SHA: "c".repeat(40) };
+    const started = runScript(recheck?.steps[0]?.run ?? "", shims, {
+      ...env,
+      PULLS: "21\\trelease/1.2.0\\n22\\thotfix/1.2.1\\n",
+    });
+    expect(started.status).toBe(0);
+    expect(started.calls).toContain("api --paginate repos/acme/app/pulls?state=open&base=main");
+    expect(started.calls.split("\n").filter((call) => call.startsWith("workflow"))).toEqual([
+      "workflow run 01-pr-ci.yml --repo acme/app --ref release/1.2.0 -f pull_request=21",
+      "workflow run 01-pr-ci.yml --repo acme/app --ref hotfix/1.2.1 -f pull_request=22",
+    ]);
+    const none = runScript(recheck?.steps[0]?.run ?? "", shims, { ...env, PULLS: "" });
+    expect(none.status).toBe(0);
+    expect(none.stdout).toContain("No open pull request into main");
+    const failed = runScript(recheck?.steps[0]?.run ?? "", "gh() { return 1; }", env);
+    expect(failed.status).not.toBe(0);
   });
 
   it("builds only the API without a frontend, and nothing without a GitFlow profile", async () => {

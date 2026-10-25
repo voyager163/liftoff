@@ -59,7 +59,15 @@ describe("FLOW-001 which branches may merge where", () => {
       allowed: false,
       reason: expect.stringContaining('"Incident: <reference>"'),
     });
-    for (const head of ["release/1.2", "release/v1.2.0", "feature/x", "develop", "sync/x"]) {
+    for (const head of [
+      "release/1.2",
+      "release/v1.2.0",
+      "release/1.02.0",
+      "hotfix/01.2.3",
+      "feature/x",
+      "develop",
+      "sync/x",
+    ]) {
       expect(check(head, "main")).toMatchObject({
         allowed: false,
         reason: expect.stringContaining("only release/X.Y.Z and hotfix/X.Y.Z"),
