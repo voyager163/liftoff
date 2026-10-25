@@ -53,13 +53,35 @@ one.
 | `--stack` | `python-fastapi` | `python-fastapi`, `node-fastify`, `go-huma` |
 | `--workflow` | `openspec` | `manual` (OpenSpec and Spec Kit come later) |
 | `--agents` | none | any of `copilot`, `codex`, `claude` |
-| `--governance` | `single-maintainer-gitflow` | `single-maintainer-gitflow`, `none` |
+| `--governance` | `single-maintainer-gitflow` | `single-maintainer-gitflow`, `team-gitflow`, `risk-tiered-gitflow`, `none` |
 | `--ai-review` | `auto` | `auto`, `on`, `off` |
 | `--owners` | none | GitHub logins, for CODEOWNERS and the review policy |
 
 Choosing something the product supports but this release cannot generate yet,
 such as the OpenSpec workflow, stops with exit code 6 and says what to use
 instead. See the [command reference](reference/cli.md) for every option.
+
+### Governance profiles
+
+The profile decides how many people must approve a change before it merges,
+by the risk tier the review policy gives it:
+
+| Profile | Low | Medium | High | Use it when |
+| --- | --- | --- | --- | --- |
+| `single-maintainer-gitflow` | 0 | 0 | 0 | one person maintains the project; the tier sets how deep the automated review goes |
+| `team-gitflow` | 1 | 1 | 2 | every change needs someone other than its author |
+| `risk-tiered-gitflow` | 0 | 1 | 2 | low-risk changes may merge without an approval |
+| `none` | 0 | 0 | 0 | you want no governance files at all |
+
+With `team-gitflow` and `risk-tiered-gitflow`, an approval counts only when
+it comes from someone with write access who is not the author, on the pull
+request's current head commit; bots never count. Give at least two
+`--owners` to have the branch rules require a code owner's approval, because
+nobody can approve their own pull request.
+
+These two profiles are generated and tested, but their approval rules have
+not yet been observed on GitHub with a real second reviewer, so they are not
+yet qualified.
 
 ## Check the project
 

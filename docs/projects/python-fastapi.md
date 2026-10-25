@@ -47,7 +47,9 @@ demo/
 ```
 
 GitFlow governance profiles add `GOVERNANCE.md`, `.github/rulesets/` and a
-governance drift workflow, and `--owners` adds `.github/CODEOWNERS`. Selected
+governance drift workflow, and `--owners` adds `.github/CODEOWNERS`. See
+[governance profiles](../getting-started.md#governance-profiles) for how many
+approvals each one requires. Selected
 coding agents add `AGENTS.md`, `CLAUDE.md` (Claude Code), review and setup
 skills and a read-only verifier agent in each host's own directory.
 

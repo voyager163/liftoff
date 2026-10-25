@@ -47,6 +47,17 @@ const CASES: Record<string, Record<string, unknown>> = {
   "claude-no-governance": { agents: ["claude"], review: { ai: true }, governance: "none" },
   "node-copilot": { stack: "node-fastify", agents: ["copilot"], review: { ai: true } },
   "go-codex": { stack: "go-huma", agents: ["codex"], review: { ai: true } },
+  "team-two-owners": {
+    governance: "team-gitflow",
+    owners: ["alice", "bob"],
+    agents: ["claude"],
+    review: { ai: true },
+  },
+  "risk-tiered-copilot": {
+    governance: "risk-tiered-gitflow",
+    agents: ["copilot"],
+    review: { ai: true },
+  },
 };
 
 const files = async (overrides: Record<string, unknown> = {}) =>
@@ -383,6 +394,74 @@ describe("PROJ-007 coding-agent files", () => {
     expect(off.has(".github/workflows/04-ai-review.yml")).toBe(false);
     expect(off.has(".github/liftoff/ai-review.mjs")).toBe(false);
     expect(off.has(".github/workflows/03-review-policy.yml")).toBe(true);
+  });
+});
+
+describe("PROJ-012 team and risk-tiered profiles", () => {
+  const pullRequestRule = (content: string | undefined) =>
+    JSON.parse(content ?? "{}").rules.find((rule: { type: string }) => rule.type === "pull_request")
+      .parameters;
+
+  it("requires one approval on every team change, from a code owner when there are two", async () => {
+    const team = await byPath(CASES["team-two-owners"]);
+    for (const branch of ["develop", "main"]) {
+      expect(pullRequestRule(team.get(`.github/rulesets/${branch}.json`)?.content)).toMatchObject({
+        required_approving_review_count: 1,
+        require_last_push_approval: true,
+        dismiss_stale_reviews_on_push: true,
+        require_code_owner_review: true,
+      });
+    }
+    expect(parsePolicy(team.get(".github/review-policy.yml")?.content ?? "").profile).toBe(
+      "team-gitflow",
+    );
+    const governance = team.get("GOVERNANCE.md")?.content ?? "";
+    expect(governance).toContain("required approvals: low 1, medium 1,\n   high 2");
+    expect(governance).toContain("## Approvals");
+    expect(governance).toContain("not the author");
+    expect(governance).toContain("require one of them to approve");
+    expect(team.get(".github/CODEOWNERS")?.content).toContain("* @alice @bob");
+  });
+
+  it("never requires a code owner's approval that a single owner could not give", async () => {
+    const oneOwner = await byPath({ governance: "team-gitflow", owners: ["alice"] });
+    expect(pullRequestRule(oneOwner.get(".github/rulesets/develop.json")?.content)).toMatchObject({
+      required_approving_review_count: 1,
+      require_code_owner_review: false,
+    });
+    expect(oneOwner.get("GOVERNANCE.md")?.content).toContain("names one owner");
+    const noOwners = await byPath({ governance: "team-gitflow" });
+    expect(noOwners.has(".github/CODEOWNERS")).toBe(false);
+    expect(noOwners.get("GOVERNANCE.md")?.content).toContain("No code owners were given");
+  });
+
+  it("lets the review policy require risk-tiered approvals by tier", async () => {
+    const tiered = await byPath({
+      governance: "risk-tiered-gitflow",
+      owners: ["alice", "bob"],
+    });
+    // Low-risk changes need no approval, so the rulesets require none.
+    expect(pullRequestRule(tiered.get(".github/rulesets/develop.json")?.content)).toMatchObject({
+      required_approving_review_count: 0,
+      require_last_push_approval: false,
+      require_code_owner_review: false,
+      dismiss_stale_reviews_on_push: true,
+    });
+    expect(parsePolicy(tiered.get(".github/review-policy.yml")?.content ?? "").profile).toBe(
+      "risk-tiered-gitflow",
+    );
+    const governance = tiered.get("GOVERNANCE.md")?.content ?? "";
+    expect(governance).toContain("required approvals: low 0, medium 1,\n   high 2");
+    expect(governance).toContain("## Approvals");
+  });
+
+  it("keeps the single-maintainer handoff free of approval rules", async () => {
+    const single = await byPath({ owners: ["alice", "bob"] });
+    expect(single.get("GOVERNANCE.md")?.content).not.toContain("## Approvals");
+    expect(pullRequestRule(single.get(".github/rulesets/develop.json")?.content)).toMatchObject({
+      required_approving_review_count: 0,
+      require_code_owner_review: false,
+    });
   });
 });
 

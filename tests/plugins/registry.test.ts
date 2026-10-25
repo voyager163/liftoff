@@ -21,6 +21,13 @@ const config = (overrides: Record<string, unknown> = {}) =>
   });
 
 describe("PROJ-003 selections are checked first", () => {
+  it.each(["single-maintainer-gitflow", "team-gitflow", "risk-tiered-gitflow", "none"])(
+    "resolves the %s profile",
+    (governance) => {
+      expect(resolveSelection(config({ governance })).profile).toBe(governance);
+    },
+  );
+
   it("resolves a supported selection in generation order", () => {
     const selection = resolveSelection(config({ agents: ["codex", "copilot"] }));
     expect(selection.stack.id).toBe("stack/python-fastapi");
@@ -43,7 +50,6 @@ describe("PROJ-003 selections are checked first", () => {
     [{ workflow: "spec-kit" }, /Spec Kit workflow is not available/, true],
     [{ agents: ["cursor"] }, /unknown agent "cursor"/, false],
     [{ governance: "anarchy" }, /unknown governance profile/, false],
-    [{ governance: "team-gitflow" }, /team-gitflow profile is not available/, true],
     [
       { agents: ["claude"], review: { ai: true, engine: "codex" } },
       /must be one of the selected agents/,

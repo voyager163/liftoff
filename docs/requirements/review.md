@@ -119,6 +119,18 @@ always-human path, including workflows.
 
 Verification: test
 
+## REVIEW-011 Approval rules hold with a real second reviewer
+
+On a GitHub repository with a team or risk-tiered project's rulesets
+applied, a pull request that needs an approval cannot merge until a second
+person with write access approves its head commit. A new push dismisses that
+approval, and approvals from the author, a bot or an older commit do not
+satisfy `review-policy`. Until this has been observed with a real second
+reviewer, the team and risk-tiered profiles are described as not yet
+qualified.
+
+Verification: live
+
 ## AIREVIEW-001 Findings are found independently and verified by vote
 
 Medium-risk changes get two finder passes and high-risk changes three, each

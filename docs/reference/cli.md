@@ -49,10 +49,10 @@ JSON report: `liftoff.plan-report/v1`.
 | `--stack <stack>` | Technology stack: python-fastapi, node-fastify, go-huma. (default `python-fastapi`) |
 | `--workflow <workflow>` | Development workflow: openspec, spec-kit or manual. (default `openspec`) |
 | `--agents <list>` | Coding-agent hosts, comma-separated: copilot, codex, claude. Defaults to none. |
-| `--governance <profile>` | Governance profile. (default `single-maintainer-gitflow`) |
+| `--governance <profile>` | Governance profile: single-maintainer-gitflow, team-gitflow, risk-tiered-gitflow, none. (default `single-maintainer-gitflow`) |
 | `--ai-review <mode>` | Verified AI review in CI; auto turns it on when agents are selected. (one of `auto`, `on`, `off`; default `auto`) |
 | `--review-engine <host>` | Which selected agent host runs the verified AI review. |
-| `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. |
+| `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. Profiles that require approvals also require a code owner's approval when there are at least two. |
 | `--out <file>` | Save the plan to this file for `liftoff init --plan`. |
 | `--json` | Print one JSON report on stdout. |
 | `--help` | Show help for this command. |
@@ -78,10 +78,10 @@ JSON report: `liftoff.init-report/v1`.
 | `--stack <stack>` | Technology stack: python-fastapi, node-fastify, go-huma. (default `python-fastapi`) |
 | `--workflow <workflow>` | Development workflow: openspec, spec-kit or manual. (default `openspec`) |
 | `--agents <list>` | Coding-agent hosts, comma-separated: copilot, codex, claude. Defaults to none. |
-| `--governance <profile>` | Governance profile. (default `single-maintainer-gitflow`) |
+| `--governance <profile>` | Governance profile: single-maintainer-gitflow, team-gitflow, risk-tiered-gitflow, none. (default `single-maintainer-gitflow`) |
 | `--ai-review <mode>` | Verified AI review in CI; auto turns it on when agents are selected. (one of `auto`, `on`, `off`; default `auto`) |
 | `--review-engine <host>` | Which selected agent host runs the verified AI review. |
-| `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. |
+| `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. Profiles that require approvals also require a code owner's approval when there are at least two. |
 | `--plan <file>` | Create exactly the project in this saved plan. |
 | `--yes` | Create it without asking. |
 | `--json` | Print one JSON report on stdout. |

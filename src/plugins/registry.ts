@@ -28,8 +28,10 @@ export const PLANNED_WORKFLOWS: Readonly<Record<string, string>> = {
   openspec: "OpenSpec",
   "spec-kit": "Spec Kit",
 };
-export const GOVERNANCE: Readonly<Partial<Record<ProfileId, ProjectPlugin>>> = {
+export const GOVERNANCE: Readonly<Record<ProfileId, ProjectPlugin>> = {
   "single-maintainer-gitflow": gitflowGovernance("single-maintainer-gitflow"),
+  "team-gitflow": gitflowGovernance("team-gitflow"),
+  "risk-tiered-gitflow": gitflowGovernance("risk-tiered-gitflow"),
   none: noGovernance,
 };
 export const DEFAULT_WORKFLOW = "openspec";
@@ -105,12 +107,6 @@ export function resolveSelection(config: ProjectConfig): Selection {
   }
   const profile = config.governance as ProfileId;
   const governance = GOVERNANCE[profile];
-  if (!governance) {
-    throw new SelectionError(
-      `the ${profile} profile is not available in this release yet; use single-maintainer-gitflow or none`,
-      true,
-    );
-  }
 
   if (config.review.engine !== undefined && !config.agents.includes(config.review.engine)) {
     throw new SelectionError(
@@ -139,7 +135,7 @@ export function allPlugins(): ProjectPlugin[] {
     ...Object.values(WORKFLOWS),
     agentsPlugin,
     reviewPlugin,
-    ...Object.values(GOVERNANCE).filter((plugin): plugin is ProjectPlugin => plugin !== undefined),
+    ...Object.values(GOVERNANCE),
   ];
   const ids = plugins.map((plugin) => plugin.id);
   const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);

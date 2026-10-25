@@ -57,7 +57,9 @@ function ruleset(
         parameters: {
           allowed_merge_methods: methods,
           dismiss_stale_reviews_on_push: true,
-          require_code_owner_review: approvals > 0 && context.config.owners.length > 0,
+          // Nobody can approve their own pull request, so with a single code
+          // owner GitHub could never approve that owner's changes.
+          require_code_owner_review: approvals > 0 && context.config.owners.length >= 2,
           require_last_push_approval: approvals > 0,
           required_approving_review_count: approvals,
           required_review_thread_resolution: true,
@@ -143,7 +145,7 @@ history being synchronized.
    high ${p.approvals.high}.
 ${aiStep}${resolveStep}. Every review thread is resolved before merging: fixed, or answered with a
    reason.
-
+${approvalsSection(config.owners, profile)}
 ## Branch rules
 
 The intended rules are in [.github/rulesets/](.github/rulesets/). They are
@@ -159,6 +161,31 @@ gh api --method POST repos/OWNER/REPO/rulesets --input .github/rulesets/develop.
 
 The Governance drift workflow then reads back what GitHub enforces and fails
 if it differs from the committed rulesets.
+`;
+}
+
+/** Who can approve, for profiles that require approvals. */
+function approvalsSection(owners: readonly string[], profile: ProfileId): string {
+  const p = PROFILES[profile];
+  if (Math.max(p.approvals.low, p.approvals.medium, p.approvals.high) === 0) return "";
+  const ownership =
+    owners.length >= 2
+      ? "[.github/CODEOWNERS](.github/CODEOWNERS) names who reviews what. GitHub\nrequests those owners, and the branch rules require one of them to approve."
+      : owners.length === 1
+        ? "[.github/CODEOWNERS](.github/CODEOWNERS) names one owner. Nobody can approve\ntheir own pull request, so the branch rules do not require a code owner's\napproval; add a second owner, then turn on `require_code_owner_review` in the\nrulesets."
+        : "No code owners were given, so any collaborator with write access can\napprove. Add `.github/CODEOWNERS` to have GitHub request reviewers.";
+  return `
+## Approvals
+
+An approval counts only when it comes from someone with write access who is
+not the author, is that person's latest decision on the pull request, and is
+for its current head commit. Approvals from bots, AI reviewers included,
+never count, and pushing a new commit dismisses earlier approvals. A change
+to a path that always needs a person, listed in
+[.github/review-policy.yml](.github/review-policy.yml), needs at least
+${p.alwaysHumanMinimum} approval whatever its tier.
+
+${ownership}
 `;
 }
 
