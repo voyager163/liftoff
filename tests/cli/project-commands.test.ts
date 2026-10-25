@@ -61,6 +61,8 @@ describe("INIT-001 plan changes nothing but the plan file", () => {
     expect(code).toBe(0);
     expect(out).toContain("cd backend && npm ci && npm test");
     expect(out).not.toContain("uv sync");
+    const go = await exec(["init", ...PROJECT, "--stack", "go-huma", "--dir", "go-demo", "--yes"]);
+    expect(go.out).toContain("cd backend && go test ./...");
   });
 
   it("emits the plan as JSON", async () => {

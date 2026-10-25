@@ -118,11 +118,19 @@ function port(read: Read): number {
     : invalid("port", read, "a whole number from 1 to 65535");
 }
 
+/** The range also keeps timeouts within what setTimeout accepts (about 24 days). */
+const MIN_TIMEOUT_SECONDS = 0.001;
+const MAX_TIMEOUT_SECONDS = 86_400;
+
 function seconds(read: Read): number {
   const value = typeof read.value === "string" ? Number(read.value) : read.value;
-  return typeof value === "number" && Number.isFinite(value) && value > 0
+  return typeof value === "number" && value >= MIN_TIMEOUT_SECONDS && value <= MAX_TIMEOUT_SECONDS
     ? value
-    : invalid("database_timeout_seconds", read, "a number of seconds above 0");
+    : invalid(
+        "database_timeout_seconds",
+        read,
+        `a number of seconds from ${MIN_TIMEOUT_SECONDS} to ${MAX_TIMEOUT_SECONDS}`,
+      );
 }
 
 function flag(read: Read): boolean {

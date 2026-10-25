@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -45,6 +46,7 @@ const CASES: Record<string, Record<string, unknown>> = {
   "copilot-only": { agents: ["copilot"], review: { ai: true } },
   "claude-no-governance": { agents: ["claude"], review: { ai: true }, governance: "none" },
   "node-copilot": { stack: "node-fastify", agents: ["copilot"], review: { ai: true } },
+  "go-codex": { stack: "go-huma", agents: ["codex"], review: { ai: true } },
 };
 
 const files = async (overrides: Record<string, unknown> = {}) =>
@@ -60,6 +62,17 @@ describe("PROJ-004 deterministic, collision-free generation", () => {
     const golden = path.join(goldenDir, `${name}.txt`);
     if (process.env.UPDATE_GOLDEN === "1") writeFileSync(golden, `${inventory}\n`);
     expect(inventory).toBe(readFileSync(golden, "utf8").trimEnd());
+  });
+
+  it("reads only templates that Git tracks", () => {
+    // A template file that .gitignore matches works locally but is missing
+    // from every checkout and release.
+    const ignored = execFileSync(
+      "git",
+      ["ls-files", "--others", "--ignored", "--exclude-standard", "--", "assets"],
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+    expect(ignored.split("\n").filter(Boolean)).toEqual([]);
   });
 
   it("generates the same bytes twice", async () => {
@@ -253,6 +266,72 @@ describe("PROJ-009 the Node.js API project contract", () => {
     expect((await byPath({ stack: "node-fastify" })).get("backend/.gitignore")?.content).toContain(
       "node_modules/",
     );
+  });
+});
+
+describe("PROJ-010 the Go API project contract", () => {
+  it("contains the binary, migration, tests, modules, Dockerfile and Compose file", async () => {
+    const project = await byPath({ stack: "go-huma" });
+    for (const required of [
+      "backend/cmd/api/main.go",
+      "backend/internal/config/config.go",
+      "backend/internal/health/health.go",
+      "backend/internal/server/server.go",
+      "backend/internal/database/migrations/00001_create_items.sql",
+      "backend/internal/integration/postgresql_test.go",
+      "backend/tools/coverage/main.go",
+      "backend/go.mod",
+      "backend/go.sum",
+      "backend/Dockerfile",
+      "compose.yaml",
+      "README.md",
+      ".env.example",
+      ".github/workflows/01-pr-ci.yml",
+      ".github/workflows/02-codeql.yml",
+      ".github/dependabot.yml",
+    ]) {
+      expect(project.has(required), required).toBe(true);
+    }
+    const text = (p: string) => project.get(p)?.content ?? "";
+    expect(text("backend/internal/config/config.go")).toContain("Port:                   8000");
+    expect(text("backend/internal/health/health.go")).toContain('Path:        "/health/ready"');
+    expect(text("backend/internal/health/health.go")).toContain("statement_timeout");
+    expect(text("backend/internal/server/server.go")).toContain("huma.DocsRendererScalar");
+    expect(text("backend/internal/server/server.go")).toContain('huma.DefaultConfig("demo API"');
+    expect(text("backend/internal/database/migrations/00001_create_items.sql")).toContain(
+      "-- +goose Down",
+    );
+    expect(text("backend/Dockerfile")).toContain("USER 10001:10001");
+    expect(text("backend/Dockerfile")).toMatch(/FROM golang:[^\s]+@sha256:[0-9a-f]{64}/);
+    expect(text("backend/Dockerfile")).toMatch(
+      /FROM gcr\.io\/distroless\/[^\s]+@sha256:[0-9a-f]{64}/,
+    );
+    expect(text("compose.yaml")).toContain('command: ["migrate"]');
+    const ci = text(".github/workflows/01-pr-ci.yml");
+    expect(ci).toContain("go run ./tools/coverage cover.out 80");
+    // A cached result would pass without contacting PostgreSQL.
+    expect(ci).toContain("go test -count=1 -tags integration ./internal/integration");
+    expect(ci).toContain("name: ci-gate");
+    expect(ci).toMatch(/actions\/setup-go@[0-9a-f]{40} /);
+    expect(text(".github/workflows/02-codeql.yml")).toContain("language: go");
+    expect(text(".github/dependabot.yml")).toContain("package-ecosystem: gomod");
+    const modules = text("backend/go.mod");
+    for (const module of [
+      "github.com/danielgtaylor/huma/v2",
+      "github.com/go-chi/chi/v5",
+      "github.com/jackc/pgx/v5",
+      "github.com/pressly/goose/v3",
+    ]) {
+      expect(modules).toContain(module);
+    }
+    expect(modules).not.toMatch(/openai|anthropic|langfuse|pgvector|genai/i);
+  });
+
+  it("gets only Go files for its backend", async () => {
+    const paths = [...(await byPath({ stack: "go-huma" })).keys()];
+    expect(
+      paths.filter((p) => /\.(py|ts)$|package\.json|uv\.lock/.test(p) && p.startsWith("backend/")),
+    ).toEqual([]);
   });
 });
 

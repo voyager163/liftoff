@@ -50,7 +50,9 @@ Verification: test
 
 Tests and coverage run on macOS arm64 and Windows x64 runners. Linux runners
 are used only for platform-independent checks (lint, types, boundaries,
-traceability, generated files, CodeQL), never as a supported CLI platform.
+traceability, generated files, CodeQL) and for generated projects'
+PostgreSQL and container checks, which qualify a deployment target. Linux is
+never a supported CLI platform.
 
 Verification: test
 
