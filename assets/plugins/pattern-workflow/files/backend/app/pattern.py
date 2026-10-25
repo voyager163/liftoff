@@ -96,7 +96,13 @@ def install(app: FastAPI, settings: Settings, model: Model, bus: MessageBus | No
         workflow = Workflow(id=uuid4().hex, status="queued")
         workflows[workflow.id] = workflow
         inputs[workflow.id] = request.input
-        await messages.publish(TOPIC, {"id": workflow.id})
+        try:
+            await messages.publish(TOPIC, {"id": workflow.id})
+        except BaseException:
+            # Never queued, so it would never finish: give its place back.
+            del workflows[workflow.id]
+            inputs.pop(workflow.id, None)
+            raise
         return workflow
 
     @router.get("/{workflow_id}", responses={404: {"description": "No such workflow"}})

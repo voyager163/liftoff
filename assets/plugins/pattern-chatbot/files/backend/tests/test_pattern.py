@@ -1,3 +1,5 @@
+import threading
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart
@@ -78,6 +80,21 @@ def test_a_forgotten_conversation_is_never_saved_again() -> None:
         assert client.get(f"/v1/conversations/{conversation}").status_code == 404
     assert len(store._conversations) == 1
     assert not store.save(conversation, [])
+
+
+def test_a_new_conversation_waits_for_a_save_in_progress() -> None:
+    store = InMemoryConversations(max_conversations=1)
+    first = store.create()
+    with store._lock:  # As save() holds it between its check and its write.
+        creating = threading.Thread(target=store.create)
+        creating.start()
+        creating.join(0.2)
+        assert creating.is_alive()
+        assert first in store._conversations
+    creating.join(5)
+    assert not creating.is_alive()
+    assert store.history(first) is None
+    assert len(store._conversations) == 1
 
 
 def test_history_is_trimmed_to_start_with_a_request() -> None:

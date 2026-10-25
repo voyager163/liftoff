@@ -11,6 +11,7 @@ replace it with a database-backed store for that.
 from __future__ import annotations
 
 from collections import OrderedDict
+from threading import Lock
 from typing import Literal, Protocol
 from uuid import uuid4
 
@@ -46,7 +47,12 @@ def trim(messages: list[ModelMessage], limit: int) -> list[ModelMessage]:
 
 
 class InMemoryConversations:
-    """Conversations in this process, forgetting the least recently used beyond a limit."""
+    """Conversations in this process, forgetting the least recently used beyond a limit.
+
+    FastAPI runs the synchronous endpoints on worker threads, so every change
+    happens under one lock: a conversation cannot be forgotten between
+    ``save`` checking that it exists and writing it.
+    """
 
     def __init__(
         self, max_conversations: int = MAX_CONVERSATIONS, max_messages: int = MAX_MESSAGES
@@ -54,26 +60,30 @@ class InMemoryConversations:
         self.max_conversations = max_conversations
         self.max_messages = max_messages
         self._conversations: OrderedDict[str, list[ModelMessage]] = OrderedDict()
+        self._lock = Lock()
 
     def create(self) -> str:
         conversation_id = uuid4().hex
-        self._conversations[conversation_id] = []
-        while len(self._conversations) > self.max_conversations:
-            self._conversations.popitem(last=False)
+        with self._lock:
+            self._conversations[conversation_id] = []
+            while len(self._conversations) > self.max_conversations:
+                self._conversations.popitem(last=False)
         return conversation_id
 
     def history(self, conversation_id: str) -> list[ModelMessage] | None:
-        messages = self._conversations.get(conversation_id)
-        return None if messages is None else list(messages)
+        with self._lock:
+            messages = self._conversations.get(conversation_id)
+            return None if messages is None else list(messages)
 
     def save(self, conversation_id: str, messages: list[ModelMessage]) -> bool:
         # A conversation forgotten while its reply was written stays forgotten,
         # so the store never holds more than max_conversations.
-        if conversation_id not in self._conversations:
-            return False
-        self._conversations[conversation_id] = trim(messages, self.max_messages)
-        self._conversations.move_to_end(conversation_id)
-        return True
+        with self._lock:
+            if conversation_id not in self._conversations:
+                return False
+            self._conversations[conversation_id] = trim(messages, self.max_messages)
+            self._conversations.move_to_end(conversation_id)
+            return True
 
 
 class Conversation(BaseModel):

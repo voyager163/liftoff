@@ -83,6 +83,31 @@ def test_accepted_workflows_are_kept_until_they_finish(monkeypatch: pytest.Monke
         assert finished(client, third.json()["id"])["status"] == "succeeded"
 
 
+def test_a_workflow_that_could_not_be_queued_gives_its_place_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pattern, "MAX_WORKFLOWS", 1)
+
+    class FlakyBus(InMemoryMessageBus):
+        failures = 1
+
+        async def publish(self, topic: str, message: Message) -> None:
+            if self.failures:
+                self.failures -= 1
+                raise ConnectionError("broker unavailable")
+            await super().publish(topic, message)
+
+    monkeypatch.setattr(pattern, "InMemoryMessageBus", FlakyBus)
+    app = create_app(
+        settings=Settings(), model=FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("ok")]))
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        assert client.post("/v1/workflows", json={"input": "lost"}).status_code == 500
+        started = client.post("/v1/workflows", json={"input": "kept"})
+        assert started.status_code == 202
+        assert finished(client, started.json()["id"])["status"] == "succeeded"
+
+
 def test_unknown_workflows_are_not_found(client: TestClient) -> None:
     assert client.get("/v1/workflows/nope").status_code == 404
 
