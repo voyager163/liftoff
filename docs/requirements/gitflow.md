@@ -50,9 +50,11 @@ the image, scans it with Trivy installed from its release and checked against
 the published checksum (fixable high and critical vulnerabilities fail it)
 and with Grype for information, publishes it tagged with its commit, and
 attests its build provenance and CycloneDX SBOM. A re-run keeps an image
-already built and attested for the commit rather than replacing it. Once the
-images are built, it starts CI again for every open pull request into `main`
-at that commit, whose branch check needs the build.
+whose provenance shows this workflow built it for the commit, attesting its
+SBOM if an earlier run did not; it never replaces an existing image, failing
+instead when it cannot look one up or verify it. Once Build passes, an After
+build workflow starts CI again for every open pull request into `main` at
+that commit, whose branch check needs the build.
 
 Verification: test
 

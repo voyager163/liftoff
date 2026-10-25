@@ -3,9 +3,10 @@
 # Builds each container image once, from every commit on develop and on
 # hotfix branches. It scans the image, publishes it by digest, and attests how
 # it was built and what it contains. Releases use these images by digest;
-# nothing is rebuilt later, and a re-run keeps an image already built and
-# attested for the commit. Once the images are built, it starts CI again for
-# pull requests into main at the commit, whose branch check needs this build.
+# nothing is rebuilt later: a re-run keeps an image already built and
+# attested for the commit, finishing any attestation an earlier run did not.
+# When it passes, the After build workflow checks pull requests into main
+# at the commit again.
 name: Build
 
 on:
@@ -56,21 +57,45 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       # A commit's image is built once: a release may already record the
       # digest an earlier run published, and a new build need not match it.
+      # Only the registry saying there is no image counts as none; any other
+      # error, or an image this workflow cannot be shown to have built, fails
+      # rather than risk replacing it.
       - name: Keep this commit's image if it is already built
         id: existing
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! digest=$(docker buildx imagetools inspect "${IMAGE}:${GITHUB_SHA}" \
-            --format '{{json .Manifest.Digest}}' 2> /dev/null | tr -d '"') || [ -z "$digest" ]; then
-            echo "No image for ${GITHUB_SHA} yet."
-          elif gh attestation verify "oci://${IMAGE}@${digest}" --repo "$GITHUB_REPOSITORY" \
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/10-build.yml" \
-            --source-digest "$GITHUB_SHA" > /dev/null; then
-            echo "built=true" >> "$GITHUB_OUTPUT"
+          if lookup=$(docker buildx imagetools inspect "${IMAGE}:${GITHUB_SHA}" \
+            --format '{{json .Manifest.Digest}}' 2>&1); then
+            digest=$(printf '%s' "$lookup" | tr -d '"')
+          else
+            case "$lookup" in
+              *"not found"* | *"manifest unknown"* | *MANIFEST_UNKNOWN* | *NAME_UNKNOWN*)
+                echo "No image for ${GITHUB_SHA} yet."
+                exit 0
+                ;;
+            esac
+            echo "::error::Could not look up ${IMAGE}:${GITHUB_SHA}: ${lookup}"
+            exit 1
+          fi
+          verify() {
+            gh attestation verify "oci://${IMAGE}@${digest}" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/10-build.yml" \
+              --source-digest "$GITHUB_SHA" "$@" > /dev/null
+          }
+          if ! verify; then
+            echo "::error::${IMAGE}:${GITHUB_SHA} is ${digest}, but its provenance from this workflow could not be verified. It is kept, not replaced: re-run if GitHub was unavailable, or delete that image version if this workflow did not build it."
+            exit 1
+          fi
+          {
+            echo "digest=${digest}"
+            echo "built=true"
+          } >> "$GITHUB_OUTPUT"
+          if verify --predicate-type https://cyclonedx.org/bom; then
+            echo "sbom=true" >> "$GITHUB_OUTPUT"
             echo "::notice::${IMAGE}:${GITHUB_SHA} is already built and attested as ${digest}; keeping it."
           else
-            echo "::warning::${IMAGE}:${GITHUB_SHA} is ${digest}, without this workflow's attestation; building it again."
+            echo "::notice::${IMAGE}:${GITHUB_SHA} is already built as ${digest}; attesting the SBOM an earlier run did not."
           fi
       - name: Build the image
         if: steps.existing.outputs.built != 'true'
@@ -80,7 +105,7 @@ jobs:
           load: true
           tags: candidate:${{ github.sha }}
       - name: Install Trivy
-        if: steps.existing.outputs.built != 'true'
+        if: steps.existing.outputs.sbom != 'true'
         run: |
           archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
           curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" \
@@ -93,10 +118,15 @@ jobs:
           "$RUNNER_TEMP/trivy" image --exit-code 1 --severity HIGH,CRITICAL
           --ignore-unfixed --no-progress "candidate:${GITHUB_SHA}"
       - name: Write the CycloneDX SBOM
-        if: steps.existing.outputs.built != 'true'
-        run: >-
-          "$RUNNER_TEMP/trivy" image --format cyclonedx --no-progress
-          --output "$RUNNER_TEMP/sbom.cdx.json" "candidate:${GITHUB_SHA}"
+        if: steps.existing.outputs.sbom != 'true'
+        env:
+          # The kept image by digest, or the one just built.
+          KEPT: ${{ steps.existing.outputs.digest }}
+        run: |
+          source="candidate:${GITHUB_SHA}"
+          if [ -n "$KEPT" ]; then source="${IMAGE}@${KEPT}"; fi
+          "$RUNNER_TEMP/trivy" image --format cyclonedx --no-progress \
+            --output "$RUNNER_TEMP/sbom.cdx.json" "$source"
       - name: Scan again with Grype, for information
         if: steps.existing.outputs.built != 'true'
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
@@ -123,39 +153,10 @@ jobs:
           subject-digest: ${{ steps.publish.outputs.digest }}
           push-to-registry: true
       - name: Attest what the image contains
-        if: steps.existing.outputs.built != 'true'
+        if: steps.existing.outputs.sbom != 'true'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.publish.outputs.digest }}
+          subject-digest: ${{ steps.publish.outputs.digest || steps.existing.outputs.digest }}
           sbom-path: ${{ runner.temp }}/sbom.cdx.json
           push-to-registry: true
-
-  recheck:
-    name: Check pull requests into main again
-    # CI may have checked a release or hotfix before its build finished.
-    needs: image
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      actions: write
-      pull-requests: read
-    steps:
-      - name: Start CI again for pull requests into main at this commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # Assigned first, so a failed lookup fails this step instead of
-          # looking like no pull request.
-          pulls=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&per_page=100" \
-            --jq '.[] | select(.head.sha == env.GITHUB_SHA and .head.repo.full_name == env.GITHUB_REPOSITORY)
-              | [.number, .head.ref] | @tsv')
-          if [ -z "$pulls" ]; then
-            echo "No open pull request into main is at ${GITHUB_SHA}."
-            exit 0
-          fi
-          while IFS=$'\t' read -r number branch; do
-            gh workflow run 01-pr-ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch" -f "pull_request=$number"
-            echo "Started CI for #${number} on ${branch}."
-          done <<< "$pulls"

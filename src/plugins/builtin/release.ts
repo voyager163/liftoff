@@ -48,6 +48,7 @@ export const releasePlugin: ProjectPlugin = {
         trivyVersion: TRIVY.version,
         trivySha256: TRIVY.sha256,
       }),
+      workflow("11-after-build.yml"),
       workflow("20-release.yml"),
       workflow("30-after-release.yml", { imageNames: images.map(({ name }) => name).join(" ") }),
     ];

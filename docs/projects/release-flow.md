@@ -1,6 +1,6 @@
 # The release flow
 
-Projects with a GitFlow governance profile get three workflows that build,
+Projects with a GitFlow governance profile get four workflows that build,
 release and publish their container images. Each image is built once, and
 a release is exactly what CI qualified on `develop`. The scripts they run are
 bundled into `.github/liftoff/release.mjs`, so CI needs no Liftoff
@@ -20,6 +20,11 @@ installation.
    `ghcr.io/OWNER/REPO/NAME:COMMIT`;
 5. attests how it was built (SLSA provenance) and its SBOM, in GitHub and in
    the registry.
+
+A commit's image is built once. A re-run keeps an image whose provenance
+shows this workflow built it for that commit, and attests its SBOM if an
+earlier run did not get that far. It never replaces an existing image: if it
+cannot look the image up or verify it, it fails and says why.
 
 Trivy is installed from its release and checked against the checksum the
 release publishes. It is not run through Trivy's GitHub Actions, whose tags
@@ -82,8 +87,9 @@ request. They report on its exact head commit; no check is ever reported as
 passed without running.
 
 If a release or hotfix pull request's CI runs before its build has finished,
-the branch check fails; when the build passes, the Build workflow starts CI
-again for every open pull request into `main` at that commit.
+the branch check fails; when the build passes, the After build workflow
+(`11-after-build.yml`) starts CI again for every open pull request into
+`main` at that commit.
 
 A sync pull request whose `develop` has moved on since the release also
 merges `develop` in, so it is up to date and its checks cover what merging it

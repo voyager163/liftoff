@@ -1383,7 +1383,7 @@ describe("FLOW-003 GitFlow projects build once and release through main", () => 
     ]) {
       expect(steps.some((step) => step.uses?.startsWith(action))).toBe(true);
     }
-    for (const file of ["20-release.yml", "30-after-release.yml"]) {
+    for (const file of ["11-after-build.yml", "20-release.yml", "30-after-release.yml"]) {
       expect(generated.get(`.github/workflows/${file}`)?.ownership).toBe("managed");
     }
     expect(generated.get(".github/liftoff/release.mjs")?.ownership).toBe("managed");
@@ -1395,49 +1395,87 @@ describe("FLOW-003 GitFlow projects build once and release through main", () => 
     expect(generated.get("GOVERNANCE.md")?.content).toContain("## Releases");
   });
 
-  const build = async () =>
-    (
-      parse((await byPath({})).get(".github/workflows/10-build.yml")?.content ?? "") as {
-        jobs: Record<string, { needs?: string; permissions?: unknown; steps: Step[] }>;
-      }
-    ).jobs;
+  const workflowOf = async (file: string) =>
+    parse((await byPath({})).get(`.github/workflows/${file}`)?.content ?? "") as {
+      on: Record<string, unknown>;
+      jobs: Record<string, { if?: string; needs?: string; permissions?: unknown; steps: Step[] }>;
+    };
 
-  it("keeps an image already built and attested for the commit on a re-run", async () => {
-    const steps = (await build()).image?.steps ?? [];
+  it("keeps an image already built for the commit, finishing its attestations", async () => {
+    const steps = (await workflowOf("10-build.yml")).jobs.image?.steps ?? [];
     const at = steps.findIndex((step) => step.id === "existing");
     expect(at).toBeGreaterThan(0);
+    // Steps that make the image run only without one; the SBOM's, also
+    // when an earlier run did not attest it.
+    const sbom = ["Install Trivy", "Write the CycloneDX SBOM", "Attest what the image contains"];
     for (const step of steps.slice(at + 1)) {
-      expect(step.if, step.name ?? step.uses).toBe("steps.existing.outputs.built != 'true'");
+      expect(step.if, step.name).toBe(
+        sbom.includes(step.name ?? "")
+          ? "steps.existing.outputs.sbom != 'true'"
+          : "steps.existing.outputs.built != 'true'",
+      );
     }
+    expect(steps.at(-1)?.with?.["subject-digest"]).toBe(
+      `\${{ steps.publish.outputs.digest || steps.existing.outputs.digest }}`,
+    );
+
     const sha = "c".repeat(40);
-    const look = (digest: string, attested: boolean) =>
+    // docker answers the lookup with `inspect`; gh verifies the provenance
+    // and, with --predicate-type, the SBOM.
+    const look = (inspect: string, provenance: boolean, sbomAttested: boolean) =>
       runScript(
         steps[at]?.run ?? "",
         [
-          `docker() { [ -n "${digest}" ] && printf '"%s"\\n' "${digest}"; }`,
-          `gh() { printf '%s\\n' "$*" >> "$CALLS"; ${attested ? "true" : "false"}; }`,
+          `docker() { ${inspect}; }`,
+          "gh() {",
+          `  printf '%s\\n' "$*" >> "$CALLS"`,
+          `  case "$*" in *--predicate-type*) ${sbomAttested} ;; *) ${provenance} ;; esac`,
+          "}",
         ].join("\n"),
         { IMAGE: "ghcr.io/acme/app/api", GITHUB_SHA: sha },
       );
-    const missing = look("", true);
-    expect(missing).toMatchObject({ status: 0, output: "", calls: "" });
-    const kept = look("sha256:abc", true);
-    expect(kept).toMatchObject({ status: 0, output: "built=true\n" });
-    expect(kept.calls).toBe(
-      `attestation verify oci://ghcr.io/acme/app/api@sha256:abc --repo acme/app --signer-workflow acme/app/.github/workflows/10-build.yml --source-digest ${sha}\n`,
+    const found = `printf '"sha256:abc"\\n'`;
+
+    const missing = look(
+      "echo 'ERROR: ghcr.io/acme/app/api:x: not found' >&2; return 1",
+      true,
+      true,
     );
-    const unattested = look("sha256:abc", false);
-    expect(unattested).toMatchObject({ status: 0, output: "" });
-    expect(unattested.stdout).toContain("building it again");
+    expect(missing).toMatchObject({ status: 0, output: "", calls: "" });
+
+    const unreachable = look("echo 'ERROR: i/o timeout' >&2; return 1", true, true);
+    expect(unreachable.status).toBe(1);
+    expect(unreachable.stdout).toContain("Could not look up ghcr.io/acme/app/api");
+
+    const kept = look(found, true, true);
+    expect(kept).toMatchObject({
+      status: 0,
+      output: "digest=sha256:abc\nbuilt=true\nsbom=true\n",
+    });
+    expect(kept.calls.split("\n")[0]).toBe(
+      `attestation verify oci://ghcr.io/acme/app/api@sha256:abc --repo acme/app --signer-workflow acme/app/.github/workflows/10-build.yml --source-digest ${sha}`,
+    );
+    expect(kept.calls).toContain("--predicate-type https://cyclonedx.org/bom");
+
+    const noSbom = look(found, true, false);
+    expect(noSbom).toMatchObject({ status: 0, output: "digest=sha256:abc\nbuilt=true\n" });
+    expect(noSbom.stdout).toContain("attesting the SBOM an earlier run did not");
+
+    const unverified = look(found, false, true);
+    expect(unverified).toMatchObject({ status: 1, output: "" });
+    expect(unverified.stdout).toContain("It is kept, not replaced");
   });
 
-  it("starts CI again for pull requests into main at the built commit", async () => {
-    const recheck = (await build()).recheck;
-    expect(recheck?.needs).toBe("image");
+  it("starts CI again for pull requests into main once Build passes", async () => {
+    const after = await workflowOf("11-after-build.yml");
+    expect(after.on).toEqual({ workflow_run: { workflows: ["Build"], types: ["completed"] } });
+    const recheck = after.jobs.recheck;
+    expect(recheck?.if).toBe("github.event.workflow_run.conclusion == 'success'");
     expect(recheck?.permissions).toEqual({ actions: "write", "pull-requests": "read" });
+    const script = recheck?.steps[0]?.run ?? "";
     const shims = `gh() { printf '%s\\n' "$*" >> "$CALLS"; [ "$1" != api ] || printf '%b' "$PULLS"; }`;
-    const env = { GITHUB_SHA: "c".repeat(40) };
-    const started = runScript(recheck?.steps[0]?.run ?? "", shims, {
+    const env = { HEAD_SHA: "c".repeat(40) };
+    const started = runScript(script, shims, {
       ...env,
       PULLS: "21\\trelease/1.2.0\\n22\\thotfix/1.2.1\\n",
     });
@@ -1447,18 +1485,22 @@ describe("FLOW-003 GitFlow projects build once and release through main", () => 
       "workflow run 01-pr-ci.yml --repo acme/app --ref release/1.2.0 -f pull_request=21",
       "workflow run 01-pr-ci.yml --repo acme/app --ref hotfix/1.2.1 -f pull_request=22",
     ]);
-    const none = runScript(recheck?.steps[0]?.run ?? "", shims, { ...env, PULLS: "" });
+    const none = runScript(script, shims, { ...env, PULLS: "" });
     expect(none.status).toBe(0);
     expect(none.stdout).toContain("No open pull request into main");
-    const failed = runScript(recheck?.steps[0]?.run ?? "", "gh() { return 1; }", env);
-    expect(failed.status).not.toBe(0);
+    expect(runScript(script, "gh() { return 1; }", env).status).not.toBe(0);
   });
 
   it("builds only the API without a frontend, and nothing without a GitFlow profile", async () => {
     const api = await byPath({ workload: "genai", stack: "python-pydanticai", pattern: "generic" });
     expect(api.get(".github/workflows/30-after-release.yml")?.content).toContain("IMAGES: api\n");
     const none = await byPath({ governance: "none" });
-    for (const file of ["10-build.yml", "20-release.yml", "30-after-release.yml"]) {
+    for (const file of [
+      "10-build.yml",
+      "11-after-build.yml",
+      "20-release.yml",
+      "30-after-release.yml",
+    ]) {
       expect(none.has(`.github/workflows/${file}`)).toBe(false);
     }
     expect(none.has(".github/liftoff/release.mjs")).toBe(false);

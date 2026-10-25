@@ -97,7 +97,7 @@ export async function main(mode: Mode, context: CheckEnvironment): Promise<numbe
   }
 }
 
-/** The Build workflow starts CI again for pull requests into main once it passes. */
+/** The After build workflow starts CI again for pull requests into main once Build passes. */
 const STILL_BUILDING = "; if it is still running, CI checks again when it passes";
 
 async function branchProblems(
