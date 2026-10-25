@@ -125,6 +125,23 @@ describe("REPO-005 privileged triggers never run pull request code", () => {
   );
 });
 
+describe("AIREVIEW-002 review jobs hand their files on reliably", () => {
+  // download-artifact puts a single matching artifact straight into the
+  // path, and several into one folder each, unless merge-multiple is set.
+  it.each(workflows.map((w) => [w.name, w.data]))(
+    "%s downloads artifacts by pattern into one known layout",
+    (_name, data) => {
+      for (const job of Object.values((data as Workflow).jobs)) {
+        for (const step of job.steps ?? []) {
+          if (step.uses?.startsWith("actions/download-artifact@") && step.with?.pattern) {
+            expect(step.with["merge-multiple"], String(step.with.pattern)).toBe(true);
+          }
+        }
+      }
+    },
+  );
+});
+
 describe("REPO-006 tests run on the supported developer platforms", () => {
   it("runs the test job on macOS arm64 and Windows x64 only", () => {
     const ci = workflows.find((w) => w.name === "ci.yml")?.data;
