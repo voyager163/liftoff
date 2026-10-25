@@ -131,6 +131,7 @@ resource "random_password" "database" {
 
 resource "azurerm_postgresql_flexible_server" "main" {
   #checkov:skip=CKV_AZURE_136:Geo-redundant backups are outside the small-workload defaults; backups stay zone-redundant where the region allows.
+  #checkov:skip=CKV2_AZURE_57:The server is reached privately through its delegated subnet and private DNS, with public access off; Azure does not support private endpoints for such servers.
   name                          = module.names.postgres_server
   resource_group_name           = local.resource_group
   location                      = var.location

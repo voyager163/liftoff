@@ -32,6 +32,8 @@ resource "azurerm_storage_account" "state" {
   #checkov:skip=CKV_AZURE_43:The name comes from the naming module, which keeps it to 3 to 24 lowercase letters and digits.
   #checkov:skip=CKV_AZURE_59:GitHub-hosted runners reach the state over the internet; access needs Microsoft Entra ID and keys are disabled.
   #checkov:skip=CKV_AZURE_206:Zone-redundant storage is the agreed redundancy for state.
+  #checkov:skip=CKV2_AZURE_1:Microsoft-managed keys encrypt the state; customer-managed keys need a key vault the project does not have yet.
+  #checkov:skip=CKV2_AZURE_33:A private endpoint needs a private runner network, which the project does not have yet.
   name                              = module.shared.state_storage_account
   resource_group_name               = azurerm_resource_group.shared.name
   location                          = azurerm_resource_group.shared.location
@@ -63,6 +65,7 @@ resource "azurerm_storage_account" "state" {
 }
 
 resource "azurerm_storage_container" "state" {
+  #checkov:skip=CKV2_AZURE_21:Blob read logging needs a diagnostic setting and workspace the shared resources do not have.
   name                  = module.shared.state_container
   storage_account_id    = azurerm_storage_account.state.id
   container_access_type = "private"
