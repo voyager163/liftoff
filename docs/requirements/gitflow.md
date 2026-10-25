@@ -24,7 +24,9 @@ Both jobs run the base branch's copy of the check, never the pull request's
 own, and read the pull request as it is when they run, so editing its
 description or base, which also starts CI again, or re-running the job,
 always checks the current one. The incident reference must be on the
-Incident line itself.
+Incident line itself. When the base branch has no checks yet, the pull
+request that adds them passes with a notice; a base branch whose CI runs
+them but lacks their script fails.
 
 Verification: test
 

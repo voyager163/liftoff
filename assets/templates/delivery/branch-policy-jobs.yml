@@ -7,19 +7,32 @@ branch-policy:
   permissions:
     contents: read
     actions: read
+    pull-requests: read
   steps:
     # The check from the base branch, never the pull request's own copy.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
         ref: ${{ github.event.pull_request.base.sha || github.sha }}
-        sparse-checkout: .github/liftoff
-    - name: Check the branch
+        sparse-checkout: |
+          .github/liftoff
+          .github/workflows/01-pr-ci.yml
+        sparse-checkout-cone-mode: false
+    - name: Check the branch policy
       env:
         GITHUB_TOKEN: ${{ github.token }}
         # Branches that tools open into develop.
         AUTOMATION_BRANCHES: {{liftoff.automation}}
-      run: node .github/liftoff/branch-policy.mjs branch
+      run: |
+        if [ -f .github/liftoff/branch-policy.mjs ]; then
+          node .github/liftoff/branch-policy.mjs branch
+        elif grep -q branch-policy.mjs .github/workflows/01-pr-ci.yml 2> /dev/null; then
+          echo "::error::The base branch's CI runs this check, but its .github/liftoff/branch-policy.mjs is missing."
+          exit 1
+        else
+          # This pull request is the one that adds the checks.
+          echo "::notice::The base branch does not have the branch checks yet; they apply to pull requests after this one merges."
+        fi
 
 release-lineage:
   name: Release lineage
@@ -29,14 +42,27 @@ release-lineage:
   timeout-minutes: 5
   permissions:
     contents: read
+    pull-requests: read
   steps:
     # The check from the base branch, never the pull request's own copy.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
         ref: ${{ github.event.pull_request.base.sha || github.sha }}
-        sparse-checkout: .github/liftoff
+        sparse-checkout: |
+          .github/liftoff
+          .github/workflows/01-pr-ci.yml
+        sparse-checkout-cone-mode: false
     - name: Check the release lineage
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      run: node .github/liftoff/branch-policy.mjs lineage
+      run: |
+        if [ -f .github/liftoff/branch-policy.mjs ]; then
+          node .github/liftoff/branch-policy.mjs lineage
+        elif grep -q branch-policy.mjs .github/workflows/01-pr-ci.yml 2> /dev/null; then
+          echo "::error::The base branch's CI runs this check, but its .github/liftoff/branch-policy.mjs is missing."
+          exit 1
+        else
+          # This pull request is the one that adds the checks.
+          echo "::notice::The base branch does not have the branch checks yet; they apply to pull requests after this one merges."
+        fi
