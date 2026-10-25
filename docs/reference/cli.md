@@ -248,7 +248,7 @@ liftoff governance apply-next --plan governance.plan.json --use-gh --yes
 
 ## liftoff governance resume
 
-If .liftoff/governance.json records a step that never finished, assesses the repository again and records whether GitHub shows it done. Nothing is repeated or sent: a step that did not happen is offered again by the next `liftoff governance apply-next`, which asks first. It changes only .liftoff/governance.json.
+If .liftoff/governance.json records a step that never finished, assesses the repository again and records whether GitHub shows it done. Nothing is repeated or sent: a step that did not happen is offered again by the next `liftoff governance apply-next`, which asks first. If a `verify --prove` was interrupted while trying a forbidden change, it puts that branch back, but only while it is still exactly where the change left it. Otherwise it changes only .liftoff/governance.json.
 
 Changes files; asks first unless `--yes` is given.
 

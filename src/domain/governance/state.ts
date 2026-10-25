@@ -13,6 +13,10 @@ z.config(en());
 export const GOVERNANCE_STATE_FILE = ".liftoff/governance.json";
 export const GOVERNANCE_STATE_SCHEMA = "liftoff.governance/v1";
 
+/** The ways a protected branch is changed without a pull request, each of which must be refused. */
+export const PROOFS = ["direct-push", "force-push", "deletion"] as const;
+export type ProofKind = (typeof PROOFS)[number];
+
 const stateSchema = z.strictObject({
   schema: z.literal(GOVERNANCE_STATE_SCHEMA),
   repository: z.strictObject({ id: z.number(), fullName: z.string() }),
@@ -30,9 +34,26 @@ const stateSchema = z.strictObject({
   proof: z.optional(
     z.strictObject({ passed: z.boolean(), rulesetIds: z.array(z.number()), at: z.string() }),
   ),
+  /**
+   * A forbidden change verify --prove is trying, written before it is tried
+   * and removed once the branch is as it was. Still here, it was interrupted,
+   * and resume puts the branch back.
+   */
+  probe: z.optional(
+    z.strictObject({
+      branch: z.string(),
+      proof: z.enum(PROOFS),
+      /** The branch's head before the change. */
+      head: z.string(),
+      /** The commit the change moves the branch to; none for a deletion. */
+      sha: z.optional(z.string()),
+      startedAt: z.string(),
+    }),
+  ),
 });
 
 export type GovernanceState = z.output<typeof stateSchema>;
+export type PendingProbe = NonNullable<GovernanceState["probe"]>;
 
 export class GovernanceStateError extends Error {
   override readonly name = "GovernanceStateError";

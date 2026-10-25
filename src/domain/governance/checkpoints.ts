@@ -1,4 +1,11 @@
-import { compareRuleset, type DesiredRuleset, type EffectiveRule } from "./ruleset-drift.ts";
+import {
+  compareDefinition,
+  compareRuleset,
+  type DesiredRuleset,
+  type EffectiveRule,
+  type LiveRuleset,
+  patternTargets,
+} from "./ruleset-drift.ts";
 
 /**
  * The ordered checkpoints that take a generated project's governance from
@@ -75,7 +82,11 @@ export interface Observed {
     readonly id: number;
     readonly name: string;
     readonly enforcement: string;
+    /** When it last changed, to tell whether it changed since it was observed. */
+    readonly updatedAt?: string;
   }[];
+  /** The full definitions of the rulesets the project commits, by name, where they exist. */
+  readonly definitions: Readonly<Record<string, LiveRuleset>>;
   /** The rules GitHub enforces on each branch, from every source. */
   readonly rules: Readonly<Record<string, readonly EffectiveRule[]>>;
   /** The drift workflow's latest run, if it has run. */
@@ -231,9 +242,23 @@ function rulesets(desired: Desired, observed: Observed): Evaluation {
 }
 
 function readback(desired: Desired, observed: Observed): Evaluation {
-  const differences = desired.rulesets.flatMap((ruleset) =>
-    compareRuleset(ruleset, observed.rules),
-  );
+  const differences = desired.rulesets.flatMap((ruleset) => {
+    const patterns = patternTargets(ruleset);
+    const live = observed.definitions[ruleset.name];
+    return [
+      ...(patterns.length === 0
+        ? []
+        : [
+            {
+              branch: `ruleset "${ruleset.name}"`,
+              rule: "(conditions)",
+              detail: `targets ${patterns.join(", ")}; Liftoff can only verify rulesets that name each branch`,
+            },
+          ]),
+      ...compareRuleset(ruleset, observed.rules),
+      ...(live === undefined ? [] : compareDefinition(ruleset, live)),
+    ];
+  });
   return differences.length === 0
     ? { done: true, detail: "the enforced rules match the committed rulesets" }
     : {

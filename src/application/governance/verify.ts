@@ -1,9 +1,10 @@
 import { targetedBranches } from "../../domain/governance/ruleset-drift.ts";
-import { GOVERNANCE_STATE_SCHEMA } from "../../domain/governance/state.ts";
+import type { GovernanceState } from "../../domain/governance/state.ts";
 import type { GitHubApiPort, ProjectFsPort } from "../ports.ts";
+import { stateFor } from "./apply.ts";
 import { type Assessment, assessGovernance, GovernanceError } from "./assess.ts";
 import { type ProofResult, proveBranch } from "./prove.ts";
-import { readGovernanceState, writeGovernanceState } from "./state.ts";
+import { writeGovernanceState } from "./state.ts";
 
 export type VerifyResult =
   | { readonly kind: "readback"; readonly matches: boolean; readonly assessment: Assessment }
@@ -32,38 +33,53 @@ export async function verifyGovernance(
 ): Promise<VerifyResult> {
   const assessment = await assessGovernance(ports, directory, repository);
   const status = (id: string) => assessment.checkpoints.find((c) => c.id === id)?.status;
-  const matches = status("rulesets") === "done" && status("readback") === "done";
+  // Nothing committed matches nothing: the handoff must have rulesets.
+  const matches =
+    status("handoff") === "done" && status("rulesets") === "done" && status("readback") === "done";
   if (!options.prove) return { kind: "readback", matches, assessment };
   if (!matches) {
     throw new GovernanceError(
       "the rulesets must be applied and match before they can be proved; see liftoff governance assess",
     );
   }
-  if (!(await options.confirm())) return { kind: "declined" };
-
-  const results: ProofResult[] = [];
-  for (const branch of new Set(assessment.desired.rulesets.flatMap(targetedBranches))) {
-    results.push(...(await proveBranch(ports.github, repository, branch)));
-  }
-  const passed = results.every((result) => result.refused);
-  const { id, fullName } = assessment.observed.repository;
-  const state = (await readGovernanceState(ports.fs, directory)) ?? {
-    schema: GOVERNANCE_STATE_SCHEMA,
-    repository: { id, fullName },
-    actions: [],
-  };
-  if (state.repository.id !== id) {
+  // Checked before anything changes: the record must be this repository's,
+  // with no earlier proof left unfinished.
+  let state: GovernanceState = await stateFor(ports.fs, directory, assessment);
+  if (state.probe !== undefined) {
     throw new GovernanceError(
-      `.liftoff/governance.json is for ${state.repository.fullName}, not ${fullName}`,
+      `an earlier proof was interrupted while trying ${state.probe.proof} on ${state.probe.branch}; run liftoff governance resume first`,
     );
   }
+  const branches = [...new Set(assessment.desired.rulesets.flatMap(targetedBranches))];
+  if (branches.length === 0) {
+    throw new GovernanceError("the rulesets name no branch to prove");
+  }
+  if (!(await options.confirm())) return { kind: "declined" };
+
+  const save = async (next: GovernanceState) => {
+    state = next;
+    await writeGovernanceState(ports.fs, directory, next);
+  };
+  const journal = {
+    start: (probe: Omit<NonNullable<GovernanceState["probe"]>, "startedAt">) =>
+      save({ ...state, probe: { ...probe, startedAt: options.now() } }),
+    finish: () => {
+      const { probe, ...rest } = state;
+      return save(rest);
+    },
+  };
+  const results: ProofResult[] = [];
+  for (const branch of branches) {
+    const proved = await proveBranch(ports.github, repository, branch, journal);
+    results.push(...proved);
+    // A branch that could not be put back stops the proof; resume finishes it.
+    if (state.probe !== undefined) break;
+  }
+  const passed = state.probe === undefined && results.every((result) => result.refused);
   const rulesetIds = assessment.desired.rulesets
     .map(({ name }) => assessment.observed.rulesets.find((ruleset) => ruleset.name === name)?.id)
     .filter((rulesetId): rulesetId is number => rulesetId !== undefined);
-  await writeGovernanceState(ports.fs, directory, {
-    ...state,
-    proof: { passed, rulesetIds, at: options.now() },
-  });
+  await save({ ...state, proof: { passed, rulesetIds, at: options.now() } });
   return {
     kind: "proved",
     passed,

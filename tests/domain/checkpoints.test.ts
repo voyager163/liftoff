@@ -5,7 +5,7 @@ import {
   GITHUB_ACTIONS_APP_ID,
   type Observed,
 } from "../../src/domain/governance/checkpoints.ts";
-import type { DesiredRuleset } from "../../src/domain/governance/ruleset-drift.ts";
+import type { DesiredRuleset, LiveRuleset } from "../../src/domain/governance/ruleset-drift.ts";
 
 const RULESET: DesiredRuleset = {
   name: "Protect develop",
@@ -36,6 +36,14 @@ const ENFORCED: Observed = {
     { context: "review-policy", appId: GITHUB_ACTIONS_APP_ID, url: "https://rp" },
   ],
   rulesets: [{ id: 41, name: "Protect develop", enforcement: "active" }],
+  definitions: {
+    "Protect develop": {
+      target: "branch",
+      enforcement: "active",
+      conditions: RULESET.conditions,
+      bypass_actors: [],
+    },
+  },
   rules: { develop: [{ type: "deletion" }, { type: "non_fast_forward" }] },
   driftRun: { conclusion: "success", url: "https://drift" },
 };
@@ -142,6 +150,71 @@ describe("GOV-001 the governance checkpoints, in order", () => {
       id: "readback",
       detail: "develop non_fast_forward: not active on this branch",
     });
+  });
+
+  it("reads back who may bypass each ruleset and which branches it applies to", () => {
+    const { bypass_actors: _hidden, ...live } = ENFORCED.definitions["Protect develop"] ?? {
+      enforcement: "active",
+    };
+    const readback = (definition: LiveRuleset) =>
+      next(assess({ definitions: { "Protect develop": definition } }));
+    const team = { actor_id: 9, actor_type: "Team", bypass_mode: "always" };
+    expect(readback({ ...live, bypass_actors: [team] })).toMatchObject({
+      id: "readback",
+      detail: expect.stringContaining(
+        'ruleset "Protect develop" (bypass): expected bypass actors []',
+      ),
+    });
+    expect(readback(live)?.detail).toContain("who may bypass it cannot be read with this login");
+    const narrowed = {
+      ...live,
+      bypass_actors: [],
+      conditions: {
+        ref_name: { include: ["refs/heads/develop"], exclude: ["refs/heads/develop"] },
+      },
+    };
+    expect(readback(narrowed)?.detail).toContain(
+      'ruleset "Protect develop" (conditions): applies to',
+    );
+    // A stricter ruleset of another name is not compared.
+    expect(
+      next(
+        assess({
+          definitions: {
+            ...ENFORCED.definitions,
+            Other: { enforcement: "active", bypass_actors: [team] },
+          },
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("does not verify a ruleset that selects branches by pattern", () => {
+    for (const include of [
+      ["refs/heads/release/*"],
+      ["~ALL"],
+      ["refs/heads/develop", "~DEFAULT_BRANCH"],
+    ]) {
+      const ruleset = { ...RULESET, conditions: { ref_name: { include, exclude: [] } } };
+      const checkpoints = assessCheckpoints(
+        { ...DESIRED, rulesets: [ruleset] },
+        {
+          ...ENFORCED,
+          definitions: {
+            "Protect develop": {
+              enforcement: "active",
+              conditions: ruleset.conditions,
+              bypass_actors: [],
+            },
+          },
+        },
+        { problems: [], proof: PROVED },
+      );
+      expect(next(checkpoints)).toMatchObject({
+        id: "readback",
+        detail: expect.stringContaining("Liftoff can only verify rulesets that name each branch"),
+      });
+    }
   });
 
   it("offers to run the drift job until it has passed", () => {

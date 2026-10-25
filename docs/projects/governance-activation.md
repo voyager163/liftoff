@@ -43,29 +43,50 @@ repository is the one the project's `origin` remote points at, or `--repo`.
 
 - **One step at a time.** apply-next takes only the next step, says exactly
   what it will do, and asks first; the default answer is no. With `--plan`,
-  the step must be the one the saved plan expected.
+  the step must be the one the saved plan expected, for the same repository
+  by GitHub's id.
 - **Recorded before and after.** Each step is written to
   `.liftoff/governance.json` when it starts and when it ends, with its
   outcome. If it is interrupted, apply-next stops until `resume` has checked
   it.
 - **Never weakening protection.** Liftoff only creates or updates rulesets
-  with its own names, and only when they are not active. Any other ruleset,
-  such as a stricter organization rule, is left as it is. GitHub enforces the
-  strictest of all active rules, so adding Liftoff's cannot loosen anything.
+  with its own names, and only when they are not active. It reads each one
+  again just before changing it, and leaves it if anyone changed it since.
+  Any other ruleset, such as a stricter organization rule, is left as it is.
+  GitHub enforces the strictest of all active rules, so adding Liftoff's
+  cannot loosen anything.
 - **Admins only for rulesets.** Without admin rights, the rulesets step is
   left for an admin.
 
 ## The proof
 
+`liftoff governance verify` compares what GitHub enforces on each branch,
+which branches each ruleset applies to and who may bypass it with the
+committed rulesets. Reading who may bypass a ruleset needs a repository
+admin. Rulesets that select branches by pattern, such as `release/*` or
+`~ALL`, cannot be verified branch by branch, so they never match.
+
 `liftoff governance verify --prove` runs only when the rulesets are active
 and match. On each protected branch it tries an empty commit pushed on top,
 a commit forced in beside the head, and deleting the branch. GitHub must
 refuse each one. If it allows one, Liftoff puts the branch back at once, at
-the head it had, and the proof fails. The outcome, and the rulesets it
-proved, are recorded; new or replaced rulesets need a new proof.
+the head it had just before, and the proof fails. The outcome, and the
+rulesets it proved, are recorded; new or replaced rulesets need a new proof.
 
-Run the proof in a repository you are ready to protect. If the rules are not
-enforced, the proof briefly changes the branch before putting it back.
+Each change is written to `.liftoff/governance.json` before it is tried and
+removed once the branch is as it was. Liftoff puts a branch back only while
+it is still exactly where the change left it, so a merge made meanwhile is
+never undone; that branch is left for you to check. If a branch cannot be
+put back, for example because another rule forbids rewinding it, the proof
+stops and the record stays: `liftoff governance resume` puts it back once
+GitHub allows, and apply-next and verify wait until then.
+
+Run the proof in a repository you are ready to protect, when nothing is
+being merged. GitHub's API cannot make a change only if the branch is still
+where it was read, so a merge in the moment between Liftoff's last read and
+its change could be undone; Liftoff reads the branch again straight before
+each change and stops if it moved. If the rules are enforced, nothing
+changes at all.
 
 ## Limits
 

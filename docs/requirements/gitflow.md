@@ -123,9 +123,11 @@ branch, applying the rulesets (only after every required check has run,
 only as an admin, and changing only Liftoff's own rulesets by name, never
 another one), or running the drift job. It asks first, with no as the
 default, or needs `--yes`. With `--plan` the step must be the one the saved
-plan expects. Each step is recorded in `.liftoff/governance.json` before and
-after, with its outcome. `liftoff governance plan` lists who takes each step
-left.
+plan expects, for the same repository by GitHub's id. A ruleset is read
+again just before it is changed, and left as it is if it changed on GitHub
+since it was assessed. Each step is recorded in `.liftoff/governance.json`
+before and after, with its outcome. `liftoff governance plan` lists who
+takes each step left.
 
 Verification: test
 
@@ -142,11 +144,17 @@ Verification: test
 ## GOV-004 The rules are proved by trying what they forbid
 
 `liftoff governance verify` compares the rules GitHub enforces with the
-committed rulesets. With `--prove`, once the rulesets match and the person
-agrees, it tries a direct push, a forced push and deleting each protected
-branch. Each must be refused; anything GitHub allows is put back at once.
-The outcome, and the rulesets it proved, are recorded, and a proof of other
-rulesets does not count.
+committed rulesets, including the branches each applies to and who may
+bypass it; a ruleset that selects branches by pattern cannot match, and
+without committed rulesets nothing matches. With `--prove`, once the
+rulesets match, the record is this repository's and the person agrees, it
+tries a direct push, a forced push and deleting each protected branch. Each
+must be refused. Each change is recorded before it is tried; anything GitHub
+allows, or answers unclearly but makes, is put back while the branch is
+still where the change left it, and a branch that moved since is left
+alone. A change that cannot be put back stops the proof and stays recorded
+for `resume`. The outcome, and the rulesets it proved, are recorded, and a
+proof of other rulesets does not count.
 
 Verification: test
 

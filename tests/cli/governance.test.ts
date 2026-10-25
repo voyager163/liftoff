@@ -109,18 +109,29 @@ describe("GOV-002 the plan, and taking its next step", () => {
     expect(stale.err).toContain("make a new plan");
   });
 
-  it("refuses a plan for another repository", async () => {
-    writeFileSync(
-      path.join(work, "other.json"),
-      JSON.stringify({
-        schema: "liftoff.governance-plan/v1",
-        repository: { fullName: "octo/other" },
-        next: { kind: "run-drift", workflow: "x" },
-      }),
-    );
-    const { code, err } = await exec(["apply-next", "--use-gh", "--plan", "other.json", "--yes"]);
-    expect(code).toBe(2);
-    expect(err).toContain("the plan is for octo/other, not octo/demo");
+  it("refuses a plan for another repository, by GitHub's id rather than its name", async () => {
+    const plan = (repository: unknown) =>
+      writeFileSync(
+        path.join(work, "other.json"),
+        JSON.stringify({
+          schema: "liftoff.governance-plan/v1",
+          repository,
+          next: { kind: "create-develop", from: repo.branches.main },
+        }),
+      );
+    const run = () => exec(["apply-next", "--use-gh", "--plan", "other.json", "--yes"]);
+    // The same name for a repository that was replaced.
+    plan({ id: 8, fullName: "octo/demo" });
+    const replaced = await run();
+    expect(replaced.code).toBe(1);
+    expect(replaced.err).toContain("the plan is for repository 8, but octo/demo is repository 7");
+    plan({ fullName: "octo/demo" });
+    expect((await run()).err).toContain("is not a governance plan");
+    expect(github.writes()).toEqual([]);
+    // The same repository, its name spelled as GitHub spells it.
+    plan({ id: 7, fullName: "Octo/Demo" });
+    expect((await run()).code).toBe(0);
+    expect(repo.branches.develop).toBe(repo.branches.main);
   });
 
   it("asks before each step, and changes nothing without a yes", async () => {

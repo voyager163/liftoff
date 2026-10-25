@@ -1,16 +1,25 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PackageAssets } from "../../src/adapters/assets.ts";
 import { LocalProjectFs } from "../../src/adapters/project-fs.ts";
 import { applyNext, resume } from "../../src/application/governance/apply.ts";
-import { assessGovernance, GovernanceError } from "../../src/application/governance/assess.ts";
+import {
+  assessGovernance,
+  GovernanceError,
+  readDesired,
+} from "../../src/application/governance/assess.ts";
 import { verifyGovernance } from "../../src/application/governance/verify.ts";
 import { applyInit, planInit } from "../../src/application/init/init-project.ts";
 import type { Action } from "../../src/domain/governance/checkpoints.ts";
 import { validateConfig } from "../../src/domain/project/config.ts";
-import { FakeGitHubApi, type FakeRepository, fakeRepository } from "../helpers/fake-github-api.ts";
+import {
+  FakeGitHubApi,
+  FakeGitHubError,
+  type FakeRepository,
+  fakeRepository,
+} from "../helpers/fake-github-api.ts";
 import { FakeInitializer } from "../helpers/initializer.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
@@ -96,6 +105,38 @@ describe("GOV-001 assessing reads GitHub and changes nothing", () => {
       id: "handoff",
       detail: expect.stringContaining("missing"),
     });
+  });
+});
+
+describe("GOV-001 each required check is required from the app that produces it", () => {
+  it("keeps a check of the same name from two apps as two requirements", async () => {
+    const dir = path.join(work, "two-apps");
+    mkdirSync(path.join(dir, ".github/rulesets"), { recursive: true });
+    for (const [file, app] of [
+      ["develop.json", 15368],
+      ["main.json", 999],
+    ] as const) {
+      writeFileSync(
+        path.join(dir, ".github/rulesets", file),
+        JSON.stringify({
+          name: file,
+          target: "branch",
+          enforcement: "active",
+          conditions: { ref_name: { include: ["refs/heads/develop"], exclude: [] } },
+          bypass_actors: [],
+          rules: [
+            {
+              type: "required_status_checks",
+              parameters: { required_status_checks: [{ context: "ci-gate", integration_id: app }] },
+            },
+          ],
+        }),
+      );
+    }
+    expect((await readDesired(fs, dir)).requiredChecks).toEqual([
+      { context: "ci-gate", integrationId: 15368 },
+      { context: "ci-gate", integrationId: 999 },
+    ]);
   });
 });
 
@@ -210,6 +251,39 @@ describe("GOV-002 apply-next takes one agreed step at a time, in order", () => {
       "POST /repos/octo/demo/rulesets",
     ]);
     expect(repo.rulesets.find((ruleset) => ruleset.id === 6)?.name).toBe("Organization rules");
+  });
+
+  it("leaves a ruleset that changed on GitHub while the person was deciding", async () => {
+    const repo = fakeRepository({
+      defaultBranch: "develop",
+      branches: { main: "1".repeat(40), develop: "1".repeat(40) },
+    });
+    await pushedAndChecked(repo);
+    const github = new FakeGitHubApi(repo);
+    const desired = (await assessGovernance({ fs, github }, project, REPOSITORY)).desired.rulesets;
+    const [develop, main] = desired;
+    if (!develop || !main) throw new Error("no rulesets");
+    repo.rulesets = [{ id: 5, name: develop.name, enforcement: "disabled", body: { ...develop } }];
+    // Another admin makes it active, and stricter, before the answer.
+    const activated = applyNext({ fs, github }, project, REPOSITORY, {
+      ...yes,
+      confirm: async () => {
+        Object.assign(repo.rulesets[0] ?? {}, { enforcement: "active", updatedAt: "later" });
+        return true;
+      },
+    });
+    await expect(activated).rejects.toThrow(/changed on GitHub since it was assessed/);
+    // Or creates one of the same name.
+    repo.rulesets = [];
+    const created = applyNext({ fs, github }, project, REPOSITORY, {
+      ...yes,
+      confirm: async () => {
+        repo.rulesets.push({ id: 6, name: develop.name, enforcement: "active", body: develop });
+        return true;
+      },
+    });
+    await expect(created).rejects.toThrow(/changed on GitHub since it was assessed/);
+    expect(github.writes().filter((call) => call.route.includes("/rulesets"))).toEqual([]);
   });
 
   it("leaves the rulesets to an admin", async () => {
@@ -331,6 +405,130 @@ describe("GOV-004 the proof tries what the rules forbid", () => {
     expect(result).toMatchObject({ kind: "proved", passed: false });
     expect(repo.branches).toEqual({ main: "1".repeat(40), develop: "1".repeat(40) });
     expect(state().proof).toMatchObject({ passed: false });
+  });
+
+  it("reads back who may bypass each ruleset", async () => {
+    const { repo, github } = await enforced();
+    const develop = repo.rulesets.find((ruleset) => ruleset.name === "Protect develop");
+    if (!develop) throw new Error("no develop ruleset");
+    develop.body = {
+      ...develop.body,
+      bypass_actors: [{ actor_id: 9, actor_type: "Team", bypass_mode: "always" }],
+    };
+    const result = await verifyGovernance({ fs, github }, project, REPOSITORY, {
+      prove: false,
+      confirm: async () => true,
+      now,
+    });
+    expect(result).toMatchObject({ kind: "readback", matches: false });
+    if (result.kind !== "readback") throw new Error("no readback");
+    expect(result.assessment.checkpoints.find((c) => c.id === "readback")?.detail).toContain(
+      '"Protect develop" (bypass)',
+    );
+  });
+
+  it("puts a branch back when GitHub's answer to an allowed change is lost", async () => {
+    const { repo, github } = await enforced({ enforce: false });
+    github.loseAnswer = (method) => method === "PATCH" || method === "DELETE";
+    const result = await prove(github);
+    expect(result).toMatchObject({ kind: "proved", passed: false });
+    if (result.kind !== "proved") throw new Error("not proved");
+    expect(result.results[0]?.detail).toContain("GitHub gave no clear answer");
+    expect(repo.branches).toEqual({ main: "1".repeat(40), develop: "1".repeat(40) });
+    expect(state().probe).toBeUndefined();
+  });
+
+  it("keeps the record, and stops, when a branch cannot be put back; resume finishes it", async () => {
+    const { repo, github } = await enforced({ enforce: false });
+    const head = "1".repeat(40);
+    // Pushing on top is allowed, but not moving the branch back.
+    github.beforeWrite = (method, _route, body) => {
+      const update = body as { sha?: string; force?: boolean } | undefined;
+      if (method === "PATCH" && update?.force === true && update.sha === head) {
+        throw new FakeGitHubError(422, "Repository rule violations: non_fast_forward");
+      }
+    };
+    const result = await prove(github);
+    expect(result).toMatchObject({ kind: "proved", passed: false });
+    if (result.kind !== "proved") throw new Error("not proved");
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]?.detail).toContain("could not be put back");
+    expect(repo.branches.develop).not.toBe(head);
+    expect(state().probe).toMatchObject({ branch: "develop", proof: "direct-push", head });
+    await expect(applyNext({ fs, github }, project, REPOSITORY, yes)).rejects.toThrow(/resume/);
+    await expect(resume({ fs, github }, project, REPOSITORY, now)).rejects.toThrow(
+      /non_fast_forward/,
+    );
+    expect(state().probe).toBeDefined();
+    github.beforeWrite = undefined;
+    expect(await resume({ fs, github }, project, REPOSITORY, now)).toMatchObject({
+      kind: "probe",
+      detail: `develop was put back at ${head.slice(0, 12)}`,
+    });
+    expect(repo.branches.develop).toBe(head);
+    expect(state().probe).toBeUndefined();
+  });
+
+  it("never undoes a merge made while the proof runs", async () => {
+    const { repo, github } = await enforced({ enforce: false });
+    const merge = "e".repeat(40);
+    // A merge lands straight after the first allowed change.
+    let merged = false;
+    github.afterWrite = (method, route) => {
+      if (merged || method !== "PATCH" || !route.endsWith("/develop")) return;
+      merged = true;
+      repo.commits[merge] = { tree: "t".repeat(40), parents: [repo.branches.develop ?? ""] };
+      repo.branches.develop = merge;
+    };
+    const result = await prove(github);
+    if (result.kind !== "proved") throw new Error("not proved");
+    expect(result.results[0]?.detail).toContain("has moved to eeeeeeeeeeee since, so it was left");
+    expect(repo.branches.develop).toBe(merge);
+
+    // A merge while a proof commit is made stops the proof before any change.
+    const { repo: other, github: racing } = await enforced();
+    let commits = 0;
+    racing.beforeWrite = (method, route) => {
+      if (method !== "POST" || !route.endsWith("/git/commits") || ++commits !== 2) return;
+      other.commits[merge] = { tree: "t".repeat(40), parents: [other.branches.develop ?? ""] };
+      other.branches.develop = merge;
+    };
+    await expect(prove(racing)).rejects.toThrow(/develop moved while the proof was running/);
+    expect(other.branches.develop).toBe(merge);
+    const forced = racing
+      .writes()
+      .filter((call) => (call.body as { force?: boolean } | undefined)?.force === true);
+    expect(forced).toEqual([]);
+    expect(state().probe).toBeUndefined();
+  });
+
+  it("proves nothing, and matches nothing, without committed rulesets", async () => {
+    const { github } = await enforced();
+    const empty = path.join(work, "empty");
+    mkdirSync(empty);
+    const verify = (proving: boolean) =>
+      verifyGovernance({ fs, github }, empty, REPOSITORY, {
+        prove: proving,
+        confirm: async () => true,
+        now,
+      });
+    expect(await verify(false)).toMatchObject({ kind: "readback", matches: false });
+    await expect(verify(true)).rejects.toThrow(/must be applied and match/);
+  });
+
+  it("refuses another repository's record before changing anything", async () => {
+    const { github } = await enforced();
+    writeFileSync(
+      path.join(project, ".liftoff/governance.json"),
+      JSON.stringify({
+        schema: "liftoff.governance/v1",
+        repository: { id: 99, fullName: "octo/other" },
+        actions: [],
+      }),
+    );
+    const before = github.writes().length;
+    await expect(prove(github)).rejects.toThrow(GovernanceError);
+    expect(github.writes()).toHaveLength(before);
   });
 
   it("needs the rules applied first, and the person's agreement", async () => {

@@ -257,27 +257,28 @@ export function makeGovernancePlanCommand(
   };
 }
 
-/** The next action a saved plan expects, after checking the plan is for this repository. */
+/**
+ * The repository a saved plan is for, by GitHub's id, and the next action it
+ * expects. The id is compared with the repository GitHub answers for, so a
+ * name spelled differently still matches and a replaced repository does not.
+ */
 async function plannedAction(
   fs: ProjectFsPort,
   file: string,
-  repository: string,
-): Promise<Action | undefined> {
+): Promise<{ repositoryId: number; expected: Action }> {
   const text = await fs.readText(file);
   if (text === undefined) throw new UsageError(`cannot read the plan ${file}`);
-  let plan: { schema?: string; repository?: { fullName?: string }; next?: Action };
+  let plan: { schema?: string; repository?: { id?: unknown }; next?: Action };
   try {
     plan = JSON.parse(text);
   } catch {
     throw new UsageError(`${file} is not a governance plan`);
   }
-  if (plan.schema !== GOVERNANCE_PLAN_SCHEMA)
+  if (plan.schema !== GOVERNANCE_PLAN_SCHEMA || typeof plan.repository?.id !== "number") {
     throw new UsageError(`${file} is not a governance plan`);
-  if (plan.repository?.fullName !== repository) {
-    throw new UsageError(`the plan is for ${plan.repository?.fullName}, not ${repository}`);
   }
   if (plan.next === undefined) throw new UsageError("the plan has no step for Liftoff to take");
-  return plan.next;
+  return { repositoryId: plan.repository.id, expected: plan.next };
 }
 
 export function makeGovernanceApplyNextCommand(
@@ -308,10 +309,10 @@ export function makeGovernanceApplyNextCommand(
       const directory = path.resolve(io.cwd, args.options.dir as string);
       const repository = await repositoryWithConsent(args, io, ports.github, directory);
       const planFile = args.options.plan as string | undefined;
-      const expected =
+      const planned =
         planFile === undefined
           ? undefined
-          : await plannedAction(ports.fs, path.resolve(io.cwd, planFile), repository);
+          : await plannedAction(ports.fs, path.resolve(io.cwd, planFile));
       if (args.options.yes !== true && !io.interactive) {
         throw new UsageError(
           "apply-next changes GitHub; pass --yes when no one can answer a prompt",
@@ -323,7 +324,7 @@ export function makeGovernanceApplyNextCommand(
             ? Promise.resolve(true)
             : io.confirm(`${describeAction(action)} on ${repository}?`),
         now: () => new Date().toISOString(),
-        ...(expected ? { expected } : {}),
+        ...(planned ?? {}),
       });
       switch (result.kind) {
         case "done":
@@ -366,7 +367,7 @@ export function makeGovernanceResumeCommand(
     path: ["governance", "resume"],
     summary: "Check an interrupted governance step against GitHub instead of repeating it.",
     description:
-      "If .liftoff/governance.json records a step that never finished, assesses the repository again and records whether GitHub shows it done. Nothing is repeated or sent: a step that did not happen is offered again by the next `liftoff governance apply-next`, which asks first. It changes only .liftoff/governance.json.",
+      "If .liftoff/governance.json records a step that never finished, assesses the repository again and records whether GitHub shows it done. Nothing is repeated or sent: a step that did not happen is offered again by the next `liftoff governance apply-next`, which asks first. If a `verify --prove` was interrupted while trying a forbidden change, it puts that branch back, but only while it is still exactly where the change left it. Otherwise it changes only .liftoff/governance.json.",
     readOnly: false,
     reportSchema: "liftoff.governance-resume/v1",
     options: GITHUB_OPTIONS,
@@ -379,14 +380,17 @@ export function makeGovernanceResumeCommand(
       const heading =
         result.kind === "nothing"
           ? "Nothing was interrupted."
-          : result.outcome === "done"
-            ? `The interrupted ${result.action} step is done on GitHub.`
-            : `The interrupted ${result.action} step did not happen; liftoff governance apply-next offers it again.`;
+          : result.kind === "probe"
+            ? `A proof was interrupted while trying a forbidden change: ${result.detail}.`
+            : result.outcome === "done"
+              ? `The interrupted ${result.action} step is done on GitHub.`
+              : `The interrupted ${result.action} step did not happen; liftoff governance apply-next offers it again.`;
       return {
         outcome: result.kind === "checked" && result.outcome === "failed" ? "attention" : "success",
         report: {
-          interrupted: result.kind === "checked",
+          interrupted: result.kind !== "nothing",
           ...(result.kind === "checked" ? { action: result.action, outcome: result.outcome } : {}),
+          ...(result.kind === "probe" ? { probe: result.detail } : {}),
           checkpoints: result.assessment.checkpoints,
         },
         text: `${heading}\n\n${renderAssessment(result.assessment)}`,

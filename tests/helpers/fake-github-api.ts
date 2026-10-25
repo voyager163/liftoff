@@ -6,6 +6,8 @@ export interface FakeRuleset {
   name: string;
   enforcement: string;
   body: DesiredRuleset;
+  /** Changes with every update, as GitHub's updated_at does. */
+  updatedAt?: string;
 }
 
 /** A repository as the fake GitHub API holds it. Tests change it to stage each checkpoint. */
@@ -16,7 +18,7 @@ export interface FakeRepository {
   admin: boolean;
   origin?: string;
   branches: Record<string, string>;
-  commits: Record<string, { tree: string; parents: string[] }>;
+  commits: Record<string, { tree: string; parents: string[]; message?: string }>;
   /** Workflow files on the default branch. */
   workflows: string[];
   pulls: { head: { sha: string } }[];
@@ -73,7 +75,17 @@ export function fakeRepository(overrides: Partial<FakeRepository> = {}): FakeRep
 export class FakeGitHubApi implements GitHubApiPort {
   readonly calls: { method: string; route: string; body?: unknown }[] = [];
   readonly repo: FakeRepository;
+  /**
+   * Runs before each write, so a test can change the repository as someone
+   * else would, or refuse the write by throwing.
+   */
+  beforeWrite: ((method: string, route: string, body?: unknown) => void) | undefined;
+  /** Runs after each write that GitHub made, as someone else's change straight after. */
+  afterWrite: ((method: string, route: string) => void) | undefined;
+  /** Writes whose change GitHub makes but whose answer is lost, as on a timeout. */
+  loseAnswer: ((method: string, route: string) => boolean) | undefined;
   private nextId = 100;
+  private stamps = 0;
 
   constructor(repo: FakeRepository) {
     this.repo = repo;
@@ -98,18 +110,29 @@ export class FakeGitHubApi implements GitHubApiPort {
   }
 
   async send<T>(method: "POST" | "PATCH" | "PUT" | "DELETE", route: string, body?: unknown) {
+    this.beforeWrite?.(method, route, body);
     this.calls.push({ method, route, ...(body === undefined ? {} : { body }) });
-    return this.handle(method, route, body) as T;
+    const answer = this.handle(method, route, body) as T;
+    this.afterWrite?.(method, route);
+    return answer;
   }
 
   async attempt(method: "PATCH" | "DELETE", route: string, body?: unknown) {
     try {
       await this.send(method, route, body);
+      if (this.loseAnswer?.(method, route)) {
+        return { ok: false, message: "the connection timed out" } as const;
+      }
       return { ok: true } as const;
     } catch (error) {
       if (!(error instanceof FakeGitHubError)) throw error;
       return { ok: false, status: error.status, message: error.message } as const;
     }
+  }
+
+  /** A new updated_at, later than any before. */
+  private stamp() {
+    return `2026-10-26T00:00:${String(++this.stamps % 60).padStart(2, "0")}Z`;
   }
 
   /** The writes made so far. */
@@ -181,7 +204,23 @@ export class FakeGitHubApi implements GitHubApiPort {
       return repo.statuses[statusSha] ?? [];
     }
     if (method === "GET" && rest === "/rulesets") {
-      return repo.rulesets.map(({ id, name, enforcement }) => ({ id, name, enforcement }));
+      return repo.rulesets.map(({ id, name, enforcement, updatedAt }) => ({
+        id,
+        name,
+        enforcement,
+        updated_at: updatedAt ?? "2026-10-01T00:00:00Z",
+      }));
+    }
+    const shownId = on("GET", /^\/rulesets\/(\d+)$/);
+    if (shownId !== undefined) {
+      const shown = repo.rulesets.find((ruleset) => ruleset.id === Number(shownId));
+      if (!shown) throw new FakeGitHubError(404, "Not Found");
+      return {
+        ...shown.body,
+        id: shown.id,
+        enforcement: shown.enforcement,
+        updated_at: shown.updatedAt ?? "2026-10-01T00:00:00Z",
+      };
     }
     if (method === "POST" && rest === "/rulesets") {
       const ruleset = input as unknown as DesiredRuleset;
@@ -190,6 +229,7 @@ export class FakeGitHubApi implements GitHubApiPort {
         name: ruleset.name,
         enforcement: ruleset.enforcement,
         body: ruleset,
+        updatedAt: this.stamp(),
       });
       return {};
     }
@@ -202,6 +242,7 @@ export class FakeGitHubApi implements GitHubApiPort {
         name: ruleset.name,
         enforcement: ruleset.enforcement,
         body: ruleset,
+        updatedAt: this.stamp(),
       });
       return {};
     }
@@ -232,11 +273,19 @@ export class FakeGitHubApi implements GitHubApiPort {
     if (commitSha !== undefined) {
       const commit = repo.commits[commitSha];
       if (!commit) throw new FakeGitHubError(404, "Not Found");
-      return { tree: { sha: commit.tree }, parents: commit.parents.map((sha) => ({ sha })) };
+      return {
+        tree: { sha: commit.tree },
+        parents: commit.parents.map((sha) => ({ sha })),
+        message: commit.message ?? "",
+      };
     }
     if (method === "POST" && rest === "/git/commits") {
       const sha = String(this.nextId++).padStart(40, "c");
-      repo.commits[sha] = { tree: String(input.tree), parents: input.parents as string[] };
+      repo.commits[sha] = {
+        tree: String(input.tree),
+        parents: input.parents as string[],
+        message: String(input.message ?? ""),
+      };
       return { sha };
     }
     if (method === "POST" && rest === "/git/refs") {

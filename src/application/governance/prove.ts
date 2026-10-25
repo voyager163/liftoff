@@ -1,8 +1,10 @@
+import { type PendingProbe, PROOFS, type ProofKind } from "../../domain/governance/state.ts";
 import type { GitHubApiPort } from "../ports.ts";
 
-/** The ways a protected branch is changed without a pull request, each of which must be refused. */
-export const PROOFS = ["direct-push", "force-push", "deletion"] as const;
-export type ProofKind = (typeof PROOFS)[number];
+export { PROOFS, type ProofKind };
+
+/** The message of each commit a proof makes, so a leftover one can be recognised. */
+export const PROOF_MESSAGE = "Liftoff governance proof: GitHub must refuse this change";
 
 export interface ProofResult {
   readonly branch: string;
@@ -12,74 +14,136 @@ export interface ProofResult {
   readonly detail: string;
 }
 
+/**
+ * Where each forbidden change is recorded before it is tried and cleared once
+ * the branch is as it was, so an interrupted proof can be put right.
+ */
+export interface ProbeJournal {
+  start(probe: Omit<PendingProbe, "startedAt">): Promise<void>;
+  finish(): Promise<void>;
+}
+
 /** HTTP statuses GitHub answers a change a rule forbids with. */
 const REFUSALS = new Set([403, 409, 422]);
+
+/** The commit a branch points at, or undefined when it does not exist. */
+export const branchHead = async (api: GitHubApiPort, repository: string, branch: string) =>
+  (
+    await api.find<{ object: { sha: string } }>(
+      `/repos/${repository}/git/ref/heads/${encodeURIComponent(branch)}`,
+    )
+  )?.object.sha;
+
+/**
+ * Puts a branch back after a forbidden change GitHub allowed, but only while
+ * it is exactly where that change left it: a branch someone has moved since
+ * is left alone. Answers what happened, or throws when GitHub refuses.
+ */
+export async function putBack(
+  api: GitHubApiPort,
+  repository: string,
+  probe: Omit<PendingProbe, "startedAt">,
+): Promise<string> {
+  const route = `/repos/${repository}`;
+  const current = await branchHead(api, repository, probe.branch);
+  const short = probe.head.slice(0, 12);
+  if (current === probe.head) return `${probe.branch} is at ${short}, as before`;
+  if (probe.proof === "deletion" && current === undefined) {
+    await api.send("POST", `${route}/git/refs`, {
+      ref: `refs/heads/${probe.branch}`,
+      sha: probe.head,
+    });
+    return `${probe.branch} was created again at ${short}`;
+  }
+  if (current !== undefined && current === probe.sha) {
+    await api.send("PATCH", `${route}/git/refs/heads/${encodeURIComponent(probe.branch)}`, {
+      sha: probe.head,
+      force: true,
+    });
+    return `${probe.branch} was put back at ${short}`;
+  }
+  return `${probe.branch} has moved to ${current?.slice(0, 12) ?? "nothing"} since, so it was left as it is; check it, and remove any "${PROOF_MESSAGE}" commit`;
+}
 
 /**
  * Tries each forbidden change on a protected branch: an empty commit pushed
  * on top, a commit forced in beside the head, and deleting the branch. Each
- * must be refused. If one is not, the branch is put back at once to the head
- * it had, which an unprotected branch allows, and the proof fails.
+ * must be refused. If one is not, the branch is put back at the head it had
+ * just before, unless it has moved since, and the proof fails. Each change is
+ * recorded in the journal first; if the branch cannot be put back, the record
+ * stays for resume, and no further change is tried.
  */
 export async function proveBranch(
   api: GitHubApiPort,
   repository: string,
   branch: string,
+  journal: ProbeJournal,
 ): Promise<ProofResult[]> {
   const route = `/repos/${repository}`;
   const ref = `${route}/git/refs/heads/${encodeURIComponent(branch)}`;
-  const head = (await api.get<{ object: { sha: string } }>(`${route}/git/ref/heads/${branch}`))
-    .object.sha;
-  const commit = await api.get<{ tree: { sha: string }; parents: { sha: string }[] }>(
-    `${route}/git/commits/${head}`,
-  );
-  const proofCommit = async (parents: string[]) =>
-    (
-      await api.send<{ sha: string }>("POST", `${route}/git/commits`, {
-        message: "Liftoff governance proof: GitHub must refuse this change",
-        tree: commit.tree.sha,
-        parents,
-      })
-    ).sha;
-
   const results: ProofResult[] = [];
-  const record = async (
-    proof: ProofKind,
-    outcome: Awaited<ReturnType<GitHubApiPort["attempt"]>>,
-    repair: () => Promise<unknown>,
-  ) => {
-    if (outcome.ok) {
-      await repair();
-      results.push({
-        branch,
-        proof,
-        refused: false,
-        detail: `GitHub allowed it; ${branch} was put back at ${head.slice(0, 12)}`,
-      });
-    } else if (outcome.status !== undefined && REFUSALS.has(outcome.status)) {
+  for (const proof of PROOFS) {
+    // Read just before each change, so it is made against the latest head.
+    const head = await branchHead(api, repository, branch);
+    if (head === undefined) throw new Error(`${branch} does not exist`);
+    let sha: string | undefined;
+    if (proof !== "deletion") {
+      const commit = await api.get<{ tree: { sha: string }; parents: { sha: string }[] }>(
+        `${route}/git/commits/${head}`,
+      );
+      sha = (
+        await api.send<{ sha: string }>("POST", `${route}/git/commits`, {
+          message: PROOF_MESSAGE,
+          tree: commit.tree.sha,
+          // On top of the head, or beside it.
+          parents: proof === "direct-push" ? [head] : commit.parents.map((parent) => parent.sha),
+        })
+      ).sha;
+    }
+    const probe = { branch, proof, head, ...(sha === undefined ? {} : { sha }) };
+    await journal.start(probe);
+    // GitHub's ref updates take no expected head, so check it once more
+    // straight before the change: a merge since would otherwise be undone.
+    if ((await branchHead(api, repository, branch)) !== head) {
+      await journal.finish();
+      throw new Error(
+        `${branch} moved while the proof was running; prove it again when nothing is being merged into it`,
+      );
+    }
+    const outcome =
+      proof === "deletion"
+        ? await api.attempt("DELETE", ref)
+        : await api.attempt("PATCH", ref, { sha, force: proof === "force-push" });
+    if (!outcome.ok && outcome.status !== undefined && REFUSALS.has(outcome.status)) {
+      await journal.finish();
       results.push({ branch, proof, refused: true, detail: `refused (HTTP ${outcome.status})` });
-    } else {
+      continue;
+    }
+    // Allowed, or no clear answer: what the branch is now says which.
+    const current = await branchHead(api, repository, branch);
+    if (!outcome.ok && current === head) {
+      await journal.finish();
       throw new Error(
         `could not tell whether ${proof} on ${branch} was refused: ${outcome.message}`,
       );
     }
-  };
-  const putBack = () => api.send("PATCH", ref, { sha: head, force: true });
-
-  const ahead = await proofCommit([head]);
-  await record(
-    "direct-push",
-    await api.attempt("PATCH", ref, { sha: ahead, force: false }),
-    putBack,
-  );
-  const beside = await proofCommit(commit.parents.map((parent) => parent.sha));
-  await record(
-    "force-push",
-    await api.attempt("PATCH", ref, { sha: beside, force: true }),
-    putBack,
-  );
-  await record("deletion", await api.attempt("DELETE", ref), () =>
-    api.send("POST", `${route}/git/refs`, { ref: `refs/heads/${branch}`, sha: head }),
-  );
+    const allowed = outcome.ok
+      ? "GitHub allowed it"
+      : `GitHub gave no clear answer (${outcome.message}), but ${branch} changed`;
+    let repaired: string;
+    try {
+      repaired = await putBack(api, repository, probe);
+    } catch (error) {
+      results.push({
+        branch,
+        proof,
+        refused: false,
+        detail: `${allowed}, and it could not be put back at ${head.slice(0, 12)}: ${(error as Error).message}. Run liftoff governance resume, or reset it by hand`,
+      });
+      return results;
+    }
+    await journal.finish();
+    results.push({ branch, proof, refused: false, detail: `${allowed}; ${repaired}` });
+  }
   return results;
 }

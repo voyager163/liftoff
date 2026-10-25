@@ -4,6 +4,7 @@ import { GOVERNANCE_STATE_SCHEMA, type GovernanceState } from "../../domain/gove
 import { canonicalJson } from "../../domain/plan/plan.ts";
 import type { GitHubApiPort, ProjectFsPort } from "../ports.ts";
 import { type Assessment, assessGovernance, GovernanceError } from "./assess.ts";
+import { putBack } from "./prove.ts";
 import { readGovernanceState, writeGovernanceState } from "./state.ts";
 
 export interface ApplyPorts {
@@ -18,6 +19,8 @@ export interface ApplyOptions {
   readonly now: () => string;
   /** When given, the action must be this one, as planned. */
   readonly expected?: Action;
+  /** When given, the repository GitHub answers for must be this one, as planned. */
+  readonly repositoryId?: number;
 }
 
 export type ApplyResult =
@@ -27,7 +30,7 @@ export type ApplyResult =
   | { readonly kind: "applied"; readonly action: Action; readonly assessment: Assessment };
 
 /** A new state for the repository, or the recorded one if it is for the same repository. */
-async function stateFor(
+export async function stateFor(
   fs: ProjectFsPort,
   directory: string,
   assessment: Assessment,
@@ -58,6 +61,12 @@ export async function applyNext(
   options: ApplyOptions,
 ): Promise<ApplyResult> {
   const assessment = await assessGovernance(ports, directory, repository);
+  const observed = assessment.observed.repository;
+  if (options.repositoryId !== undefined && options.repositoryId !== observed.id) {
+    throw new GovernanceError(
+      `the plan is for repository ${options.repositoryId}, but ${repository} is repository ${observed.id}; make a new plan`,
+    );
+  }
   const next = assessment.checkpoints.find((checkpoint) => checkpoint.status === "next");
   if (next === undefined) return { kind: "done", assessment };
   const state = await stateFor(ports.fs, directory, assessment);
@@ -65,6 +74,11 @@ export async function applyNext(
   if (unfinished) {
     throw new GovernanceError(
       `the ${unfinished.kind} action started ${unfinished.startedAt} never finished; check it with liftoff governance resume first`,
+    );
+  }
+  if (state.probe !== undefined) {
+    throw new GovernanceError(
+      `a proof was interrupted while trying ${state.probe.proof} on ${state.probe.branch}; run liftoff governance resume first`,
     );
   }
   if (next.action === undefined) return { kind: "person", checkpoint: next, assessment };
@@ -133,8 +147,25 @@ async function perform(
         // Only Liftoff's own rulesets, found by name, are ever changed; any
         // other ruleset stays as it is, so nothing stricter is weakened.
         const existing = assessment.observed.rulesets.find((ruleset) => ruleset.name === name);
-        if (existing) await ports.github.send("PUT", `${route}/rulesets/${existing.id}`, desired);
-        else await ports.github.send("POST", `${route}/rulesets`, desired);
+        // Read again just before the change: one changed since it was
+        // assessed, or made active by someone else, is left as it is.
+        const changed = () =>
+          new GovernanceError(
+            `the "${name}" ruleset changed on GitHub since it was assessed, so it was left as it is; run apply-next again`,
+          );
+        if (existing) {
+          const current = await ports.github.get<{ enforcement: string; updated_at?: string }>(
+            `${route}/rulesets/${existing.id}`,
+          );
+          if (current.enforcement === "active" || current.updated_at !== existing.updatedAt) {
+            throw changed();
+          }
+          await ports.github.send("PUT", `${route}/rulesets/${existing.id}`, desired);
+        } else {
+          const now = await ports.github.get<{ name: string }[]>(`${route}/rulesets?per_page=100`);
+          if (now.some((ruleset) => ruleset.name === name)) throw changed();
+          await ports.github.send("POST", `${route}/rulesets`, desired);
+        }
       }
       return;
     case "run-drift":
@@ -154,6 +185,12 @@ export type ResumeResult =
       readonly action: string;
       readonly outcome: "done" | "failed";
       readonly assessment: Assessment;
+    }
+  | {
+      readonly kind: "probe";
+      /** What was done about the interrupted proof's branch. */
+      readonly detail: string;
+      readonly assessment: Assessment;
     };
 
 /**
@@ -169,6 +206,18 @@ export async function resume(
 ): Promise<ResumeResult> {
   const assessment = await assessGovernance(ports, directory, repository);
   const state = await stateFor(ports.fs, directory, assessment);
+  if (state.probe !== undefined) {
+    // An interrupted proof: put its branch back if it is still where the
+    // forbidden change left it. A refusal keeps the record for another try.
+    const { probe, ...rest } = state;
+    const detail = await putBack(ports.github, repository, probe);
+    await writeGovernanceState(ports.fs, directory, rest);
+    return {
+      kind: "probe",
+      detail,
+      assessment: await assessGovernance(ports, directory, repository),
+    };
+  }
   const index = state.actions.findIndex((action) => action.finishedAt === undefined);
   const interrupted = state.actions[index];
   if (interrupted === undefined) return { kind: "nothing", assessment };

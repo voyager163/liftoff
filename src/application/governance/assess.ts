@@ -10,6 +10,7 @@ import {
 import {
   type DesiredRuleset,
   type EffectiveRule,
+  type LiveRuleset,
   targetedBranches,
 } from "../../domain/governance/ruleset-drift.ts";
 import type { GitHubApiPort, ProjectFsPort } from "../ports.ts";
@@ -51,9 +52,11 @@ export async function readDesired(fs: ProjectFsPort, directory: string): Promise
         integration_id?: number;
       }[];
       for (const check of checks) {
-        requiredChecks.set(check.context, {
+        // The same name from two apps is two requirements.
+        const integrationId = check.integration_id ?? GITHUB_ACTIONS_APP_ID;
+        requiredChecks.set(`${check.context}\u0000${integrationId}`, {
           context: check.context,
-          integrationId: check.integration_id ?? GITHUB_ACTIONS_APP_ID,
+          integrationId,
         });
       }
     }
@@ -134,10 +137,22 @@ export async function observe(
   }
 
   const rulesets = (
-    await api.get<{ id: number; name: string; enforcement: string }[]>(
+    await api.get<{ id: number; name: string; enforcement: string; updated_at?: string }[]>(
       `${route}/rulesets?per_page=100`,
     )
-  ).map(({ id, name, enforcement }) => ({ id, name, enforcement }));
+  ).map(({ id, name, enforcement, updated_at }) => ({
+    id,
+    name,
+    enforcement,
+    ...(updated_at === undefined ? {} : { updatedAt: updated_at }),
+  }));
+  // The committed rulesets in full, for what the rules on each branch cannot
+  // show: the branches each applies to and who may bypass it.
+  const definitions: Record<string, LiveRuleset> = {};
+  for (const { name } of desired.rulesets) {
+    const live = rulesets.find((ruleset) => ruleset.name === name);
+    if (live) definitions[name] = await api.get<LiveRuleset>(`${route}/rulesets/${live.id}`);
+  }
   const rules: Record<string, readonly EffectiveRule[]> = {};
   for (const branch of new Set(desired.rulesets.flatMap(targetedBranches))) {
     rules[branch] =
@@ -163,6 +178,7 @@ export async function observe(
     workflows,
     checks,
     rulesets,
+    definitions,
     rules,
     ...(latest ? { driftRun: { conclusion: latest.conclusion, url: latest.html_url } } : {}),
   };
