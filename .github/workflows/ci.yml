@@ -151,13 +151,23 @@ jobs:
       - run: npm ci
       - name: Build the bundle
         run: node scripts/package/build-bundle.ts
-      - name: Run Liftoff from a copy of the bundle with no Node on PATH
+      # A tar archive keeps the executable bit and dotfiles, such as
+      # lib/app/.github/liftoff and the templates' .github directories, which
+      # upload-artifact would drop.
+      - name: Archive the bundle
+        env:
+          BUNDLE: ${{ matrix.bundle }}
+        working-directory: out
+        run: tar -czf "$BUNDLE.tar.gz" "$BUNDLE"
+      - name: Run Liftoff from the extracted archive with no Node on PATH
         env:
           BUNDLE: ${{ matrix.bundle }}
         run: |
           install="$RUNNER_TEMP/install"
           mkdir -p "$install" "$RUNNER_TEMP/smoke"
-          cp -R "out/$BUNDLE" "$install/"
+          cp "out/$BUNDLE.tar.gz" "$install/"
+          (cd "$install" && tar -xzf "$BUNDLE.tar.gz")
+          test -f "$install/$BUNDLE/lib/app/.github/liftoff/review-policy.mjs"
           cd "$RUNNER_TEMP/smoke"
           export PATH="$install/$BUNDLE/bin:/usr/bin:/bin"
           if command -v node; then echo "node is still on PATH"; exit 1; fi
@@ -165,10 +175,12 @@ jobs:
           liftoff capabilities --json > capabilities.json
           liftoff init --name smoke --workflow manual --agents claude --yes
           liftoff validate --dir smoke
+          test -f smoke/.github/workflows/01-pr-ci.yml
+          test -f smoke/backend/.python-version
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.bundle }}
-          path: out/${{ matrix.bundle }}/
+          path: out/${{ matrix.bundle }}.tar.gz
           retention-days: 7
           if-no-files-found: error
 

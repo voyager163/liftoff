@@ -20,30 +20,11 @@ export interface ReviewEngine {
 // biome-ignore lint/suspicious/noTemplateCurlyInString: Bash parameter expansion, not a template literal.
 const MODEL_ARGUMENT = '  ${LIFTOFF_REVIEW_MODEL:+--model "$LIFTOFF_REVIEW_MODEL"} \\';
 
-const COPILOT_DENIED = [
-  "write",
-  "shell(git push)",
-  "shell(git commit)",
-  "shell(git checkout)",
-  "shell(git reset)",
-  "shell(gh:*)",
-  "shell(curl:*)",
-  "shell(wget:*)",
-  "shell(npm:*)",
-  "shell(npx:*)",
-  "url",
-];
-
-const CLAUDE_ALLOWED = [
-  "Read",
-  "Grep",
-  "Glob",
-  "Bash(git diff:*)",
-  "Bash(git log:*)",
-  "Bash(git show:*)",
-  "Bash(git blame:*)",
-];
-const CLAUDE_DENIED = ["Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch"];
+// Reviewers only read files. The diff is written for them by the trusted
+// prepare step, so no host needs a shell: Copilot and Claude get none, and
+// Codex runs every command in its read-only, offline sandbox.
+const COPILOT_DENIED = ["shell", "write", "url"];
+const CLAUDE_TOOLS = "Read,Grep,Glob";
 
 export const REVIEW_ENGINES: Readonly<Record<AgentHostId, ReviewEngine>> = {
   copilot: {
@@ -53,7 +34,6 @@ export const REVIEW_ENGINES: Readonly<Record<AgentHostId, ReviewEngine>> = {
     secretHelp: 'a user-owned fine-grained token with the "Copilot Requests" permission',
     run: [
       'copilot -p "$(cat "$prompt")" -s \\',
-      "  --allow-all-tools \\",
       ...COPILOT_DENIED.map((tool) => `  --deny-tool '${tool}' \\`),
       "  --excluded-tools web_fetch web_search \\",
       "  --disable-builtin-mcps \\",
@@ -70,9 +50,8 @@ export const REVIEW_ENGINES: Readonly<Record<AgentHostId, ReviewEngine>> = {
     run: [
       'claude -p "$(cat "$prompt")" \\',
       "  --bare --strict-mcp-config \\",
+      `  --tools '${CLAUDE_TOOLS}' \\`,
       "  --permission-mode dontAsk \\",
-      `  --allowedTools ${CLAUDE_ALLOWED.map((tool) => `'${tool}'`).join(" ")} \\`,
-      `  --disallowedTools ${CLAUDE_DENIED.map((tool) => `'${tool}'`).join(" ")} \\`,
       "  --output-format text \\",
       MODEL_ARGUMENT,
       '  > "$output"',
@@ -113,8 +92,13 @@ export function reviewAgentScript(engine: ReviewEngine): string {
     "#!/usr/bin/env bash",
     "# Managed by Liftoff. Change it through Liftoff rather than by hand.",
     `# Runs one read-only review pass with ${engine.host}: review-agent.sh PROMPT_FILE OUTPUT_FILE`,
-    "# The agent may read the repository and run read-only git commands; it",
-    "# cannot write files, use the network or reach the pull request.",
+    engine.host === "codex"
+      ? "# The agent runs commands only in a read-only, offline sandbox: it cannot"
+      : "# The agent only reads files in the working directory: it has no shell,",
+    engine.host === "codex"
+      ? "# write files or use the network, and holds no token that can reach the"
+      : "# cannot write files or use the network, and holds no token that can reach the",
+    "# pull request.",
     "set -euo pipefail",
     'prompt="$1"',
     'output="$2"',

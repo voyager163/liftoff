@@ -154,11 +154,13 @@ Verification: test
 
 ## AIREVIEW-004 Agents cannot be steered or given write access by the pull request
 
-Before an agent runs, every review-instruction file the pull request changed
-is restored to the base branch's version or removed. Agents get a read-only
-GitHub token, no write or network tools, and the Copilot token is stripped
-from every shell they start. Only a separate job that runs no agent posts the
-review. Fork pull requests and repositories without the Copilot token report
+The review runs from the base branch's workflow, scripts, skills and review
+instructions, so a pull request cannot change how it is reviewed. The pull
+request's files are a separate checkout that agents only read, and a trusted
+step writes the diff for them. Agents get file-reading tools only (Codex: a
+read-only, offline sandbox), no shell, write or network access, and a
+read-only GitHub token. Only a separate job that runs no agent posts the
+review. Fork pull requests and repositories without the agent's secret report
 "not run", never success.
 
 Verification: test

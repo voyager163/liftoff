@@ -87,10 +87,11 @@ describe("PROJ-007 choosing the review engine", () => {
     expect(script).toContain("set -euo pipefail");
     expect(engine.cli).toMatch(/@\d+\.\d+\.\d+$/);
     const readOnly = {
-      copilot: "--deny-tool 'write'",
-      claude: "--disallowedTools 'Edit' 'Write'",
-      codex: "--sandbox read-only",
+      copilot: ["--deny-tool 'shell'", "--deny-tool 'write'", "--deny-tool 'url'"],
+      claude: ["--tools 'Read,Grep,Glob'", "--permission-mode dontAsk"],
+      codex: ["--sandbox read-only"],
     };
-    expect(script).toContain(readOnly[engine.host]);
+    for (const flag of readOnly[engine.host]) expect(script).toContain(flag);
+    expect(script).not.toMatch(/--allow-all|Bash\(|--allowedTools/);
   });
 });

@@ -103,6 +103,10 @@ jobs:
     name: Dependency review
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Push and merge-queue runs check nothing out, so backend/ does not exist.
+    defaults:
+      run:
+        working-directory: .
     steps:
       - name: Explain non-pull-request runs
         if: github.event_name != 'pull_request'

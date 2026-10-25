@@ -66,12 +66,16 @@ instead. See the [command reference](reference/cli.md) for every option.
 ```bash
 cd ../demo
 git init --initial-branch=develop
-npm --prefix ../liftoff run liftoff -- doctor
-npm --prefix ../liftoff run liftoff -- validate
+node ../liftoff/src/cli/main.ts doctor
+node ../liftoff/src/cli/main.ts validate
 cd backend
 uv sync
 uv run pytest
 ```
+
+`doctor` and `validate` check the directory you run them in, so run them
+from the project with `node` rather than through `npm run`, which would run
+them in the Liftoff checkout.
 
 - `liftoff doctor` checks the tools the project needs (uv and Git; Docker is
   optional) and says how to install anything missing.

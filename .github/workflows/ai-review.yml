@@ -8,13 +8,18 @@
 # reviewer alone. After three rounds the pipeline stops and asks for a rethink.
 #
 # Agents run copilot through .github/liftoff/review-agent.sh with
-# the COPILOT_GITHUB_TOKEN secret. They get a read-only GITHUB_TOKEN, no
-# write or network tools, and review with the base branch's instructions.
-# Only the publish job, which runs no agent, can comment on the pull request.
+# the COPILOT_GITHUB_TOKEN secret. The workflow runs on pull_request_target,
+# so it, the bundled scripts, the skills and the review instructions all come
+# from the base branch: a pull request cannot change how it is reviewed or
+# reach the secret through this workflow. The pull request's head is checked
+# out into pr/ only as files to read; nothing from it is ever run. Agents get
+# file-reading tools only, the diff the prepare job wrote and a read-only
+# GITHUB_TOKEN. Only the publish job, which runs no agent, can comment on the
+# pull request. Pull requests from forks are not reviewed.
 name: AI review
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [develop, main]
 
@@ -28,6 +33,7 @@ concurrency:
 env:
   REVIEW_AGENT_CLI: "@github/copilot@1.0.98"
   LIFTOFF_REVIEW_DIR: ai-review
+  LIFTOFF_REVIEW_TREE: pr
 
 jobs:
   prepare:
@@ -42,13 +48,20 @@ jobs:
       stop: ${{ steps.plan.outputs.stop }}
       passes: ${{ steps.plan.outputs.passes }}
       verifiers: ${{ steps.plan.outputs.verifiers }}
-      range: ${{ steps.plan.outputs.range }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Decide whether to run and write the finder prompts
+      - name: Check out the pull request's head as files to diff, never to run
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Decide whether to run and write the diff and finder prompts
         id: plan
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -66,7 +79,9 @@ jobs:
   find:
     name: Find bugs
     needs: prepare
-    if: needs.prepare.outputs.run == 'true'
+    # prepare never runs a fork's pull request; checked again here because
+    # this job holds the agent's secret.
+    if: needs.prepare.outputs.run == 'true' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -79,15 +94,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
+      - name: Check out the pull request's head as files to read, never to run
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ai-review-plan
           path: ai-review/
-      - name: Use the base branch's review instructions
-        env:
-          LIFTOFF_BASE_REF: ${{ github.base_ref }}
-        run: node .github/liftoff/ai-review.mjs restore-instructions
       - name: Install the review agent
         run: npm install --global "$REVIEW_AGENT_CLI"
       - name: Look for bugs (pass ${{ matrix.pass }})
@@ -106,7 +122,7 @@ jobs:
   verify:
     name: Verify findings
     needs: [prepare, find]
-    if: needs.prepare.outputs.run == 'true'
+    if: needs.prepare.outputs.run == 'true' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -120,24 +136,23 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Check out the pull request's head as files to read, never to run
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: ai-review-*
           path: ai-review-artifacts/
       - name: Gather the candidates
         id: candidates
-        env:
-          LIFTOFF_RANGE: ${{ needs.prepare.outputs.range }}
         run: |
           mkdir -p ai-review/finders
           cp -R ai-review-artifacts/ai-review-plan/. ai-review/
           find ai-review-artifacts -path '*ai-review-finder-*' -name 'finder-*.txt' -exec cp {} ai-review/finders/ \;
           node .github/liftoff/ai-review.mjs verifier-prompt
-      - name: Use the base branch's review instructions
-        if: steps.candidates.outputs.has-candidates == 'true'
-        env:
-          LIFTOFF_BASE_REF: ${{ github.base_ref }}
-        run: node .github/liftoff/ai-review.mjs restore-instructions
       - name: Install the review agent
         if: steps.candidates.outputs.has-candidates == 'true'
         run: npm install --global "$REVIEW_AGENT_CLI"

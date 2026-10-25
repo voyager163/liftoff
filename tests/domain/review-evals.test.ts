@@ -125,9 +125,11 @@ describe("EVAL-002 the eval runner", () => {
           .map((p) => p.slice(dir.length + 1)),
       appendFile: (p, text) => files.set(p, (files.get(p) ?? "") + text),
       log: (text) => logs.push(text),
-      git: async (args) =>
-        args[1]?.endsWith("SKILL.md") ? "---\nname: a\n---\nMethod." : undefined,
-      removeFile: () => undefined,
+      git: async (args) => {
+        if (args.join(" ") === "-C . diff HEAD~1..HEAD")
+          return "diff --git a/src/a.ts b/src/a.ts\n";
+        return args[1]?.endsWith("SKILL.md") ? "---\nname: a\n---\nMethod." : undefined;
+      },
     };
     return { context, files, logs };
   };
@@ -136,7 +138,9 @@ describe("EVAL-002 the eval runner", () => {
     const { context, files } = harness({});
     expect(await main("eval-prepare", context)).toBe(0);
     const prompt = files.get("ai-review/finder-0.md") ?? "";
-    expect(prompt).toContain("git diff HEAD~1..HEAD");
+    expect(files.get("ai-review/diff.patch")).toBe("diff --git a/src/a.ts b/src/a.ts\n");
+    expect(prompt).toContain("the diff in `ai-review/diff.patch`");
+    expect(prompt).toContain("in the working directory");
     expect(prompt).toContain("Tidy up.");
     expect(prompt).not.toContain("Planted bug");
     expect(files.has("ai-review/finder-1.md")).toBe(true);

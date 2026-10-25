@@ -73,7 +73,6 @@ jobs:
         env:
           LIFTOFF_EVAL_CASE: ${{ matrix.case }}
           LIFTOFF_BASE_REF: develop
-          LIFTOFF_RANGE: HEAD~1..HEAD
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           LIFTOFF_REVIEW_MODEL: ${{ vars.LIFTOFF_REVIEW_MODEL }}
         run: |

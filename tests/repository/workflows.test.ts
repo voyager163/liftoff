@@ -12,10 +12,12 @@ interface Step {
   uses?: string;
   run?: string;
   with?: Record<string, unknown>;
+  "working-directory"?: string;
 }
 interface Job {
   "runs-on"?: string;
   permissions?: Record<string, string> | string;
+  defaults?: { run?: { "working-directory"?: string } };
   steps?: Step[];
   strategy?: { matrix?: { include?: { os?: string }[] } };
 }
@@ -77,24 +79,40 @@ describe("REPO-005 privileged triggers never run pull request code", () => {
 
   it("covers the privileged workflows", () => {
     expect(privileged.map((w) => w.name)).toEqual(
-      expect.arrayContaining(["cla.yml", "review-policy.yml"]),
+      expect.arrayContaining(["ai-review.yml", "cla.yml", "review-policy.yml"]),
     );
   });
 
   it.each(privileged.map((w) => [w.name, w.data]))(
-    "%s does not check out or interpolate pull request input",
+    "%s does not run or interpolate pull request input",
     (_name, data) => {
       for (const job of Object.values((data as Workflow).jobs)) {
+        // The pull request may only be checked out into a directory of its
+        // own, as files to read; the workspace stays the base branch's.
+        const readOnly = new Set<string>();
         for (const step of job.steps ?? []) {
           if (step.uses?.startsWith("actions/checkout@")) {
             const ref = String(step.with?.ref ?? "");
-            expect(ref, "checkout must not use the pull request ref").not.toMatch(
-              /head|merge|pull_request/,
-            );
             expect(
               step.with?.repository,
               "checkout must not use the fork repository",
             ).toBeUndefined();
+            if (/head|merge|pull_request/.test(ref)) {
+              const into = String(step.with?.path ?? ".").replace(/\/+$/, "");
+              expect(into, "the pull request must not replace the workspace").not.toMatch(/^\.?$/);
+              expect(step.with?.["persist-credentials"]).toBe(false);
+              readOnly.add(into);
+            }
+          }
+        }
+        for (const step of job.steps ?? []) {
+          for (const into of readOnly) {
+            const runsFrom = (dir: string | undefined) =>
+              dir !== undefined && (dir === into || dir.startsWith(`${into}/`));
+            expect(runsFrom(job.defaults?.run?.["working-directory"])).toBe(false);
+            expect(runsFrom(step["working-directory"])).toBe(false);
+            expect(step.uses?.startsWith(`./${into}`) ?? false).toBe(false);
+            expect(step.run ?? "", `nothing may run from ${into}/`).not.toContain(`${into}/`);
           }
           if (step.run) {
             expect(step.run).not.toMatch(

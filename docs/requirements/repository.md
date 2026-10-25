@@ -37,9 +37,12 @@ Verification: test
 
 ## REPO-005 Privileged triggers never run pull request code
 
-Workflows triggered by `pull_request_target` or `workflow_run` never check out
-the pull request's head or merge ref, and never pass pull request text such as
-titles or branch names into a `run:` script.
+Workflows triggered by `pull_request_target` or `workflow_run` never run
+pull request code. The workspace is always the base branch's checkout. A job
+that needs the pull request's files, such as the AI review, checks the head
+out into a directory of its own without credentials, and no step runs
+anything from that directory. Pull request text such as titles or branch
+names is never passed into a `run:` script.
 
 Verification: test
 

@@ -78,10 +78,9 @@ const splitList = (value: string | undefined): string[] =>
         .map((item) => item.trim())
         .filter(Boolean);
 
+/** True when any project option was typed, including ones that have a default. */
 export const hasProjectOptions = (args: ParsedArgs): boolean =>
-  ["name", "dir", "agents", "review-engine", "owners"].some(
-    (name) => args.options[name] !== undefined,
-  );
+  Object.keys(PROJECT_OPTIONS).some((name) => args.given.has(name));
 
 /** Builds and validates the project configuration from command-line options. */
 export function projectFromOptions(

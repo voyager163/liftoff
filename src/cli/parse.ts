@@ -105,7 +105,7 @@ export function parseCommandArgs(spec: CommandSpec, rest: readonly string[]): Pa
       options[name] = value === true;
     }
   }
-  return { options, positionals: parsed.positionals };
+  return { options, positionals: parsed.positionals, given: new Set(Object.keys(parsed.values)) };
 }
 
 // node:util messages are sentences with advice for script authors; keep the

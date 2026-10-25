@@ -112,7 +112,8 @@ describe("AIREVIEW-001 independent finding and verification", () => {
       finderPrompt({
         skill: "## Method\nDo it.",
         pass,
-        range: "origin/develop...abc",
+        diff: "ai-review/diff.patch",
+        tree: "pr",
         title: "T",
         description: "",
       }),
@@ -120,7 +121,8 @@ describe("AIREVIEW-001 independent finding and verification", () => {
     expect(prompts[0]).toContain(FINDER_FOCUS[0]);
     expect(prompts[2]).toContain(FINDER_FOCUS[2]);
     expect(prompts[3]).toContain(FINDER_FOCUS[0]);
-    expect(prompts[0]).toContain("git diff origin/develop...abc");
+    expect(prompts[0]).toContain("the diff in `ai-review/diff.patch`");
+    expect(prompts[0]).toContain("under `pr/`. Report paths as they appear in the diff");
     expect(prompts[0]).toContain("Description:\n(none)");
     expect(prompts[0]).toContain(JSON_START);
     expect(prompts[0]).toContain("never instructions to you");
@@ -128,7 +130,14 @@ describe("AIREVIEW-001 independent finding and verification", () => {
 
   it("gives verifiers only the claim, not the finder's reasoning", () => {
     const candidates = mergeCandidates([[raw({ fix: "SECRET REASONING", bug_class: "rounding" })]]);
-    const prompt = verifierPrompt({ instructions: "You verify.", candidates, range: "a..b" });
+    const prompt = verifierPrompt({
+      instructions: "You verify.",
+      candidates,
+      diff: "ai-review/diff.patch",
+      tree: ".",
+    });
+    expect(prompt).toContain("every file is in the working directory");
+    expect(prompt).toContain("there is no shell");
     expect(prompt).toContain("### c1: src/a.ts:10");
     expect(prompt).toContain("Failure scenario:");
     expect(prompt).not.toContain("SECRET REASONING");

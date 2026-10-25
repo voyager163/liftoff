@@ -32,6 +32,8 @@ export interface Io {
 export interface ParsedArgs {
   readonly options: Readonly<Record<string, string | boolean | undefined>>;
   readonly positionals: readonly string[];
+  /** Options typed on the command line, as opposed to filled in from defaults. */
+  readonly given: ReadonlySet<string>;
 }
 
 export interface CommandResult {
