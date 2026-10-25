@@ -75,9 +75,12 @@ by the risk tier the review policy gives it:
 
 With `team-gitflow` and `risk-tiered-gitflow`, an approval counts only when
 it comes from someone with write access who is not the author, on the pull
-request's current head commit; bots never count. Give at least two
-`--owners` to have the branch rules require a code owner's approval, because
-nobody can approve their own pull request.
+request's current head commit; bots never count. `--owners` makes GitHub
+request those people as reviewers. With `team-gitflow`, at least two owners
+also make a code owner's approval required (with one, nobody could approve
+that owner's own changes). With `risk-tiered-gitflow`, low-risk changes need
+no approval, so the branch rules never require a code owner's; any
+collaborator with write access can give the approvals a change needs.
 
 These two profiles are generated and tested, but their approval rules have
 not yet been observed on GitHub with a real second reviewer, so they are not

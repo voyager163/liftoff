@@ -52,7 +52,7 @@ JSON report: `liftoff.plan-report/v1`.
 | `--governance <profile>` | Governance profile: single-maintainer-gitflow, team-gitflow, risk-tiered-gitflow, none. (default `single-maintainer-gitflow`) |
 | `--ai-review <mode>` | Verified AI review in CI; auto turns it on when agents are selected. (one of `auto`, `on`, `off`; default `auto`) |
 | `--review-engine <host>` | Which selected agent host runs the verified AI review. |
-| `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. Profiles that require approvals also require a code owner's approval when there are at least two. |
+| `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. With team-gitflow, which requires an approval for every change, at least two owners also make a code owner's approval required. |
 | `--out <file>` | Save the plan to this file for `liftoff init --plan`. |
 | `--json` | Print one JSON report on stdout. |
 | `--help` | Show help for this command. |
@@ -81,7 +81,7 @@ JSON report: `liftoff.init-report/v1`.
 | `--governance <profile>` | Governance profile: single-maintainer-gitflow, team-gitflow, risk-tiered-gitflow, none. (default `single-maintainer-gitflow`) |
 | `--ai-review <mode>` | Verified AI review in CI; auto turns it on when agents are selected. (one of `auto`, `on`, `off`; default `auto`) |
 | `--review-engine <host>` | Which selected agent host runs the verified AI review. |
-| `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. Profiles that require approvals also require a code owner's approval when there are at least two. |
+| `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. With team-gitflow, which requires an approval for every change, at least two owners also make a code owner's approval required. |
 | `--plan <file>` | Create exactly the project in this saved plan. |
 | `--yes` | Create it without asking. |
 | `--json` | Print one JSON report on stdout. |

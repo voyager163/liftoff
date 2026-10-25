@@ -67,7 +67,7 @@ export const PROJECT_OPTIONS: Readonly<Record<string, OptionSpec>> = {
     type: "string",
     valueName: "logins",
     description:
-      "GitHub logins that own the project, comma-separated, for CODEOWNERS. Profiles that require approvals also require a code owner's approval when there are at least two.",
+      "GitHub logins that own the project, comma-separated, for CODEOWNERS. With team-gitflow, which requires an approval for every change, at least two owners also make a code owner's approval required.",
   },
 };
 
