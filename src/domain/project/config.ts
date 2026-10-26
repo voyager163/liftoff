@@ -1,6 +1,7 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { en } from "zod/locales";
 import * as z from "zod/mini";
+import { repositoryPathProblem } from "./paths.ts";
 
 z.config(en());
 
@@ -23,6 +24,20 @@ export const projectNameProblem = (name: string): string | undefined =>
 
 /** Whether a GitHub login is well formed. */
 export const isGithubLogin = (login: string): boolean => LOGIN.test(login);
+
+/** The parts of a project that live in a directory of their own. */
+export const COMPONENTS = ["backend", "frontend", "infrastructure"] as const;
+export type Component = (typeof COMPONENTS)[number];
+
+/** Where each part lives in a project Liftoff created. */
+export const STANDARD_LAYOUT: Readonly<Record<Component, string>> = {
+  backend: "backend",
+  frontend: "frontend",
+  infrastructure: "infrastructure/opentofu/azure",
+};
+
+/** Directories no part of a project may be bound to, or inside. */
+const RESERVED = [".git", ".github", ".liftoff"];
 
 const configSchema = z.strictObject({
   schema: z.literal(CONFIG_SCHEMA),
@@ -48,6 +63,19 @@ const configSchema = z.strictObject({
   }),
   /** GitHub logins that own the project, for CODEOWNERS. */
   owners: z._default(z.array(z.string().check(z.regex(LOGIN, "must be a GitHub login"))), []),
+  /**
+   * Where parts of the project live when not in the standard directories,
+   * such as a project adopted with its own layout. "." is the repository
+   * root.
+   */
+  layout: z._default(
+    z.strictObject({
+      backend: z.optional(z.string()),
+      frontend: z.optional(z.string()),
+      infrastructure: z.optional(z.string()),
+    }),
+    {},
+  ),
 });
 
 export type ProjectConfig = z.output<typeof configSchema>;
@@ -80,7 +108,69 @@ export function validateConfig(raw: unknown, source = CONFIG_FILE): ProjectConfi
       `${source} is invalid: owners: each owner may be listed once, in any letter case`,
     );
   }
-  return config;
+  const problem = layoutProblem(config);
+  if (problem !== undefined) throw new ConfigError(`${source} is invalid: layout: ${problem}`);
+  // A binding to the standard directory is the same as none, and is not written.
+  const layout = Object.fromEntries(
+    Object.entries(config.layout).filter(
+      ([component, directory]) => directory !== STANDARD_LAYOUT[component as Component],
+    ),
+  );
+  return { ...config, layout };
+}
+
+/** Whether the project has a part, so it may be bound. */
+const hasComponent = (config: ProjectConfig, component: Component): boolean =>
+  component === "backend" || config[component] !== "none";
+
+/** Where each part the project has lives: its binding, or the standard directory. */
+export function layoutOf(config: ProjectConfig): Partial<Record<Component, string>> {
+  return Object.fromEntries(
+    COMPONENTS.filter((component) => hasComponent(config, component)).map((component) => [
+      component,
+      config.layout[component] ?? STANDARD_LAYOUT[component],
+    ]),
+  );
+}
+
+/** Whether every part the project has is in its standard directory. */
+export const isStandardLayout = (config: ProjectConfig): boolean =>
+  Object.keys(config.layout).length === 0;
+
+/**
+ * Why the layout cannot be used, or undefined: each binding is for a part
+ * the project has, is "." or a repository-relative path outside .git,
+ * .github and .liftoff, and no part lies inside another part's directory,
+ * except inside the repository root.
+ */
+function layoutProblem(config: ProjectConfig): string | undefined {
+  for (const component of COMPONENTS) {
+    const directory = config.layout[component];
+    if (directory === undefined) continue;
+    if (!hasComponent(config, component)) {
+      return `${component}: the project has no ${component}`;
+    }
+    if (directory === ".") continue;
+    const problem = repositoryPathProblem(directory);
+    if (problem !== undefined) return `${component}: ${problem}`;
+    if (RESERVED.includes(directory.split("/")[0]?.toLowerCase() ?? "")) {
+      return `${component}: ${directory} is inside a directory Liftoff or Git keeps for itself`;
+    }
+  }
+  const placed = Object.entries(layoutOf(config)).map(([component, directory]) => ({
+    component,
+    key: directory.toLowerCase(),
+  }));
+  for (const [index, one] of placed.entries()) {
+    for (const other of placed.slice(index + 1)) {
+      if (one.key === other.key) return `${one.component} and ${other.component} share a directory`;
+      const [outer, inner] = one.key.length < other.key.length ? [one, other] : [other, one];
+      if (outer.key !== "." && inner.key.startsWith(`${outer.key}/`)) {
+        return `${inner.component} is inside ${outer.component}'s directory`;
+      }
+    }
+  }
+  return undefined;
 }
 
 export function parseConfig(text: string, source = CONFIG_FILE): ProjectConfig {
@@ -112,6 +202,16 @@ export function serializeConfig(config: ProjectConfig): string {
         ? { ai: config.review.ai }
         : { ai: config.review.ai, engine: config.review.engine },
     owners: config.owners,
+    // Only bindings away from the standard directories, in a fixed order.
+    ...(isStandardLayout(config)
+      ? {}
+      : {
+          layout: Object.fromEntries(
+            COMPONENTS.flatMap((component) =>
+              config.layout[component] === undefined ? [] : [[component, config.layout[component]]],
+            ),
+          ),
+        }),
   };
   return [
     "# Liftoff project configuration: what this project is made of.",

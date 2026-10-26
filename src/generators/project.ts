@@ -73,6 +73,7 @@ export function generateProject(selection: Selection, context: GenerationContext
   const manifestText = serializeManifest({
     schema: MANIFEST_SCHEMA,
     generatedBy: { liftoff: context.liftoffVersion },
+    history: [{ operation: "init", liftoff: context.liftoffVersion }],
     plugins: selection.plugins.map((plugin) => ({ id: plugin.id, version: plugin.version })),
     files: inventoried.map(({ path, ownership, sha256, plugin }) => ({
       path,

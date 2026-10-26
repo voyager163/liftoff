@@ -65,6 +65,9 @@ Every file is listed in `.liftoff/manifest.json` as one of:
   skills and agents are managed. `liftoff validate` reports a managed file
   that was changed by hand.
 
+The manifest also records each Liftoff operation that wrote the project, with
+its release, starting with `init`.
+
 ## Review and governance
 
 The generated review setup follows the layered model in

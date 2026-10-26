@@ -21,16 +21,18 @@ export const LAST_PRE_REBUILD_RELEASE = "0.12.3";
 /** Larger files are not read: no record the old release wrote comes close. */
 export const MAX_LEGACY_BYTES = 1024 * 1024;
 
-export type LegacyRecordKind =
-  | "manifest"
-  | "config"
-  | "governance-handoff"
-  | "interrupted-change"
-  | "repair-history"
-  | "activation-state"
-  | "activation-records"
-  | "credential-records"
-  | "activation-history";
+export const LEGACY_RECORD_KINDS = [
+  "manifest",
+  "config",
+  "governance-handoff",
+  "interrupted-change",
+  "repair-history",
+  "activation-state",
+  "activation-records",
+  "credential-records",
+  "activation-history",
+] as const;
+export type LegacyRecordKind = (typeof LEGACY_RECORD_KINDS)[number];
 
 interface Candidate {
   readonly path: string;

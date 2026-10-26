@@ -373,6 +373,44 @@ knows, and on Linux for infrastructure without OpenTofu.
 
 Verification: live
 
+## PROJ-024 Layout bindings say where each part of a project lives
+
+`liftoff.yaml` may bind each part of the project (`backend`, `frontend`,
+`infrastructure`) to the directory it lives in, for a project laid out
+differently from Liftoff's standard (`backend/`, `frontend/`,
+`infrastructure/opentofu/azure/`). The repository root, `.`, may hold one
+part. A binding must:
+
+- be for a part the project has;
+- be a repository-relative path every system reads the same way, outside
+  `.git`, `.github` and `.liftoff`;
+- not put one part's directory inside another's, except inside the root.
+
+A binding to the standard directory is the same as none and is not written,
+so a project in the standard layout has no `layout`. `liftoff validate`
+warns about a part bound to a directory that is not there. Until adopting a
+project, which honors bindings, is available, Liftoff refuses to generate
+files for a project in another layout rather than use the standard
+directories.
+
+Verification: test
+
+## PROJ-025 The manifest records its history and anything from before the rebuild
+
+`.liftoff/manifest.json` records:
+
+- each Liftoff operation that wrote the project (`init`, `update`, `adopt`
+  and the others), with the release, oldest first;
+- for a project adopted from a Liftoff release before the rebuild, a legacy
+  record: the old release, and each old record's path, kind and state, with
+  the sha256 of a file as it was kept.
+
+Old records stay the project's own, kept byte for byte, and are never
+counted as current configuration or proof. A manifest from before these
+were recorded is read as having no history and no legacy record.
+
+Verification: test
+
 ## INIT-001 Plans are read-only and tamper-evident
 
 `liftoff plan` changes nothing except the plan file named with `--out`. A

@@ -8,6 +8,8 @@ import {
 } from "../../src/domain/plan/plan.ts";
 import {
   ConfigError,
+  isStandardLayout,
+  layoutOf,
   parseConfig,
   serializeConfig,
   validateConfig,
@@ -81,6 +83,7 @@ describe("PROJ-002 manifest", () => {
   const manifest: Manifest = {
     schema: "liftoff.manifest/v1",
     generatedBy: { liftoff: "1.0.0" },
+    history: [{ operation: "init", liftoff: "1.0.0" }],
     plugins: [
       { id: "stack/python-fastapi", version: "1" },
       { id: "common/repository", version: "1" },
@@ -115,6 +118,117 @@ describe("PROJ-002 manifest", () => {
       ),
     ).toThrow(ManifestError);
     expect(() => parseManifest("{")).toThrow(/not valid JSON/);
+  });
+});
+
+describe("PROJ-024 layout bindings say where each part of a project lives", () => {
+  const withFrontend = { ...config, frontend: "vue", infrastructure: "azure" };
+
+  it("binds parts to their own directories, and writes only bindings away from the standard", () => {
+    const bound = validateConfig({
+      ...withFrontend,
+      layout: { backend: "services/api", frontend: "frontend", infrastructure: "deploy/azure" },
+    });
+    expect(bound.layout).toEqual({ backend: "services/api", infrastructure: "deploy/azure" });
+    expect(layoutOf(bound)).toEqual({
+      backend: "services/api",
+      frontend: "frontend",
+      infrastructure: "deploy/azure",
+    });
+    expect(isStandardLayout(bound)).toBe(false);
+    const text = serializeConfig(bound);
+    expect(text).toContain("layout:\n  backend: services/api\n  infrastructure: deploy/azure\n");
+    expect(serializeConfig(parseConfig(text))).toBe(text);
+    // The standard layout is not written at all.
+    const standard = validateConfig({ ...config, layout: { backend: "backend" } });
+    expect(isStandardLayout(standard)).toBe(true);
+    expect(serializeConfig(standard)).not.toContain("layout");
+    expect(layoutOf(standard)).toEqual({ backend: "backend" });
+  });
+
+  it("lets the repository root hold one part, with others inside it", () => {
+    const rooted = validateConfig({ ...withFrontend, layout: { backend: ".", frontend: "web" } });
+    expect(layoutOf(rooted)).toMatchObject({ backend: ".", frontend: "web" });
+  });
+
+  it.each([
+    [{ frontend: "web" }, config, "frontend: the project has no frontend"],
+    [{ backend: "../api" }, config, "backend: ../api is not a repository-relative path"],
+    [{ backend: "/srv/api" }, config, "is not a repository-relative path"],
+    [{ backend: "api." }, config, "has a name Windows would read as another file"],
+    [{ backend: ".github/api" }, config, "is inside a directory Liftoff or Git keeps for itself"],
+    [{ backend: ".Liftoff" }, config, "is inside a directory Liftoff or Git keeps for itself"],
+    [{ backend: "app", frontend: "App" }, withFrontend, "backend and frontend share a directory"],
+    [
+      { backend: "app", frontend: "app/web" },
+      withFrontend,
+      "frontend is inside backend's directory",
+    ],
+    [{ backend: ".", frontend: "." }, withFrontend, "share a directory"],
+    [{ cli: "tools" }, config, "layout"],
+  ])("refuses the layout %j", (layout, base, message) => {
+    expect(() => validateConfig({ ...base, layout })).toThrow(message);
+  });
+});
+
+describe("PROJ-025 the manifest records its history and anything from before the rebuild", () => {
+  const base = {
+    schema: "liftoff.manifest/v1",
+    generatedBy: { liftoff: "1.1.0" },
+    plugins: [],
+    files: [],
+  };
+
+  it("reads a manifest from before history was recorded as having none", () => {
+    expect(parseManifest(JSON.stringify(base))).toMatchObject({ history: [] });
+    expect(parseManifest(JSON.stringify(base)).legacy).toBeUndefined();
+  });
+
+  it("records each operation and an adopted project's old records, in a fixed order", () => {
+    const manifest = parseManifest(
+      JSON.stringify({
+        ...base,
+        history: [
+          { operation: "adopt", liftoff: "1.0.0" },
+          { operation: "update", liftoff: "1.1.0" },
+        ],
+        legacy: {
+          release: "0.12.3",
+          records: [
+            {
+              path: "liftoff.manifest.json",
+              record: "manifest",
+              state: "migratable",
+              format: "manifest v7",
+              sha256: "a".repeat(64),
+            },
+            { path: ".liftoff/governance", record: "governance-handoff", state: "readable" },
+          ],
+        },
+      }),
+    );
+    const text = serializeManifest(manifest);
+    expect(Object.keys(JSON.parse(text))).toEqual([
+      "schema",
+      "generatedBy",
+      "history",
+      "plugins",
+      "files",
+      "legacy",
+    ]);
+    expect(parseManifest(text).legacy?.records.map((record) => record.path)).toEqual([
+      ".liftoff/governance",
+      "liftoff.manifest.json",
+    ]);
+    expect(serializeManifest(parseManifest(text))).toBe(text);
+  });
+
+  it.each([
+    [{ history: [{ operation: "deploy", liftoff: "1.0.0" }] }, "history"],
+    [{ legacy: { records: [{ path: "x", record: "manifest", state: "executable" }] } }, "legacy"],
+    [{ legacy: { records: [{ path: "../x", record: "manifest", state: "readable" }] } }, "legacy"],
+  ])("refuses a manifest with %j", (extra, message) => {
+    expect(() => parseManifest(JSON.stringify({ ...base, ...extra }))).toThrow(message);
   });
 });
 

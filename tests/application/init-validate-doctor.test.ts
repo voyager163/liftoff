@@ -179,6 +179,47 @@ describe("INIT-004 stale plans are refused", () => {
   });
 });
 
+describe("PROJ-024 layout bindings", () => {
+  it("refuses to generate a project in another layout rather than use the standard one", async () => {
+    await expect(
+      planInit(
+        { assets, fs },
+        {
+          config: { ...config, layout: { backend: "services/api" } },
+          target: path.join(work, "demo"),
+          liftoffVersion: "1.0.0",
+        },
+      ),
+    ).rejects.toThrow("this release generates only the standard layout");
+  });
+
+  it("warns about a part bound to a directory that is not there", async () => {
+    const target = await create();
+    const yaml = path.join(target, "liftoff.yaml");
+    writeFileSync(yaml, `${readFileSync(yaml, "utf8")}layout:\n  backend: services/api\n`);
+    const result = await validateProject(fs, target);
+    expect(result.findings).toContainEqual({
+      severity: "warning",
+      code: "layout-directory-missing",
+      path: "liftoff.yaml",
+      message: "layout: backend is bound to services/api, which is not a directory here",
+    });
+    mkdirSync(path.join(target, "services", "api"), { recursive: true });
+    const bound = await validateProject(fs, target);
+    expect(bound.findings.map((finding) => finding.code)).not.toContain("layout-directory-missing");
+  });
+});
+
+describe("PROJ-025 the manifest records its history", () => {
+  it("records that init created the project, and with which release", async () => {
+    const target = await create();
+    const manifest = JSON.parse(
+      readFileSync(path.join(target, ".liftoff", "manifest.json"), "utf8"),
+    ) as { history: unknown };
+    expect(manifest.history).toEqual([{ operation: "init", liftoff: "1.0.0" }]);
+  });
+});
+
 describe("VALID-001 validate reports without repairing", () => {
   it("passes a fresh project", async () => {
     const result = await validateProject(fs, await create());

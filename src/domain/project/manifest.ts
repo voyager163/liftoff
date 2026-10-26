@@ -1,5 +1,7 @@
 import { en } from "zod/locales";
 import * as z from "zod/mini";
+import { LEGACY_RECORD_KINDS } from "../legacy/inventory.ts";
+import { OPERATIONS } from "./operations.ts";
 
 z.config(en());
 
@@ -33,6 +35,40 @@ const relativePath = z.string().check(
 const manifestSchema = z.strictObject({
   schema: z.literal(MANIFEST_SCHEMA),
   generatedBy: z.strictObject({ liftoff: z.string().check(z.minLength(1)) }),
+  /**
+   * Each Liftoff operation that wrote the project, with its release, oldest
+   * first. A manifest from before this was recorded has none.
+   */
+  history: z._default(
+    z.array(
+      z.strictObject({
+        operation: z.enum(OPERATIONS),
+        liftoff: z.string().check(z.minLength(1)),
+      }),
+    ),
+    [],
+  ),
+  /**
+   * What a Liftoff release before the rebuild left, for a project adopted
+   * from one: kept as the project's own, byte for byte, and never counted
+   * as current configuration or proof.
+   */
+  legacy: z.optional(
+    z.strictObject({
+      /** The old release that last wrote the project, when it said. */
+      release: z.optional(z.string().check(z.minLength(1))),
+      records: z.array(
+        z.strictObject({
+          path: relativePath,
+          record: z.enum(LEGACY_RECORD_KINDS),
+          state: z.enum(["readable", "migratable", "unsupported"]),
+          format: z.optional(z.string()),
+          /** A kept file's sha256 when it was adopted; a directory has none. */
+          sha256: z.optional(sha256),
+        }),
+      ),
+    }),
+  ),
   plugins: z.array(z.strictObject({ id: z.string(), version: z.string() })),
   files: z.array(
     z.strictObject({
@@ -70,9 +106,19 @@ export function parseManifest(text: string): Manifest {
 
 export function serializeManifest(manifest: Manifest): string {
   const sorted: Manifest = {
-    ...manifest,
+    schema: manifest.schema,
+    generatedBy: manifest.generatedBy,
+    history: manifest.history,
     plugins: [...manifest.plugins].sort((a, b) => a.id.localeCompare(b.id)),
     files: [...manifest.files].sort((a, b) => a.path.localeCompare(b.path)),
+    ...(manifest.legacy === undefined
+      ? {}
+      : {
+          legacy: {
+            ...manifest.legacy,
+            records: [...manifest.legacy.records].sort((a, b) => a.path.localeCompare(b.path)),
+          },
+        }),
   };
   return `${JSON.stringify(sorted, null, 2)}\n`;
 }
