@@ -23,7 +23,7 @@ interface Repo {
   /** Whether merging develop into a sync branch conflicts. */
   conflict?: boolean;
   /** Whether a sync branch already has develop, so merging it does nothing. */
-  upToDate?: boolean;
+  hasDevelop?: boolean;
   /** Whether the token may not open pull requests, as in a new repository. */
   forbidPulls?: boolean;
   develop?: string;
@@ -63,7 +63,7 @@ function fakeGitHub(repo: Repo, calls: Call[]) {
     }
     if (method === "POST" && path.endsWith("/merges")) {
       if (repo.conflict) return json({ message: "Merge conflict" }, 409);
-      if (repo.upToDate) return json(null, 204);
+      if (repo.hasDevelop) return json(null, 204);
       refs[`heads/${String(body?.base)}`] = MERGED;
       return json({ sha: MERGED }, 201);
     }
@@ -481,7 +481,7 @@ describe("FLOW-005 after a release merges into main", () => {
     // Nor once a person resolved a conflict there, so the merge has nothing to do.
     const resolved = {
       ...diverged,
-      upToDate: true,
+      hasDevelop: true,
       refs: { "heads/sync/main-into-develop-1.2.0": COMMIT },
       authors: { [COMMIT]: "maintainer" },
     };
@@ -493,7 +493,7 @@ describe("FLOW-005 after a release merges into main", () => {
       compare: { develop: { ahead_by: 1, behind_by: 2 } },
       refs: { "heads/sync/main-into-develop-1.2.0": MERGED },
       open: { "sync/main-into-develop-1.2.0": 31 },
-      upToDate: true,
+      hasDevelop: true,
     };
     const env = { GITHUB_SHA: MAIN, VERSION: "1.2.0", DISPATCH: "true" };
     const rerun = await run("sync", env, { ...earlier, bodies: { 31: "Merges main." } });
