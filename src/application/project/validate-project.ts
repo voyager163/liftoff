@@ -70,7 +70,7 @@ export async function validateProject(
           severity: record.blocks ? "error" : record.state === "unsupported" ? "warning" : "info",
           code: `legacy-${record.state}`,
           path: record.path,
-          message: `${record.blocks ?? record.reason}${record.format ? ` [${record.format}${record.release ? ` from ${record.release}` : ""}]` : ""}`,
+          message: `${record.state}: ${record.blocks ?? record.reason}${record.format ? ` [${record.format}${record.release ? ` from ${record.release}` : ""}]` : ""}`,
         });
       }
       return result({ legacy });

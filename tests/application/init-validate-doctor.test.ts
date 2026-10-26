@@ -103,7 +103,7 @@ describe("INIT-002 projects are created in one step or not at all", () => {
       ...fs,
       state: (p) => fs.state(p),
       entry: (p) => fs.entry(p),
-      readRegular: (p, m) => fs.readRegular(p, m),
+      readWithin: (d, r, m) => fs.readWithin(d, r, m),
       readText: (p) => fs.readText(p),
       createStaging: (p) => fs.createStaging(p),
       publish: (s, t) => fs.publish(s, t),
@@ -153,7 +153,7 @@ describe("INIT-002 the working directory and cancellation", () => {
       ...fs,
       state: (p) => fs.state(p),
       entry: (p) => fs.entry(p),
-      readRegular: (p, m) => fs.readRegular(p, m),
+      readWithin: (d, r, m) => fs.readWithin(d, r, m),
       readText: (p) => fs.readText(p),
       createStaging: (p) => fs.createStaging(p),
       publish: (s, t) => fs.publish(s, t),
@@ -308,7 +308,7 @@ describe("VALID-002 projects from before the rebuild", () => {
         code: "legacy-migratable",
         path: "liftoff.manifest.json",
         message:
-          "the project's old manifest; adopting the project can carry its choices over [manifest v7 from 0.12.3]",
+          "migratable: the project's old manifest; adopting the project can carry its choices over [manifest v7 from 0.12.3]",
       },
       expect.objectContaining({
         severity: "error",

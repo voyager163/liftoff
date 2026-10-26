@@ -58,9 +58,11 @@ Verification: test
 ## LEGACY-003 Records that can hold files, credentials or state are never read
 
 Liftoff reads only the old manifest, configuration and activation state, and
-no more than 1 MiB of each, even if the file grows or is replaced while
-being read. It follows no link, including a linked directory on the way to a
-record, and drops what it read if such a directory became a link meanwhile. These are noted by their presence alone:
+no more than 1 MiB of each: a larger file is not read, and one that grows
+while being read is read no further. It follows no link, at the record or on
+the way to it, and reads nothing if a directory on the way changed while
+the record was being opened. Opening a record never waits, even if it was
+swapped for a FIFO. These are noted by their presence alone:
 
 - journals of unfinished changes, which hold whole copies of files;
 - repair and activation history;

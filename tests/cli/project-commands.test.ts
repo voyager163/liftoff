@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -323,6 +331,35 @@ describe("VALID-001 validate from the command line", () => {
     expect(text.out).toContain(
       "warning .github/liftoff/review-policy.mjs: a file Liftoff manages was changed by hand",
     );
+  });
+});
+
+describe("VALID-002 validate names each old record's state", () => {
+  it("lists what a release before the rebuild left, with each state", async () => {
+    mkdirSync(path.join(work, "old", ".liftoff", "governance"), { recursive: true });
+    writeFileSync(
+      path.join(work, "old", "liftoff.manifest.json"),
+      JSON.stringify({
+        artifactVersion: 7,
+        generatedBy: "Mission Control Liftoff",
+        liftoffVersion: "0.12.3",
+      }),
+    );
+    writeFileSync(path.join(work, "old", "liftoff.config.json"), '{"telemetry":true}');
+    const { code, out } = await exec(["validate", "--dir", "old"]);
+    expect(code).toBe(3);
+    expect(out.split("\n").slice(1, 5)).toEqual([
+      expect.stringMatching(
+        /^error {3}liftoff\.manifest\.json: this was made by a Liftoff release before the rebuild;/,
+      ),
+      expect.stringMatching(
+        /^info {4}liftoff\.manifest\.json: migratable: the project's old manifest;.*\[manifest v7 from 0\.12\.3\]$/,
+      ),
+      "warning liftoff.config.json: unsupported: fields no release before the rebuild wrote: telemetry",
+      expect.stringMatching(
+        /^info {4}\.liftoff\/governance: readable: governance files from the old release,/,
+      ),
+    ]);
   });
 });
 

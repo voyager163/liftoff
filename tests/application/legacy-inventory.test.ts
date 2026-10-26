@@ -32,9 +32,9 @@ function spying(): { port: ProjectFsPort; read: string[] } {
       read.push(`unbounded ${relative(file)}`);
       return fs.readText(file);
     },
-    readRegular: async (file: string, maxBytes: number) => {
-      const result = await fs.readRegular(file, maxBytes);
-      if (result.kind === "file" && result.text !== undefined) read.push(relative(file));
+    readWithin: async (directory: string, file: string, maxBytes: number) => {
+      const result = await fs.readWithin(directory, file, maxBytes);
+      if (result.kind === "file" && result.text !== undefined) read.push(file);
       return result;
     },
   });
@@ -78,10 +78,10 @@ describe("LEGACY-001 records from before the rebuild are inventoried, never run"
         if (relative(file).startsWith("governance")) throw new Error("EACCES: permission denied");
         return fs.entry(file);
       },
-      readRegular: async (file: string, maxBytes: number) => {
-        looked.push(relative(file));
-        if (relative(file).startsWith("governance")) throw new Error("EACCES: permission denied");
-        return fs.readRegular(file, maxBytes);
+      readWithin: async (directory: string, file: string, maxBytes: number) => {
+        looked.push(file);
+        if (file.startsWith("governance")) throw new Error("EACCES: permission denied");
+        return fs.readWithin(directory, file, maxBytes);
       },
     });
     expect(await inventoryLegacy(refusing, work)).toEqual({ project: false, records: [] });
@@ -91,7 +91,7 @@ describe("LEGACY-001 records from before the rebuild are inventoried, never run"
   it("reports a record Liftoff is not allowed to read", async () => {
     write("liftoff.manifest.json", MANIFEST);
     const denied: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
-      readRegular: async () => ({ kind: "inaccessible" as const }),
+      readWithin: async () => ({ kind: "inaccessible" as const }),
     });
     const found = await inventoryLegacy(denied, work);
     expect(found.records[0]).toMatchObject({
@@ -128,31 +128,6 @@ describe("LEGACY-003 records that can hold files, credentials or state are never
     const found = await inventoryLegacy(port, work);
     expect(read).toEqual([]);
     expect(found.records[0]).toMatchObject({ state: "unsupported", opened: false });
-  });
-
-  it("drops what it read when a directory on the way became a link meanwhile", async () => {
-    const elsewhere = mkdtempSync(path.join(tmpdir(), "liftoff-elsewhere-"));
-    try {
-      write("liftoff.manifest.json", MANIFEST);
-      write("governance/activation-state.json", { schemaVersion: 3 });
-      const swapping: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
-        readRegular: async (file: string, maxBytes: number) => {
-          const result = await fs.readRegular(file, maxBytes);
-          if (relative(file) === "governance/activation-state.json") {
-            rmSync(path.join(work, "governance"), { recursive: true });
-            symlinkSync(elsewhere, path.join(work, "governance"), "junction");
-          }
-          return result;
-        },
-      });
-      const found = await inventoryLegacy(swapping, work);
-      expect(found.records.map(({ path, state, opened }) => [path, state, opened])).toEqual([
-        ["liftoff.manifest.json", "migratable", true],
-        ["governance", "unsupported", false],
-      ]);
-    } finally {
-      rmSync(elsewhere, { recursive: true, force: true });
-    }
   });
 
   it("follows no linked directory on the way to a record", async () => {

@@ -1,5 +1,6 @@
 import type { BigIntStats } from "node:fs";
 import { constants } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import {
   chmod,
   lstat,
@@ -49,18 +50,8 @@ export class LocalProjectFs implements ProjectFsPort {
     }
   }
 
-  async readRegular(file: string, maxBytes: number): Promise<RegularFileRead> {
-    let inspected: BigIntStats;
-    try {
-      inspected = await lstat(file, { bigint: true });
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing" };
-      if (code === "EACCES" || code === "EPERM") return { kind: "inaccessible" };
-      throw error;
-    }
-    if (!inspected.isFile()) return { kind: inspected.isDirectory() ? "directory" : "other" };
-    return readUnchanged(file, inspected, maxBytes);
+  readWithin(directory: string, relative: string, maxBytes: number): Promise<RegularFileRead> {
+    return readWithin(directory, relative, maxBytes);
   }
 
   async readText(file: string): Promise<string | undefined> {
@@ -145,22 +136,59 @@ export class LocalProjectFs implements ProjectFsPort {
   }
 }
 
+/** The calls readWithin makes, which a test can replace to change files between them. */
+export interface ReadCalls {
+  lstat(path: string): Promise<BigIntStats>;
+  open(path: string, flags: number): Promise<FileHandle>;
+}
+
+const NODE_CALLS: ReadCalls = {
+  lstat: (target) => lstat(target, { bigint: true }),
+  open: (target, flags) => open(target, flags),
+};
+
 /**
- * Reads `file` only if it is still the regular file `inspected` describes:
- * it is opened without following a link where the system allows, and the
- * file opened must be the same one, so a link or another file swapped in
- * after the inspection is not read. No more than `maxBytes` and one more
- * byte are read, however much the file has grown.
+ * Reads a regular file under `directory` without following a link, however
+ * the files change meanwhile. Each directory on the way and the file itself
+ * are inspected first. The file is opened without following a link and
+ * without blocking where the system allows (a FIFO swapped in would
+ * otherwise wait for a writer), and must be the file inspected. Every
+ * directory on the way must still be the one inspected, or the open may
+ * have gone through a link swapped in. Only then is it read, no more than
+ * `maxBytes` of it, and its text is dropped if it changed while being read.
+ * Node has no openat, so a directory swapped for a link and back between
+ * the two inspections is the one case this cannot see.
  */
-export async function readUnchanged(
-  file: string,
-  inspected: BigIntStats,
+export async function readWithin(
+  directory: string,
+  relative: string,
   maxBytes: number,
+  calls: ReadCalls = NODE_CALLS,
 ): Promise<RegularFileRead> {
-  let handle: Awaited<ReturnType<typeof open>>;
+  const parts = relative.split("/");
+  const parents: { readonly path: string; readonly via: string; readonly stats: BigIntStats }[] =
+    [];
+  for (let depth = 1; depth < parts.length; depth++) {
+    const via = parts.slice(0, depth).join("/");
+    const target = path.join(directory, ...parts.slice(0, depth));
+    const seen = await inspect(calls, target);
+    if (seen === "missing") return { kind: "missing" };
+    if (seen === "inaccessible") return { kind: "inaccessible", via };
+    if (!seen.isDirectory()) return { kind: "other", via };
+    parents.push({ path: target, via, stats: seen });
+  }
+  const file = path.join(directory, ...parts);
+  const inspected = await inspect(calls, file);
+  if (inspected === "missing" || inspected === "inaccessible") return { kind: inspected };
+  if (!inspected.isFile()) return { kind: inspected.isDirectory() ? "directory" : "other" };
+  if (inspected.size > BigInt(maxBytes)) return { kind: "file", size: Number(inspected.size) };
+  let handle: FileHandle;
   try {
-    // Windows has no O_NOFOLLOW; there the identity check below catches a link.
-    handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    // Windows has neither flag; there the checks below catch a link.
+    handle = await calls.open(
+      file,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+    );
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing" };
@@ -170,21 +198,46 @@ export async function readUnchanged(
   }
   try {
     const opened = await handle.stat({ bigint: true });
-    if (!opened.isFile() || opened.ino !== inspected.ino || opened.dev !== inspected.dev) {
-      return { kind: "other" };
+    if (!opened.isFile() || !sameFile(opened, inspected)) return { kind: "other" };
+    for (const parent of parents) {
+      const now = await inspect(calls, parent.path);
+      if (now === "inaccessible") return { kind: "inaccessible", via: parent.via };
+      if (now === "missing" || !now.isDirectory() || !sameFile(now, parent.stats)) {
+        return { kind: "other", via: parent.via };
+      }
     }
-    const buffer = Buffer.alloc(maxBytes + 1);
+    if (opened.size > BigInt(maxBytes)) return { kind: "file", size: Number(opened.size) };
+    const buffer = Buffer.alloc(maxBytes);
     let length = 0;
-    while (length < buffer.length) {
-      const { bytesRead } = await handle.read(buffer, length, buffer.length - length, length);
+    while (length < maxBytes) {
+      const { bytesRead } = await handle.read(buffer, length, maxBytes - length, length);
       if (bytesRead === 0) break;
       length += bytesRead;
     }
-    const size = Math.max(Number(opened.size), length);
-    return length > maxBytes
-      ? { kind: "file", size }
-      : { kind: "file", size, text: buffer.toString("utf8", 0, length) };
+    const after = await handle.stat({ bigint: true });
+    if (after.size !== BigInt(length)) {
+      return after.size > BigInt(maxBytes)
+        ? { kind: "file", size: Number(after.size) }
+        : { kind: "other" };
+    }
+    return { kind: "file", size: length, text: buffer.toString("utf8", 0, length) };
   } finally {
     await handle.close();
   }
 }
+
+async function inspect(
+  calls: ReadCalls,
+  target: string,
+): Promise<BigIntStats | "missing" | "inaccessible"> {
+  try {
+    return await calls.lstat(target);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return "missing";
+    if (code === "EACCES" || code === "EPERM") return "inaccessible";
+    throw error;
+  }
+}
+
+const sameFile = (a: BigIntStats, b: BigIntStats) => a.dev === b.dev && a.ino === b.ino;

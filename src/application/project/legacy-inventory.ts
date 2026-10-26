@@ -41,18 +41,13 @@ async function observe(
   relative: string,
   open: boolean,
 ): Promise<LegacyObservation> {
+  if (open) return fs.readWithin(directory, relative, MAX_LEGACY_BYTES);
+  // Records noted by presence alone are never read, so only lstat them.
   const parts = relative.split("/");
   const before = await onTheWay(fs, directory, parts);
   if (before !== undefined) return before;
-  const target = path.join(directory, ...parts);
-  if (!open) {
-    const entry = await fs.entry(target);
-    return entry.kind === "file" ? { kind: "file", size: entry.size } : { kind: entry.kind };
-  }
-  const read = await fs.readRegular(target, MAX_LEGACY_BYTES);
-  // A directory on the way that became a link during the read was followed:
-  // what was read is dropped.
-  return (await onTheWay(fs, directory, parts)) ?? read;
+  const entry = await fs.entry(path.join(directory, ...parts));
+  return entry.kind === "file" ? { kind: "file", size: entry.size } : { kind: entry.kind };
 }
 
 /**
