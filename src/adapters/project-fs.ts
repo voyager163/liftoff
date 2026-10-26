@@ -87,13 +87,16 @@ export class LocalProjectFs implements ProjectFsPort {
     }
   }
 
-  async createStaging(target: string): Promise<string> {
+  async createStaging(target: string, access?: "private"): Promise<string> {
     const parent = path.dirname(path.resolve(target));
     await mkdir(parent, { recursive: true });
     const staging = await mkdtemp(path.join(parent, `.${path.basename(target)}.liftoff-staging-`));
-    // mkdtemp creates the directory private (0700); the project itself should
-    // get the usual permissions for a new directory.
-    if (process.platform !== "win32") await chmod(staging, 0o777 & ~process.umask());
+    // mkdtemp creates the directory private (0700). A project published from
+    // it should get the usual permissions for a new directory; kept copies of
+    // a project's files stay private.
+    if (access !== "private" && process.platform !== "win32") {
+      await chmod(staging, 0o777 & ~process.umask());
+    }
     return staging;
   }
 

@@ -261,6 +261,14 @@ describe("CHANGE-003 a change that stops part way can be finished or undone", ()
     return { plan, contents };
   }
 
+  it("keeps the copies of the project's files private", async () => {
+    await interrupted();
+    const staging = path.join(parent, leftovers()[0] ?? "");
+    expect(existsSync(path.join(staging, "before", "README.md"))).toBe(true);
+    // Windows keeps access in lists the directory inherits, not in its mode.
+    if (process.platform !== "win32") expect(statSync(staging).mode & 0o077).toBe(0);
+  });
+
   it("is reported by validate, and blocks another change", async () => {
     const { plan, contents } = await interrupted();
     const result = await validateProject(fs, root);
@@ -499,6 +507,43 @@ describe("CHANGE-003 a change and its recovery hold one lock", () => {
   const lockFile = () => path.join(root, ".liftoff", "change.lock");
   const holdLock = (pid: number, host = HOST) =>
     write(".liftoff/change.lock", JSON.stringify({ pid, host, started: "earlier" }));
+
+  it("keeps its lock and journal only in a real .liftoff directory", async () => {
+    write("README.md", "# Old\n");
+    const outside = mkdtempSync(path.join(tmpdir(), "liftoff-outside-"));
+    try {
+      symlinkSync(outside, path.join(root, ".liftoff"), "junction");
+      const plan = sealChangePlan({
+        schema: PLAN_SCHEMA,
+        operation: "repair",
+        liftoff: "1.0.0",
+        target: root,
+        config: { name: "demo" },
+        effects: ["modify-files"],
+        changes: [
+          {
+            path: "README.md",
+            before: sha256Hex("# Old\n"),
+            after: sha256Hex("# New\n"),
+            ownership: "managed",
+            executable: false,
+          },
+        ],
+      });
+      const contents = new Map([["README.md", { content: "# New\n", executable: false }]]);
+      await expect(applyChanges(ports(fs), plan, contents)).rejects.toThrow(
+        ".liftoff is a link, or not a directory",
+      );
+      await expect(recoverChanges(ports(fs), root, "undo")).rejects.toThrow(
+        ".liftoff is a link, or not a directory",
+      );
+      expect(readdirSync(outside)).toEqual([]);
+      expect(read("README.md").toString()).toBe("# Old\n");
+      expect(leftovers()).toEqual([]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
 
   it("never recovers a change that is still being made", async () => {
     const { plan, contents } = project();

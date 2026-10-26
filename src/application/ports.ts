@@ -104,8 +104,12 @@ export interface ProjectFsPort {
   directoryIdentity(path: string): Promise<string | undefined>;
   /** Text of a file, or undefined when it does not exist. */
   readText(path: string): Promise<string | undefined>;
-  /** A new empty directory beside `target`, on the same volume, for staging. */
-  createStaging(target: string): Promise<string>;
+  /**
+   * A new empty directory beside `target`, on the same volume, for staging:
+   * with the usual permissions for a new directory, or only for this user
+   * when `access` is "private".
+   */
+  createStaging(target: string, access?: "private"): Promise<string>;
   writeFile(path: string, content: string, executable: boolean): Promise<void>;
   /** Writes a file, replacing it if it exists, so a reader sees the old or the new text. */
   replaceFile(path: string, content: string): Promise<void>;

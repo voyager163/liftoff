@@ -118,9 +118,11 @@ runs, so only one runs at a time and recovery never runs beside a change
 still being made. A lock left by a process on the same machine that is no
 longer running is taken over; any other lock is reported with how to clear
 it. Liftoff writes a journal at `.liftoff/change-journal.json` before
-checking any file. Before each file is replaced
-or removed, it keeps a byte-for-byte copy of it beside the project, with a
-marker naming this project and plan. Generated projects ignore the journal
+checking any file. The lock and journal are kept only in a real `.liftoff`
+directory in the project, never through a link to one elsewhere. Before each file is replaced
+or removed, it keeps a byte-for-byte copy of it beside the project, in a
+directory only the person can open, with a marker naming this project and
+plan. Generated projects ignore the journal
 in Git, with the lock.
 If a change stops part way, the journal stays and `liftoff validate` reports
 it. Recovery then finishes or undoes it, deciding each file from what is

@@ -111,7 +111,8 @@ export async function applyChanges(
     if (project === undefined) {
       throw new ChangeError(`${root} is not a directory Liftoff can change`);
     }
-    const staging = await fs.createStaging(root);
+    // Private, as it holds copies of the project's files.
+    const staging = await fs.createStaging(root, "private");
     let journaled = false;
     try {
       for (const change of plan.changes) {
@@ -129,6 +130,7 @@ export async function applyChanges(
         false,
       );
       const journal = journalFor(plan, path.basename(staging), now());
+      await checkRecordsDirectory(fs, root, false);
       journaled = await fs.createExclusive(journalPath, serializeJournal(journal));
     } finally {
       if (!journaled) await fs.remove(staging);
@@ -282,6 +284,7 @@ async function withChangeLock<T>(
   const { fs, processes, now } = ports;
   const lock = path.join(root, ...CHANGE_LOCK_FILE.split("/"));
   const mine = `${JSON.stringify({ pid: processes.pid, host: processes.host, started: now() })}\n`;
+  await checkRecordsDirectory(fs, root, true);
   if (!(await fs.createExclusive(lock, mine))) {
     const read = await fs.readWithin(root, CHANGE_LOCK_FILE, 4096);
     const text = read.kind === "file" ? read.text : undefined;
@@ -296,10 +299,29 @@ async function withChangeLock<T>(
     }
   }
   try {
+    // It may have been swapped for a link while the lock was being made.
+    await checkRecordsDirectory(fs, root, false);
     return await body();
   } finally {
     await fs.remove(lock);
   }
+}
+
+/**
+ * Liftoff's records for a change, its lock and journal, are kept only in a
+ * real .liftoff directory in the project, never through a link to one
+ * elsewhere. It may not exist yet when a change begins.
+ */
+async function checkRecordsDirectory(
+  fs: ProjectFsPort,
+  root: string,
+  mayBeMissing: boolean,
+): Promise<void> {
+  const entry = await fs.entry(path.join(root, ".liftoff"));
+  if (entry.kind === "directory" || (mayBeMissing && entry.kind === "missing")) return;
+  throw new ChangeError(
+    ".liftoff is a link, or not a directory; Liftoff keeps a change's lock and journal only in a real .liftoff directory in the project",
+  );
 }
 
 /** Moves a stale lock aside and creates a new one, or false if another process got there first. */
