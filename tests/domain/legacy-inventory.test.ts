@@ -162,6 +162,29 @@ describe("LEGACY-002 unknown and newer formats fail safely", () => {
     expect(found).toMatchObject({ state: "unsupported" });
   });
 
+  it("rejects a record Liftoff is not allowed to read", () => {
+    const found = record(
+      { "liftoff.manifest.json": { kind: "inaccessible" } },
+      "liftoff.manifest.json",
+    );
+    expect(found).toMatchObject({
+      state: "unsupported",
+      reason: "Liftoff is not allowed to read it",
+    });
+    const hidden = inventory({
+      "liftoff.manifest.json": file(MANIFEST),
+      "governance/evidence": { kind: "inaccessible", via: "governance" },
+      "governance/plans": { kind: "inaccessible", via: "governance" },
+    });
+    expect(hidden.records.map(({ path, reason }) => [path, reason])).toEqual([
+      ["liftoff.manifest.json", expect.any(String)],
+      ["governance", "Liftoff is not allowed to look inside it, so nothing under it was looked at"],
+    ]);
+    expect(
+      inventory({ ".liftoff/governance": { kind: "inaccessible", via: ".liftoff" } }).project,
+    ).toBe(false);
+  });
+
   it("reports a link on the way once, at its own path", () => {
     const via = { kind: "other" as const, via: "governance" };
     const found = inventory({

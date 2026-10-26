@@ -21,8 +21,8 @@ and puts each record it finds in one of four states:
 
 An update or repair the old release did not finish blocks any change to the
 project until it is finished or undone with that release. Records at
-generic paths, such as `governance/`, count only beside a record only the
-old releases wrote.
+generic paths, such as `governance/`, are looked at only beside a record only
+the old releases wrote, never in an unrelated repository.
 
 - Given a project from 0.12.3 with its manifest, configuration and
   governance activation records, when Liftoff inventories it, then the
@@ -45,7 +45,11 @@ A record is unsupported, with the reason, when it is:
 - an old configuration with fields no old release wrote, or without the
   project's name and type;
 - not valid JSON, or not a JSON object;
-- a link, or a directory where the old release kept a file.
+- a link, or a directory where the old release kept a file;
+- something Liftoff is not allowed to read.
+
+A directory on the way to records that is a link, or that Liftoff may not
+look into, is reported once, at its own path.
 
 Liftoff does not guess past an unsupported record.
 
@@ -53,9 +57,10 @@ Verification: test
 
 ## LEGACY-003 Records that can hold files, credentials or state are never read
 
-Liftoff reads only the old manifest, configuration and activation state, each
-only up to 1 MiB, and follows no link, including a linked directory on the
-way to a record. These are noted by their presence alone:
+Liftoff reads only the old manifest, configuration and activation state, and
+no more than 1 MiB of each, even if the file grows or is replaced while
+being read. It follows no link, including a linked directory on the way to a
+record, and drops what it read if such a directory became a link meanwhile. These are noted by their presence alone:
 
 - journals of unfinished changes, which hold whole copies of files;
 - repair and activation history;

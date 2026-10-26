@@ -68,6 +68,38 @@ describe("LEGACY-001 records from before the rebuild are inventoried, never run"
     write("governance/plans/q3.md", "# Plans");
     expect(await inventoryLegacy(fs, work)).toEqual({ project: false, records: [] });
   });
+
+  it("looks at generic paths only in a project the old records mark", async () => {
+    write("governance/activation-state.json", { schemaVersion: 3 });
+    const looked: string[] = [];
+    const refusing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      entry: async (file: string) => {
+        looked.push(relative(file));
+        if (relative(file).startsWith("governance")) throw new Error("EACCES: permission denied");
+        return fs.entry(file);
+      },
+      readRegular: async (file: string, maxBytes: number) => {
+        looked.push(relative(file));
+        if (relative(file).startsWith("governance")) throw new Error("EACCES: permission denied");
+        return fs.readRegular(file, maxBytes);
+      },
+    });
+    expect(await inventoryLegacy(refusing, work)).toEqual({ project: false, records: [] });
+    expect(looked.filter((file) => file.startsWith("governance"))).toEqual([]);
+  });
+
+  it("reports a record Liftoff is not allowed to read", async () => {
+    write("liftoff.manifest.json", MANIFEST);
+    const denied: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      readRegular: async () => ({ kind: "inaccessible" as const }),
+    });
+    const found = await inventoryLegacy(denied, work);
+    expect(found.records[0]).toMatchObject({
+      path: "liftoff.manifest.json",
+      state: "unsupported",
+      reason: "Liftoff is not allowed to read it",
+    });
+  });
 });
 
 describe("LEGACY-003 records that can hold files, credentials or state are never read", () => {

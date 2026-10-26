@@ -19,9 +19,19 @@ export async function inventoryLegacy(
   directory: string,
 ): Promise<LegacyInventory> {
   const observations = new Map<string, LegacyObservation>();
-  for (const candidate of LEGACY_CANDIDATES) {
-    observations.set(candidate.path, await observe(fs, directory, candidate.path, candidate.open));
-  }
+  const look = async (marker: boolean) => {
+    for (const candidate of LEGACY_CANDIDATES.filter((found) => found.marker === marker)) {
+      observations.set(
+        candidate.path,
+        await observe(fs, directory, candidate.path, candidate.open),
+      );
+    }
+  };
+  // Generic paths such as governance/ are looked at only in a project the
+  // old releases' own records mark, never in an unrelated repository.
+  await look(true);
+  if (!classifyLegacy(observations).project) return { project: false, records: [] };
+  await look(false);
   return classifyLegacy(observations);
 }
 
@@ -45,7 +55,10 @@ async function observe(
   return (await onTheWay(fs, directory, parts)) ?? read;
 }
 
-/** A link or a file on the way to a record, such as a linked .liftoff, which is not followed. */
+/**
+ * A link, a file or a directory this user may not look into, on the way to
+ * a record, such as a linked .liftoff. It is not followed.
+ */
 async function onTheWay(
   fs: ProjectFsPort,
   directory: string,
@@ -54,7 +67,9 @@ async function onTheWay(
   for (let depth = 1; depth < parts.length; depth++) {
     const parent = await fs.entry(path.join(directory, ...parts.slice(0, depth)));
     if (parent.kind === "missing") return { kind: "missing" };
-    if (parent.kind !== "directory") return { kind: "other", via: parts.slice(0, depth).join("/") };
+    if (parent.kind === "directory") continue;
+    const via = parts.slice(0, depth).join("/");
+    return { kind: parent.kind === "inaccessible" ? "inaccessible" : "other", via };
   }
   return undefined;
 }

@@ -118,11 +118,12 @@ export const LEGACY_CANDIDATES: readonly Candidate[] = [
 
 /**
  * What is at a candidate's path. A link, or a link or file on the way to it
- * where a directory belongs (`via`), is "other".
+ * where a directory belongs, is "other"; a path this user may not look at is
+ * "inaccessible". `via` names such a directory on the way.
  */
 export type LegacyObservation =
   | { readonly kind: "missing" | "directory" }
-  | { readonly kind: "other"; readonly via?: string }
+  | { readonly kind: "other" | "inaccessible"; readonly via?: string }
   | { readonly kind: "file"; readonly size: number; readonly text?: string };
 
 export interface LegacyRecord {
@@ -175,20 +176,18 @@ export function classifyLegacy(
     const observed = observations.get(candidate.path) ?? { kind: "missing" };
     return observed.kind === "missing" ? [] : [{ candidate, observed }];
   });
-  // A link on the way, such as a linked .liftoff, says nothing of the old releases.
+  // A directory on the way that is a link or cannot be looked into, such as
+  // a linked .liftoff, says nothing of the old releases.
   const project = found.some(
-    ({ candidate, observed }) =>
-      candidate.marker && !(observed.kind === "other" && observed.via !== undefined),
+    ({ candidate, observed }) => candidate.marker && !("via" in observed && observed.via),
   );
   if (!project) return { project, records: [] };
-  // Such a link is reported once, at its own path, not for each record beneath it.
-  const links = new Set<string>();
+  // Such a directory is reported once, at its own path, not for each record beneath it.
+  const reported = new Set<string>();
   const records = found.flatMap(({ candidate, observed }): LegacyRecord[] => {
-    if (observed.kind !== "other" || observed.via === undefined) {
-      return [classify(candidate, observed)];
-    }
-    if (links.has(observed.via)) return [];
-    links.add(observed.via);
+    if (!("via" in observed) || observed.via === undefined) return [classify(candidate, observed)];
+    if (reported.has(observed.via)) return [];
+    reported.add(observed.via);
     return [
       {
         path: observed.via,
@@ -196,7 +195,9 @@ export function classifyLegacy(
         state: "unsupported",
         opened: false,
         reason:
-          "a link or a file where the old release kept a directory; it is not followed, so nothing under it was looked at",
+          observed.kind === "inaccessible"
+            ? "Liftoff is not allowed to look inside it, so nothing under it was looked at"
+            : "a link or a file where the old release kept a directory; it is not followed, so nothing under it was looked at",
       },
     ];
   });
@@ -211,6 +212,7 @@ function classify(candidate: Candidate, observed: LegacyObservation): LegacyReco
     reason,
     ...extra,
   });
+  if (observed.kind === "inaccessible") return unsupported("Liftoff is not allowed to read it");
   if (observed.kind !== candidate.kind) {
     return unsupported(
       observed.kind === "other"

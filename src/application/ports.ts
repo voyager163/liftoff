@@ -33,15 +33,18 @@ export interface AssetPort {
 
 export type PathState = "missing" | "empty-directory" | "directory" | "file";
 
-/** What a path itself is, without following a link, and a file's size in bytes. */
+/**
+ * What a path itself is, without following a link, and a file's size in
+ * bytes. It is "inaccessible" when this user may not look at it.
+ */
 export interface PathEntry {
-  readonly kind: "missing" | "file" | "directory" | "other";
+  readonly kind: "missing" | "file" | "directory" | "other" | "inaccessible";
   readonly size: number;
 }
 
 /** A regular file read with readRegular: its text is left out when it is over the limit. */
 export type RegularFileRead =
-  | { readonly kind: "missing" | "directory" | "other" }
+  | { readonly kind: "missing" | "directory" | "other" | "inaccessible" }
   | { readonly kind: "file"; readonly size: number; readonly text?: string };
 
 /** Something under a directory: a regular file, a directory, or anything else such as a link. */

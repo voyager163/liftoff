@@ -44,6 +44,7 @@ export class LocalProjectFs implements ProjectFsPort {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing", size: 0 };
+      if (code === "EACCES" || code === "EPERM") return { kind: "inaccessible", size: 0 };
       throw error;
     }
   }
@@ -55,6 +56,7 @@ export class LocalProjectFs implements ProjectFsPort {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing" };
+      if (code === "EACCES" || code === "EPERM") return { kind: "inaccessible" };
       throw error;
     }
     if (!inspected.isFile()) return { kind: inspected.isDirectory() ? "directory" : "other" };
@@ -163,6 +165,7 @@ export async function readUnchanged(
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing" };
     if (code === "ELOOP") return { kind: "other" };
+    if (code === "EACCES" || code === "EPERM") return { kind: "inaccessible" };
     throw error;
   }
   try {
