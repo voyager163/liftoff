@@ -9,9 +9,13 @@ import * as z from "zod/mini";
 z.config(en());
 
 export const RELEASE_MANIFEST_SCHEMA = "liftoff.release-manifest/v1";
-/** The attestation predicate type a release manifest is published under. */
+/**
+ * The attestation predicate type a release manifest is published under: the
+ * page that describes it. It has no #fragment, which GitHub's attestations
+ * API refuses when asked for attestations of one type.
+ */
 export const RELEASE_MANIFEST_PREDICATE =
-  "https://github.com/voyager163/liftoff/blob/develop/docs/projects/release-flow.md#release-manifest";
+  "https://github.com/voyager163/liftoff/blob/develop/docs/projects/release-manifest.md";
 
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;

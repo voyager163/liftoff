@@ -1,7 +1,10 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   isVersion,
   parseImages,
+  RELEASE_MANIFEST_PREDICATE,
   ReleaseError,
   releaseManifest,
   subjectChecksums,
@@ -51,5 +54,17 @@ describe("FLOW-005 the release manifest", () => {
     expect(() =>
       releaseManifest({ ...manifest, source: { ...manifest.source, tree: "abc" } }),
     ).toThrow(/not a full commit or tree SHA/);
+  });
+});
+
+describe("FLOW-005 the manifest's predicate type is one GitHub can look up", () => {
+  it("has no #fragment, and names the page that describes the manifest", () => {
+    // GitHub's attestations API refuses a predicate type with a fragment.
+    expect(RELEASE_MANIFEST_PREDICATE).not.toContain("#");
+    const page = RELEASE_MANIFEST_PREDICATE.replace(
+      "https://github.com/voyager163/liftoff/blob/develop/",
+      "",
+    );
+    expect(existsSync(path.resolve(import.meta.dirname, "../..", page)), page).toBe(true);
   });
 });
