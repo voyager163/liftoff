@@ -22,7 +22,8 @@ and puts each record it finds in one of four states:
 An update or repair the old release did not finish blocks any change to the
 project until it is finished or undone with that release. Records at
 generic paths, such as `governance/`, are looked at only beside a record only
-the old releases wrote, never in an unrelated repository.
+the old releases wrote, never in an unrelated repository. A linked directory,
+or one Liftoff may not search, never marks a project by itself.
 
 - Given a project from 0.12.3 with its manifest, configuration and
   governance activation records, when Liftoff inventories it, then the

@@ -35,7 +35,8 @@ export type PathState = "missing" | "empty-directory" | "directory" | "file";
 
 /**
  * What a path itself is, without following a link, and a file's size in
- * bytes. It is "inaccessible" when this user may not look at it.
+ * bytes. It is "inaccessible" when a directory it is in may not be searched
+ * by this user, so whether it exists is unknown.
  */
 export interface PathEntry {
   readonly kind: "missing" | "file" | "directory" | "other" | "inaccessible";

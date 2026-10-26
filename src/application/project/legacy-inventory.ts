@@ -47,8 +47,17 @@ async function observe(
   const before = await onTheWay(fs, directory, parts);
   if (before !== undefined) return before;
   const entry = await fs.entry(path.join(directory, ...parts));
+  if (entry.kind === "inaccessible")
+    return { kind: "inaccessible", via: container(parts, parts.length) };
   return entry.kind === "file" ? { kind: "file", size: entry.size } : { kind: entry.kind };
 }
+
+/**
+ * A path that cannot be inspected is in a directory this user may not
+ * search, so that directory is the one reported, never the path.
+ */
+const container = (parts: readonly string[], depth: number) =>
+  parts.slice(0, depth - 1).join("/") || ".";
 
 /**
  * A link, a file or a directory this user may not look into, on the way to
@@ -63,8 +72,9 @@ async function onTheWay(
     const parent = await fs.entry(path.join(directory, ...parts.slice(0, depth)));
     if (parent.kind === "missing") return { kind: "missing" };
     if (parent.kind === "directory") continue;
-    const via = parts.slice(0, depth).join("/");
-    return { kind: parent.kind === "inaccessible" ? "inaccessible" : "other", via };
+    if (parent.kind === "inaccessible")
+      return { kind: "inaccessible", via: container(parts, depth) };
+    return { kind: "other", via: parts.slice(0, depth).join("/") };
   }
   return undefined;
 }

@@ -166,20 +166,23 @@ export async function readWithin(
   calls: ReadCalls = NODE_CALLS,
 ): Promise<RegularFileRead> {
   const parts = relative.split("/");
-  const parents: { readonly path: string; readonly via: string; readonly stats: BigIntStats }[] =
+  // A path that cannot be inspected is in a directory this user may not
+  // search: that directory is the one reported.
+  const container = (depth: number) => parts.slice(0, depth - 1).join("/") || ".";
+  const parents: { readonly path: string; readonly depth: number; readonly stats: BigIntStats }[] =
     [];
   for (let depth = 1; depth < parts.length; depth++) {
-    const via = parts.slice(0, depth).join("/");
     const target = path.join(directory, ...parts.slice(0, depth));
     const seen = await inspect(calls, target);
     if (seen === "missing") return { kind: "missing" };
-    if (seen === "inaccessible") return { kind: "inaccessible", via };
-    if (!seen.isDirectory()) return { kind: "other", via };
-    parents.push({ path: target, via, stats: seen });
+    if (seen === "inaccessible") return { kind: "inaccessible", via: container(depth) };
+    if (!seen.isDirectory()) return { kind: "other", via: parts.slice(0, depth).join("/") };
+    parents.push({ path: target, depth, stats: seen });
   }
   const file = path.join(directory, ...parts);
   const inspected = await inspect(calls, file);
-  if (inspected === "missing" || inspected === "inaccessible") return { kind: inspected };
+  if (inspected === "missing") return { kind: "missing" };
+  if (inspected === "inaccessible") return { kind: "inaccessible", via: container(parts.length) };
   if (!inspected.isFile()) return { kind: inspected.isDirectory() ? "directory" : "other" };
   if (inspected.size > BigInt(maxBytes)) return { kind: "file", size: Number(inspected.size) };
   let handle: FileHandle;
@@ -201,9 +204,9 @@ export async function readWithin(
     if (!opened.isFile() || !sameFile(opened, inspected)) return { kind: "other" };
     for (const parent of parents) {
       const now = await inspect(calls, parent.path);
-      if (now === "inaccessible") return { kind: "inaccessible", via: parent.via };
+      if (now === "inaccessible") return { kind: "inaccessible", via: container(parent.depth) };
       if (now === "missing" || !now.isDirectory() || !sameFile(now, parent.stats)) {
-        return { kind: "other", via: parent.via };
+        return { kind: "other", via: parts.slice(0, parent.depth).join("/") };
       }
     }
     if (opened.size > BigInt(maxBytes)) return { kind: "file", size: Number(opened.size) };

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -86,6 +86,51 @@ describe("LEGACY-001 records from before the rebuild are inventoried, never run"
     });
     expect(await inventoryLegacy(refusing, work)).toEqual({ project: false, records: [] });
     expect(looked.filter((file) => file.startsWith("governance"))).toEqual([]);
+  });
+
+  it("does not take a directory it may not search for old records", async () => {
+    // As the file system answers when .liftoff may be listed but not searched.
+    const closed: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      entry: async (file: string) =>
+        relative(file).startsWith(".liftoff/")
+          ? { kind: "inaccessible" as const, size: 0 }
+          : fs.entry(file),
+    });
+    mkdirSync(path.join(work, ".liftoff"));
+    expect(await inventoryLegacy(closed, work)).toEqual({ project: false, records: [] });
+    write("liftoff.manifest.json", MANIFEST);
+    const found = await inventoryLegacy(closed, work);
+    expect(found.records.map(({ path, state, reason }) => [path, state, reason])).toEqual([
+      ["liftoff.manifest.json", "migratable", expect.any(String)],
+      [
+        ".liftoff",
+        "unsupported",
+        "Liftoff is not allowed to look inside it, so nothing under it was looked at",
+      ],
+    ]);
+  });
+
+  it("reports a directory it may not search once, on a real file system", async () => {
+    write("liftoff.manifest.json", MANIFEST);
+    write("governance/activation-state.json", { schemaVersion: 3 });
+    mkdirSync(path.join(work, ".liftoff"));
+    // Windows does not restrict reading by mode, and root reads anything.
+    if (process.platform === "win32" || process.getuid?.() === 0) return;
+    chmodSync(path.join(work, ".liftoff"), 0o000);
+    chmodSync(path.join(work, "governance"), 0o000);
+    try {
+      const found = await inventoryLegacy(fs, work);
+      expect(found.records.map(({ path, state }) => [path, state])).toEqual([
+        ["liftoff.manifest.json", "migratable"],
+        [".liftoff", "unsupported"],
+        ["governance", "unsupported"],
+      ]);
+      rmSync(path.join(work, "liftoff.manifest.json"));
+      expect((await inventoryLegacy(fs, work)).project).toBe(false);
+    } finally {
+      chmodSync(path.join(work, ".liftoff"), 0o755);
+      chmodSync(path.join(work, "governance"), 0o755);
+    }
   });
 
   it("reports a record Liftoff is not allowed to read", async () => {
