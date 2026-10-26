@@ -105,34 +105,11 @@ and resolve them.
 
 ## Release manifest
 
-The manifest records exactly what a release is. It is attested for each of
-the release's images under the predicate type
-`https://github.com/voyager163/liftoff/blob/develop/docs/projects/release-flow.md#release-manifest`,
-and included in the GitHub release:
-
-```json
-{
-  "schema": "liftoff.release-manifest/v1",
-  "repository": "OWNER/REPO",
-  "version": "1.2.0",
-  "kind": "release",
-  "pullRequest": 21,
-  "source": {
-    "commit": "the merge commit on main",
-    "tree": "its tree, which is also the candidate's",
-    "candidate": "the develop commit CI qualified"
-  },
-  "images": [
-    { "name": "api", "reference": "ghcr.io/owner/repo/api", "digest": "sha256:…" }
-  ]
-}
-```
-
-Verify an image's manifest with:
-
-```bash
-gh attestation verify oci://ghcr.io/owner/repo/api@sha256:DIGEST --repo OWNER/REPO --predicate-type https://github.com/voyager163/liftoff/blob/develop/docs/projects/release-flow.md#release-manifest
-```
+The manifest records exactly what a release is: the commit on `main`, its
+tree, the candidate CI qualified and each image by digest. It is attested for
+each of the release's images and included in the GitHub release. See
+[the release manifest](release-manifest.md) for its format and how to verify
+it.
 
 ## Deploying
 
