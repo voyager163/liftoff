@@ -73,7 +73,8 @@ publishes it and brings it back into `develop`.
 
 ## A GitHub App for releases
 
-GitHub starts no workflows for pull requests opened with the workflow token.
+GitHub does not run the workflows of a pull request the workflow token
+opened; it lists them as awaiting a maintainer's approval.
 Create a GitHub App with read and write access to contents and pull
 requests and read access to actions, install it on the repository, and set
 the `RELEASE_APP_CLIENT_ID` variable and the `RELEASE_APP_PRIVATE_KEY`
@@ -91,7 +92,10 @@ and the review policy on its base themselves, naming the pull request. Those
 runs check it as GitHub's own would: the branch checks run its base's copy,
 dependency review compares its base and head, and CodeQL reports on the pull
 request. They report on its exact head commit; no check is ever reported as
-passed without running.
+passed without running. While the pull request's newest commit is a
+person's, as a release pull request's is, those runs report its required
+checks, so the pull request's own workflows that GitHub lists as awaiting
+approval need none: merging does not wait on them.
 
 If a release or hotfix pull request's CI runs before its build has finished,
 the branch check fails; when the build passes, the After build workflow
