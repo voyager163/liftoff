@@ -57,11 +57,13 @@ export async function validateProject(
   if (configText === undefined) {
     const legacy = await inventoryLegacy(fs, directory);
     if (legacy.project) {
+      const marker = legacy.records[0];
       findings.push({
         severity: "error",
         code: "pre-rebuild-project",
+        ...(marker ? { path: marker.path } : {}),
         message:
-          "this was made by a Liftoff release before the rebuild. This release changes and runs nothing in it; adopting existing projects comes in a later release. What it left:",
+          "this was made by a Liftoff release before the rebuild; this release changes and runs nothing in it. Adopting existing projects comes in a later release.",
       });
       for (const record of legacy.records) {
         findings.push({

@@ -104,14 +104,9 @@ describe("LEGACY-003 records that can hold files, credentials or state are never
       expect(read).toEqual(["liftoff.manifest.json"]);
       expect(found.records.map(({ path, state }) => [path, state])).toEqual([
         ["liftoff.manifest.json", "migratable"],
-        [".liftoff/governance", "unsupported"],
-        [".liftoff/reviewed-update-transaction.json", "unsupported"],
-        [".liftoff/reviewed-repair-transaction.json", "unsupported"],
-        [".liftoff/repair-history", "unsupported"],
+        [".liftoff", "unsupported"],
       ]);
-      expect(found.records[1]?.reason).toBe(
-        ".liftoff is a link or a file, not a directory; it is not followed",
-      );
+      expect(found.records[1]?.reason).toContain("it is not followed");
       // The link alone does not make it a project from before the rebuild.
       rmSync(path.join(work, "liftoff.manifest.json"));
       expect((await inventoryLegacy(fs, work)).project).toBe(false);

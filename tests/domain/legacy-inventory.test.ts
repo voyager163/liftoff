@@ -138,11 +138,17 @@ describe("LEGACY-002 unknown and newer formats fail safely", () => {
     );
     expect(extra).toMatchObject({ state: "unsupported" });
     expect(extra?.reason).toContain("schema, telemetry");
-    const nameless = record(
-      { "liftoff.config.json": file({ projectType: "standard" }) },
-      "liftoff.config.json",
-    );
-    expect(nameless?.reason).toContain("lacks the project's name or type");
+    for (const fields of [
+      { projectType: "standard" },
+      { projectName: "demo" },
+      { projectName: "", projectType: "standard" },
+      { projectName: "demo", projectType: null },
+      { projectName: 7, projectType: "standard" },
+    ]) {
+      const nameless = record({ "liftoff.config.json": file(fields) }, "liftoff.config.json");
+      expect(nameless).toMatchObject({ state: "unsupported" });
+      expect(nameless?.reason).toContain("lacks the project's name or type");
+    }
   });
 
   it.each([0, 4, "3"])("rejects activation state version %s", (version) => {
@@ -154,6 +160,25 @@ describe("LEGACY-002 unknown and newer formats fail safely", () => {
       "governance/activation-state.json",
     );
     expect(found).toMatchObject({ state: "unsupported" });
+  });
+
+  it("reports a link on the way once, at its own path", () => {
+    const via = { kind: "other" as const, via: "governance" };
+    const found = inventory({
+      "liftoff.manifest.json": file(MANIFEST),
+      "governance/activation-state.json": via,
+      "governance/evidence": via,
+      "governance/credentials": via,
+    });
+    expect(found.records.map(({ path, state }) => [path, state])).toEqual([
+      ["liftoff.manifest.json", "migratable"],
+      ["governance", "unsupported"],
+    ]);
+    expect(found.records[1]?.reason).toContain("nothing under it was looked at");
+    // Nor does such a link mark a project from before the rebuild.
+    expect(inventory({ ".liftoff/governance": { kind: "other", via: ".liftoff" } }).project).toBe(
+      false,
+    );
   });
 
   it("rejects links, and directories where a file belongs", () => {

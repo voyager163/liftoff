@@ -282,7 +282,7 @@ describe("VALID-002 projects from before the rebuild", () => {
     const result = await validateProject(fs, work);
     expect(result.valid).toBe(false);
     expect(result.findings).toEqual([
-      expect.objectContaining({ code: "pre-rebuild-project", severity: "error" }),
+      expect.objectContaining({ code: "pre-rebuild-project", path: file, severity: "error" }),
       expect.objectContaining({ code: "legacy-unsupported", path: file, severity: "warning" }),
     ]);
   });

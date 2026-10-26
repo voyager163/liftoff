@@ -180,10 +180,27 @@ export function classifyLegacy(
     ({ candidate, observed }) =>
       candidate.marker && !(observed.kind === "other" && observed.via !== undefined),
   );
-  return {
-    project,
-    records: project ? found.map(({ candidate, observed }) => classify(candidate, observed)) : [],
-  };
+  if (!project) return { project, records: [] };
+  // Such a link is reported once, at its own path, not for each record beneath it.
+  const links = new Set<string>();
+  const records = found.flatMap(({ candidate, observed }): LegacyRecord[] => {
+    if (observed.kind !== "other" || observed.via === undefined) {
+      return [classify(candidate, observed)];
+    }
+    if (links.has(observed.via)) return [];
+    links.add(observed.via);
+    return [
+      {
+        path: observed.via,
+        record: candidate.record,
+        state: "unsupported",
+        opened: false,
+        reason:
+          "a link or a file where the old release kept a directory; it is not followed, so nothing under it was looked at",
+      },
+    ];
+  });
+  return { project, records };
 }
 
 function classify(candidate: Candidate, observed: LegacyObservation): LegacyRecord {
@@ -195,13 +212,10 @@ function classify(candidate: Candidate, observed: LegacyObservation): LegacyReco
     ...extra,
   });
   if (observed.kind !== candidate.kind) {
-    if (observed.kind !== "other") {
-      return unsupported(`a ${observed.kind} where the old release kept a ${candidate.kind}`);
-    }
     return unsupported(
-      observed.via === undefined
+      observed.kind === "other"
         ? "a link or other special file; it is not followed"
-        : `${observed.via} is a link or a file, not a directory; it is not followed`,
+        : `a ${observed.kind} where the old release kept a ${candidate.kind}`,
     );
   }
   if (!candidate.open || observed.kind !== "file") return presence(candidate);
@@ -272,7 +286,10 @@ function manifest(read: Opened, fields: Record<string, unknown>): LegacyRecord {
 function config(read: Opened, fields: Record<string, unknown>): LegacyRecord {
   const keys = Object.keys(fields);
   const unknown = keys.filter((key) => !CONFIG_FIELDS.has(key));
-  if (unknown.length > 0 || typeof fields.projectName !== "string" || !("projectType" in fields)) {
+  const named = [fields.projectName, fields.projectType].every(
+    (value) => typeof value === "string" && value.length > 0,
+  );
+  if (unknown.length > 0 || !named) {
     return {
       ...read,
       state: "unsupported",

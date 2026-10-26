@@ -109,6 +109,31 @@ describe("GOV-001 assessing reads GitHub and changes nothing", () => {
       detail: expect.stringContaining("missing"),
     });
   });
+
+  it("VALID-002 names the file of a project from before the rebuild", async () => {
+    const old = path.join(work, "old");
+    mkdirSync(old);
+    writeFileSync(
+      path.join(old, "liftoff.manifest.json"),
+      JSON.stringify({
+        artifactVersion: 7,
+        generatedBy: "Mission Control Liftoff",
+        liftoffVersion: "0.12.3",
+      }),
+    );
+    const assessment = await assessGovernance(
+      { fs, github: new FakeGitHubApi(fakeRepository()) },
+      old,
+      REPOSITORY,
+    );
+    expect(assessment.checkpoints[0]).toMatchObject({
+      id: "handoff",
+      status: "next",
+      detail: expect.stringMatching(
+        /^liftoff\.manifest\.json: this was made by a Liftoff release before the rebuild; .*a later release\.$/,
+      ),
+    });
+  });
 });
 
 describe("GOV-001 each required check is required from the app that produces it", () => {
