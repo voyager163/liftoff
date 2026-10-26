@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { validateConfig } from "../../src/domain/project/config.ts";
 import {
@@ -193,6 +195,28 @@ describe("PROJ-007 choosing the review engine", () => {
     expect(chooseEngine([])).toBeUndefined();
     expect(chooseEngine(["claude"], "copilot")).toBeUndefined();
   });
+
+  it.each(Object.values(REVIEW_ENGINES))(
+    "$host installs exactly its CLI from a lockfile that pins every package by hash",
+    (engine) => {
+      const directory = path.resolve(
+        import.meta.dirname,
+        "../../assets/plugins/review-layered/review-agent",
+        engine.host,
+      );
+      const at = engine.cli.lastIndexOf("@");
+      const [name, version] = [engine.cli.slice(0, at), engine.cli.slice(at + 1)];
+      const manifest = JSON.parse(readFileSync(path.join(directory, "package.json"), "utf8"));
+      expect(manifest.dependencies).toEqual({ [name]: version });
+      const lock = JSON.parse(readFileSync(path.join(directory, "package-lock.json"), "utf8"));
+      expect(lock.packages[""].dependencies).toEqual({ [name]: version });
+      expect(lock.packages[`node_modules/${name}`].version).toBe(version);
+      for (const [where, entry] of Object.entries(lock.packages)) {
+        if (where !== "")
+          expect((entry as { integrity?: string }).integrity, where).toMatch(/^sha512-/);
+      }
+    },
+  );
 
   it.each(Object.values(REVIEW_ENGINES))("$host runs read-only with a pinned CLI", (engine) => {
     const script = reviewAgentScript(engine);

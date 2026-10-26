@@ -416,7 +416,15 @@ describe("PROJ-007 coding-agent files", () => {
     expect(project.get(".github/liftoff/review-agent.sh")?.content).toContain("copilot -p");
     const workflow = project.get(".github/workflows/04-ai-review.yml")?.content ?? "";
     expect(workflow).toContain("secrets.COPILOT_GITHUB_TOKEN");
-    expect(workflow).toContain('REVIEW_AGENT_CLI: "@github/copilot@');
+    // The CLI comes from a committed lockfile, pinned by hash.
+    expect(workflow).toContain("npm ci --prefix .github/liftoff/review-agent");
+    expect(workflow).not.toContain("npm install --global");
+    expect(project.get(".github/liftoff/review-agent/package.json")?.content).toContain(
+      '"@github/copilot": "1.0.98"',
+    );
+    expect(project.get(".github/liftoff/review-agent/package-lock.json")?.ownership).toBe(
+      "managed",
+    );
   });
 
   it("uses the configured engine and leaves AI review out when it is off", async () => {
@@ -427,6 +435,9 @@ describe("PROJ-007 coding-agent files", () => {
     expect(claude.get(".github/liftoff/review-agent.sh")?.content).toContain("claude -p");
     expect(claude.get(".github/workflows/04-ai-review.yml")?.content).toContain(
       "secrets.ANTHROPIC_API_KEY",
+    );
+    expect(claude.get(".github/liftoff/review-agent/package.json")?.content).toContain(
+      '"@anthropic-ai/claude-code": "2.1.302"',
     );
     const off = await byPath({ agents: ["claude"], review: { ai: false } });
     expect(off.has(".github/workflows/04-ai-review.yml")).toBe(false);

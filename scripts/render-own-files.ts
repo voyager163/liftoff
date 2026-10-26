@@ -8,7 +8,11 @@ import path from "node:path";
 import { PackageAssets } from "../src/adapters/assets.ts";
 import { agentFilesFor } from "../src/application/agents/agent-files.ts";
 import { REVIEW_ENGINES } from "../src/plugins/builtin/review/engines.ts";
-import { reviewWorkflowFiles, WORKFLOWS } from "../src/plugins/builtin/review/review.ts";
+import {
+  REVIEW_AGENT,
+  reviewWorkflowFiles,
+  WORKFLOWS,
+} from "../src/plugins/builtin/review/review.ts";
 import type { AgentHostId } from "../src/plugins/contracts/agent-host.ts";
 import type { TemplateSet } from "../src/plugins/contracts/project-plugin.ts";
 
@@ -27,7 +31,9 @@ const MARKER = "Managed by Liftoff.";
 
 const assets = new PackageAssets(path.join(root, "assets"), path.join(root, ".github/liftoff"));
 const texts = new Map<string, string>();
-for (const file of await assets.listTree(WORKFLOWS)) texts.set(file, await assets.readText(file));
+for (const root of [WORKFLOWS, REVIEW_AGENT]) {
+  for (const file of await assets.listTree(root)) texts.set(file, await assets.readText(file));
+}
 const templates: TemplateSet = {
   read: (file) => texts.get(file) ?? "",
   list: (directory) => [...texts.keys()].filter((file) => file.startsWith(`${directory}/`)),

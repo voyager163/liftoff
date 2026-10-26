@@ -1,0 +1,8 @@
+{
+  "name": "liftoff-review-agent",
+  "private": true,
+  "description": "Managed by Liftoff. The review agent's CLI, installed with npm ci so every package is pinned by its hash.",
+  "dependencies": {
+    "@github/copilot": "1.0.98"
+  }
+}
