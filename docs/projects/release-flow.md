@@ -103,8 +103,10 @@ merges `develop` in, so it is up to date and its checks cover what merging it
 gives. If the two conflict, its description says to merge `develop` into it
 and resolve them. Without an app, that merge is the workflow token's commit,
 so GitHub holds the pull request's own workflows until a maintainer chooses
-"Approve workflows to run" on it; its required checks report once they pass,
-and its description says so.
+"Approve workflows to run" on it; its required checks report once they pass.
+Its description says so whenever that merge is its newest commit, including
+on a pull request an earlier run opened, but not once a person's commit is,
+as after resolving a conflict.
 
 ## Release manifest
 

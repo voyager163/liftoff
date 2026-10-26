@@ -347,9 +347,12 @@ async function sync(context: Context): Promise<void> {
     }
   }
   // GitHub holds a pull request's own workflows for a maintainer's approval
-  // when its newest commit is the workflow token's, as this merge is; the
-  // required checks wait on those runs, not on the ones started for it.
-  const held = diverged.behind_by > 0 && !conflicts && env.DISPATCH === "true";
+  // when its newest commit is the workflow token's, as a merge of develop
+  // made here, now or by an earlier run, is; the required checks wait on
+  // those runs, not on the ones started for it. A branch whose newest commit
+  // a person made, such as one where they resolved a conflict, is not held.
+  const held =
+    env.DISPATCH === "true" && !conflicts && (await newestCommitByWorkflow(context, branch));
   const approve =
     "Its newest commit is the release workflow's merge of develop, so GitHub holds this pull request's own workflows until a maintainer approves them: choose \"Approve workflows to run\" on the pull request, and its required checks report once they pass.";
   const pr = await openPullRequest(context, {
@@ -367,20 +370,43 @@ async function sync(context: Context): Promise<void> {
       ...(held ? ["", approve] : []),
     ].join("\n"),
   });
+  // A pull request an earlier run opened gets the note too, added once.
+  if (held && !(pr.body ?? "").includes(approve)) {
+    await client.patch(`/repos/${repository}/pulls/${pr.number}`, {
+      body: `${pr.body ?? ""}\n\n${approve}`,
+    });
+  }
   await startChecks(context, pr.number, branch, "develop");
   context.summary(
     `## Sync\n\nThe pull request into develop is [#${pr.number}](${pr.html_url}).${conflicts ? " develop conflicts with main; resolve that in the pull request." : ""}${held ? ` ${approve}` : ""}\n`,
   );
 }
 
+/** Whether a branch's newest commit is the workflow token's, made by github-actions[bot]. */
+async function newestCommitByWorkflow(context: Context, branch: string): Promise<boolean> {
+  const { client, repository } = context;
+  const sha = await refSha(client, repository, `heads/${branch}`);
+  if (sha === undefined) return false;
+  const commit = await client.get<{ author?: { login?: string } | null }>(
+    `/repos/${repository}/commits/${sha}`,
+  );
+  return commit.author?.login === "github-actions[bot]";
+}
+
+interface OpenedPullRequest {
+  number: number;
+  html_url: string;
+  body?: string | null;
+}
+
 /** Opens a pull request, or finds the one an earlier run opened from the same branch. */
 async function openPullRequest(
   context: Context,
   request: { title: string; head: string; base: string; body: string },
-): Promise<{ number: number; html_url: string }> {
+): Promise<OpenedPullRequest> {
   const { client, repository } = context;
   const owner = repository.split("/")[0] ?? "";
-  const [open] = await client.get<{ number: number; html_url: string }[]>(
+  const [open] = await client.get<OpenedPullRequest[]>(
     `/repos/${repository}/pulls?head=${encodeURIComponent(`${owner}:${request.head}`)}&base=${encodeURIComponent(request.base)}&state=open`,
   );
   if (open) return open;

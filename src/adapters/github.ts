@@ -40,8 +40,17 @@ export class GitHubClient {
 
   /** Sends a JSON body; resolves to undefined for a 204 No Content answer. */
   async post<T>(route: string, body: unknown): Promise<T> {
+    return this.write<T>("POST", route, body);
+  }
+
+  /** Changes part of a resource, as post does. */
+  async patch<T>(route: string, body: unknown): Promise<T> {
+    return this.write<T>("PATCH", route, body);
+  }
+
+  private async write<T>(method: "POST" | "PATCH", route: string, body: unknown): Promise<T> {
     const response = await this.request(`${this.apiUrl}${route}`, {
-      method: "POST",
+      method,
       body: JSON.stringify(body),
     });
     if (response.status === 204) return undefined as T;
@@ -66,7 +75,10 @@ export class GitHubClient {
     return items;
   }
 
-  private async request(url: string, write?: { method: "POST"; body: string }): Promise<Response> {
+  private async request(
+    url: string,
+    write?: { method: "POST" | "PATCH"; body: string },
+  ): Promise<Response> {
     let response: Response;
     try {
       response = await this.fetchImpl(url, {
