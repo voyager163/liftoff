@@ -58,10 +58,7 @@ export function pathsProblem(
   for (const change of changes) {
     const problem = repositoryPathProblem(change.path);
     if (problem !== undefined) return problem;
-    if (
-      change.path.split("/")[0]?.toLowerCase() === ".git" ||
-      change.path === CHANGE_JOURNAL_FILE
-    ) {
+    if (change.path === CHANGE_JOURNAL_FILE) {
       return `${change.path} is not a file a change may touch`;
     }
     const key = change.path.toLowerCase();

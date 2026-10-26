@@ -382,8 +382,9 @@ differently from Liftoff's standard (`backend/`, `frontend/`,
 part. A binding must:
 
 - be for a part the project has;
-- be a repository-relative path every system reads the same way, outside
-  `.git`, `.github` and `.liftoff`;
+- be a repository-relative path every system and Git can hold (no control
+  character, no character Windows forbids, no name Windows reads as another
+  file), outside `.github` and `.liftoff` and outside `.git` at any depth;
 - not put one part's directory inside another's, except inside the root.
 
 A binding to the standard directory is the same as none and is not written,

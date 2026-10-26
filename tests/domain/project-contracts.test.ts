@@ -158,6 +158,11 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
     [{ backend: "api." }, config, "has a name Windows would read as another file"],
     [{ backend: ".github/api" }, config, "is inside a directory Liftoff or Git keeps for itself"],
     [{ backend: ".Liftoff" }, config, "is inside a directory Liftoff or Git keeps for itself"],
+    [{ backend: "services/.git" }, config, "is inside a .git directory"],
+    [{ backend: "api\u0000x" }, config, "has a character Git or Windows cannot hold"],
+    [{ backend: "api\nx" }, config, "has a character Git or Windows cannot hold"],
+    [{ backend: "api|v2" }, config, "has a character Git or Windows cannot hold"],
+    [{ backend: "api?" }, config, "has a character Git or Windows cannot hold"],
     [{ backend: "app", frontend: "App" }, withFrontend, "backend and frontend share a directory"],
     [
       { backend: "app", frontend: "app/web" },
@@ -221,6 +226,20 @@ describe("PROJ-025 the manifest records its history and anything from before the
       "liftoff.manifest.json",
     ]);
     expect(serializeManifest(parseManifest(text))).toBe(text);
+  });
+
+  it("writes the same bytes however the manifest was built", () => {
+    const built: Manifest = {
+      ...base,
+      schema: "liftoff.manifest/v1",
+      history: [{ liftoff: "1.1.0", operation: "init" as const }],
+      plugins: [{ version: "1", id: "p" }],
+      files: [{ sha256: "a".repeat(64), plugin: "p", path: "x", ownership: "framework" as const }],
+      legacy: { records: [{ state: "readable" as const, record: "config" as const, path: "y" }] },
+    };
+    const text = serializeManifest(parseManifest(JSON.stringify(built)));
+    expect(serializeManifest(built)).toBe(text);
+    expect(text).toContain('"path": "x",\n      "ownership": "framework",');
   });
 
   it.each([

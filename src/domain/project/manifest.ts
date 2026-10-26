@@ -104,21 +104,39 @@ export function parseManifest(text: string): Manifest {
   return parsed.data;
 }
 
+/**
+ * Writes the manifest with every object's keys in the schema's order and
+ * every list sorted, so the same manifest is always the same bytes, however
+ * the caller built it.
+ */
 export function serializeManifest(manifest: Manifest): string {
-  const sorted: Manifest = {
+  const { legacy } = manifest;
+  const ordered: Manifest = {
     schema: manifest.schema,
-    generatedBy: manifest.generatedBy,
-    history: manifest.history,
-    plugins: [...manifest.plugins].sort((a, b) => a.id.localeCompare(b.id)),
-    files: [...manifest.files].sort((a, b) => a.path.localeCompare(b.path)),
-    ...(manifest.legacy === undefined
+    generatedBy: { liftoff: manifest.generatedBy.liftoff },
+    history: manifest.history.map(({ operation, liftoff }) => ({ operation, liftoff })),
+    plugins: [...manifest.plugins]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map(({ id, version }) => ({ id, version })),
+    files: [...manifest.files]
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .map(({ path, ownership, sha256, plugin }) => ({ path, ownership, sha256, plugin })),
+    ...(legacy === undefined
       ? {}
       : {
           legacy: {
-            ...manifest.legacy,
-            records: [...manifest.legacy.records].sort((a, b) => a.path.localeCompare(b.path)),
+            ...(legacy.release === undefined ? {} : { release: legacy.release }),
+            records: [...legacy.records]
+              .sort((a, b) => a.path.localeCompare(b.path))
+              .map(({ path, record, state, format, sha256 }) => ({
+                path,
+                record,
+                state,
+                ...(format === undefined ? {} : { format }),
+                ...(sha256 === undefined ? {} : { sha256 }),
+              })),
           },
         }),
   };
-  return `${JSON.stringify(sorted, null, 2)}\n`;
+  return `${JSON.stringify(ordered, null, 2)}\n`;
 }
