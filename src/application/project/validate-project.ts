@@ -56,6 +56,29 @@ export async function validateProject(
     ...extra,
   });
 
+  // A change that stopped part way, such as an adoption before liftoff.yaml
+  // was written, may explain other findings, so it is reported first and the
+  // checks go on.
+  try {
+    const journal = await readJournal(fs, directory);
+    if (journal !== undefined) {
+      findings.push({
+        severity: "error",
+        code: "interrupted-change",
+        path: CHANGE_JOURNAL_FILE,
+        message: `a change by ${CHANGE_COMMANDS[journal.operation]} that began ${journal.started} stopped part way; finish or undo it with ${CHANGE_COMMANDS[journal.operation]} --recover before anything else changes the project`,
+      });
+    }
+  } catch (error) {
+    if (!(error instanceof JournalError)) throw error;
+    findings.push({
+      severity: "error",
+      code: "interrupted-change",
+      path: CHANGE_JOURNAL_FILE,
+      message: `a change stopped part way, but its journal cannot be read: ${error.message}`,
+    });
+  }
+
   const configText = await read(CONFIG_FILE);
   if (configText === undefined) {
     const legacy = await inventoryLegacy(fs, directory);
@@ -84,28 +107,6 @@ export async function validateProject(
       message: `no ${CONFIG_FILE} here`,
     });
     return result();
-  }
-
-  // A change that stopped part way may explain other findings, so it is
-  // reported first and the checks go on.
-  try {
-    const journal = await readJournal(fs, directory);
-    if (journal !== undefined) {
-      findings.push({
-        severity: "error",
-        code: "interrupted-change",
-        path: CHANGE_JOURNAL_FILE,
-        message: `a change by ${CHANGE_COMMANDS[journal.operation]} that began ${journal.started} stopped part way; finish or undo it with ${CHANGE_COMMANDS[journal.operation]} --recover before anything else changes the project`,
-      });
-    }
-  } catch (error) {
-    if (!(error instanceof JournalError)) throw error;
-    findings.push({
-      severity: "error",
-      code: "interrupted-change",
-      path: CHANGE_JOURNAL_FILE,
-      message: `a change stopped part way, but its journal cannot be read: ${error.message}`,
-    });
   }
 
   let config: ProjectConfig;

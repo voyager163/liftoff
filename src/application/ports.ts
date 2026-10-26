@@ -44,11 +44,6 @@ export interface PathEntry {
 }
 
 /**
- * A file read with readWithin. Its text is left out when it is over the
- * limit. `via` names a directory on the way to it that is a link, a file or
- * closed to this user, or that changed while the file was being opened.
- */
-/**
  * A file hashed with hashWithin: its sha256 and whether any execute bit is
  * set (never on Windows), both left out when it is over the limit. The other
  * kinds are as for RegularFileRead.
@@ -63,6 +58,11 @@ export type FileHash =
       readonly executable?: boolean;
     };
 
+/**
+ * A file read with readWithin. Its text is left out when it is over the
+ * limit. `via` names a directory on the way to it that is a link, a file or
+ * closed to this user, or that changed while the file was being opened.
+ */
 export type RegularFileRead =
   | { readonly kind: "missing" | "directory" }
   | { readonly kind: "other" | "inaccessible"; readonly via?: string }
@@ -94,8 +94,14 @@ export interface ProjectFsPort {
   hashWithin(directory: string, relative: string, maxBytes: number): Promise<FileHash>;
   /** Moves a file, replacing `to` in one step if it exists, on the same volume. */
   moveFile(from: string, to: string): Promise<void>;
-  /** Copies a file byte for byte; fails if `to` exists. */
+  /** Copies a file byte for byte, with its mode; fails if `to` exists. */
   copyFile(from: string, to: string): Promise<void>;
+  /**
+   * What identifies a directory, such as its device and inode, while it
+   * exists; undefined when it is missing, a link or not a directory. A copy
+   * of a directory has a different identity.
+   */
+  directoryIdentity(path: string): Promise<string | undefined>;
   /** Text of a file, or undefined when it does not exist. */
   readText(path: string): Promise<string | undefined>;
   /** A new empty directory beside `target`, on the same volume, for staging. */

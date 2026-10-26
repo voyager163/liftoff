@@ -213,6 +213,16 @@ describe("CHANGE-002 hashing a file follows no link and sees it change", () => {
     });
     expect(await fs.hashWithin(work, "big.bin", 10)).toEqual({ kind: "file", size: 200 * 1024 });
     expect(await fs.hashWithin(work, "missing", 10)).toEqual({ kind: "missing" });
+    mkdirSync(path.join(work, "directory"));
+    write("directory/record.json", "{}");
+    symlinkSync(path.join(work, "directory"), path.join(work, "link"), "junction");
+    expect(await fs.hashWithin(work, "link", 10)).toEqual({ kind: "other" });
+    expect(await fs.hashWithin(work, "link/record.json", 10)).toEqual({
+      kind: "other",
+      via: "link",
+    });
+    expect(await fs.directoryIdentity(path.join(work, "link"))).toBeUndefined();
+    expect(await fs.directoryIdentity(path.join(work, "directory"))).toMatch(/^\d+:\d+$/);
   });
 
   it("does not hash a file that changed while it was being hashed", async () => {

@@ -77,6 +77,12 @@ describe("CHANGE-001 a change plan names every file it changes, before and after
     [".git/config", "is not a file a change may touch"],
     [".GIT/hooks/pre-commit", "is not a file a change may touch"],
     [".liftoff/change-journal.json", "is not a file a change may touch"],
+    ["GIT~1/config", "has a name Windows would read as another file"],
+    [".git./config", "has a name Windows would read as another file"],
+    ["src/a.txt ", "has a name Windows would read as another file"],
+    ["README.md:secret", "has a name Windows would read as another file"],
+    ["nul.txt", "has a name Windows would read as another file"],
+    ["src/CON", "has a name Windows would read as another file"],
   ])("refuses the path %j", (path, problem) => {
     expect(() => sealChangePlan(unsigned([kept(path, A, B)]))).toThrow(problem);
   });

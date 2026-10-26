@@ -73,6 +73,19 @@ export function pathsProblem(
     ) {
       return `${change.path} is not a repository-relative path`;
     }
+    // Names Windows would read as another file, so they could reach .git:
+    // a trailing dot or space, a stream (:), a device, or an 8.3 short name.
+    if (
+      parts.some(
+        (part) =>
+          /[. ]$/.test(part) ||
+          part.includes(":") ||
+          /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(part) ||
+          /~\d/.test(part),
+      )
+    ) {
+      return `${change.path} has a name Windows would read as another file`;
+    }
     if (parts[0]?.toLowerCase() === ".git" || change.path === CHANGE_JOURNAL_FILE) {
       return `${change.path} is not a file a change may touch`;
     }

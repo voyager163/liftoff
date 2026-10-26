@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -7,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -279,6 +281,53 @@ describe("CHANGE-003 a change that stops part way can be finished or undone", ()
     expect(existsSync(path.join(root, "run.sh"))).toBe(false);
   });
 
+  it("switches between undoing and finishing until it completes", async () => {
+    await interrupted();
+    write("liftoff.yaml", "name: mine\n");
+    expect(await recoverChanges(fs, root, "undo")).toMatchObject({
+      changed: ["README.md", "data.bin"],
+      conflicts: ["liftoff.yaml"],
+      complete: false,
+    });
+    write("liftoff.yaml", "name: demo\n");
+    expect(await recoverChanges(fs, root, "finish")).toMatchObject({
+      changed: ["README.md", "data.bin", "run.sh", "liftoff.yaml", ".liftoff/manifest.json"],
+      complete: true,
+    });
+    expect(read("README.md").toString()).toBe("# New\n");
+    expect(existsSync(path.join(root, "data.bin"))).toBe(false);
+    expect(leftovers()).toEqual([]);
+  });
+
+  it("does not recover a copy of the project with the original's journal", async () => {
+    await interrupted();
+    const copy = path.join(parent, "demo copy");
+    cpSync(root, copy, { recursive: true });
+    await expect(recoverChanges(fs, copy, "finish")).rejects.toThrow(
+      "belongs to another copy of this project or another change",
+    );
+    expect(await recoverChanges(fs, root, "undo")).toMatchObject({ complete: true });
+    expect(read("data.bin")).toEqual(BINARY);
+  });
+
+  it("does not follow a journal to a staging directory that is a link", async () => {
+    await interrupted();
+    const outside = mkdtempSync(path.join(tmpdir(), "liftoff-outside-"));
+    try {
+      const journalPath = path.join(root, ".liftoff", "change-journal.json");
+      const journal = JSON.parse(readFileSync(journalPath, "utf8")) as { staging: string };
+      const linked = ".demo.liftoff-staging-linked";
+      symlinkSync(outside, path.join(parent, linked), "junction");
+      writeFileSync(journalPath, JSON.stringify({ ...journal, staging: linked }));
+      await expect(recoverChanges(fs, root, "finish")).rejects.toThrow(
+        "are missing or not a directory, so it cannot be recovered",
+      );
+      expect(readdirSync(outside)).toEqual([]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it("reads a journal that is not one as a problem, in validate too", async () => {
     write("liftoff.yaml", "name: demo\n");
     write(".liftoff/change-journal.json", '{"staging":"../../elsewhere"}');
@@ -290,6 +339,87 @@ describe("CHANGE-003 a change that stops part way can be finished or undone", ()
       code: "interrupted-change",
       message: expect.stringContaining("its journal cannot be read"),
     });
+  });
+});
+
+describe("CHANGE-003 only one change runs at a time", () => {
+  it("sees a change that finished while this one was being staged", async () => {
+    const { plan, contents } = project();
+    const other = sealChangePlan({
+      ...plan,
+      operation: "repair",
+      changes: [
+        {
+          path: "README.md",
+          before: shaOf(read("README.md")),
+          after: sha256Hex("# Repaired\n"),
+          ownership: "managed",
+          executable: false,
+        },
+      ],
+    });
+    let first = true;
+    const racing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      createExclusive: async (file: string, content: string) => {
+        if (first) {
+          first = false;
+          await applyChanges(
+            fs,
+            other,
+            new Map([["README.md", { content: "# Repaired\n", executable: false }]]),
+            now,
+          );
+        }
+        return fs.createExclusive(file, content);
+      },
+    });
+    await expect(applyChanges(racing, plan, contents, now)).rejects.toThrow(
+      "nothing was changed: README.md changed since the plan was made",
+    );
+    expect(read("README.md").toString()).toBe("# Repaired\n");
+    expect(read("liftoff.yaml").toString()).toBe("name: demo\n");
+    expect(existsSync(path.join(root, ".liftoff", "change-journal.json"))).toBe(false);
+    expect(leftovers()).toEqual([]);
+  });
+
+  it("leaves nothing beside the project when the journal cannot be written", async () => {
+    const { plan, contents } = project();
+    const failing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      createExclusive: async () => {
+        throw new Error("ENOSPC: no space left on device");
+      },
+    });
+    await expect(applyChanges(failing, plan, contents, now)).rejects.toThrow("ENOSPC");
+    expect(leftovers()).toEqual([]);
+  });
+
+  it("is reported by validate when an adoption stopped before liftoff.yaml", async () => {
+    write("app.py", "print('hi')\n");
+    const plan = sealChangePlan({
+      schema: PLAN_SCHEMA,
+      operation: "adopt",
+      liftoff: "1.0.0",
+      target: root,
+      config: { name: "demo" },
+      effects: ["modify-files"],
+      changes: ["AGENTS.md", "liftoff.yaml"].map((file) => ({
+        path: file,
+        before: null,
+        after: sha256Hex(file),
+        ownership: "managed" as const,
+        executable: false,
+      })),
+    });
+    const contents = new Map(
+      ["AGENTS.md", "liftoff.yaml"].map((file) => [file, { content: file, executable: false }]),
+    );
+    const { port } = recording({ failOnMove: 2 });
+    await expect(applyChanges(port, plan, contents, now)).rejects.toThrow("the machine stopped");
+    const result = await validateProject(fs, root);
+    expect(result.findings.map((finding) => finding.code)).toEqual([
+      "interrupted-change",
+      "not-a-liftoff-project",
+    ]);
   });
 });
 

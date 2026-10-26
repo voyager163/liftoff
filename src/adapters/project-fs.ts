@@ -71,6 +71,12 @@ export class LocalProjectFs implements ProjectFsPort {
     await copyFile(from, to, constants.COPYFILE_EXCL);
   }
 
+  async directoryIdentity(target: string): Promise<string | undefined> {
+    const seen = await inspect(NODE_CALLS, target);
+    if (typeof seen === "string" || !seen.isDirectory()) return undefined;
+    return `${seen.dev}:${seen.ino}`;
+  }
+
   async readText(file: string): Promise<string | undefined> {
     try {
       return await readFile(file, "utf8");

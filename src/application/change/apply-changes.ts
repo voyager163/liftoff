@@ -6,8 +6,11 @@ import {
   JournalError,
   journalFor,
   parseJournal,
+  parseStagingMarker,
   recoverySteps,
+  STAGING_MARKER,
   serializeJournal,
+  stagingMarker,
 } from "../../domain/change/journal.ts";
 import {
   CHANGE_JOURNAL_FILE,
@@ -52,13 +55,16 @@ export interface NewContent {
 /**
  * Makes a planned change to a project, file by file, never overwriting a
  * file that changed since the plan was made. `contents` holds each new
- * file's content, which must hash to what the plan says. Each file is
- * checked, its original kept byte for byte beside the project, and the
- * change recorded in a journal before the first file is replaced; each
- * file is checked again just before it is replaced in one step. If the
- * change stops part way, the journal stays so recoverChanges can finish or
- * undo it. A change across files is not atomic, and Liftoff does not claim
- * it is.
+ * file's content, which must hash to what the plan says.
+ *
+ * The new files are staged beside the project with a marker binding them
+ * to this project and plan, and the journal is created before anything is
+ * checked: it is the lock, so a change that finished meanwhile is seen.
+ * Every file must then be as planned, or nothing changes. Each file is
+ * checked again, its original kept byte for byte, and replaced in one
+ * step. If the change stops part way, the journal stays so recoverChanges
+ * can finish or undo it. A change across files is not atomic, and Liftoff
+ * does not claim it is.
  */
 export async function applyChanges(
   fs: ProjectFsPort,
@@ -68,11 +74,43 @@ export async function applyChanges(
 ): Promise<{ readonly changed: number }> {
   checkContents(plan, contents);
   const root = plan.target;
-  if ((await fs.entry(path.join(root, ...CHANGE_JOURNAL_FILE.split("/")))).kind !== "missing") {
+  const journalPath = path.join(root, ...CHANGE_JOURNAL_FILE.split("/"));
+  if ((await fs.entry(journalPath)).kind !== "missing") {
     throw new ChangeError(
       `a change to this project stopped part way (see ${CHANGE_JOURNAL_FILE}); finish or undo it before making another`,
     );
   }
+  const project = await fs.directoryIdentity(root);
+  if (project === undefined) throw new ChangeError(`${root} is not a directory Liftoff can change`);
+
+  const staging = await fs.createStaging(root);
+  let locked = false;
+  try {
+    for (const change of plan.changes) {
+      const planned = contents.get(change.path);
+      if (planned === undefined) continue;
+      await fs.writeFile(
+        path.join(staging, "after", ...change.path.split("/")),
+        planned.content,
+        planned.executable,
+      );
+    }
+    await fs.writeFile(
+      path.join(staging, STAGING_MARKER),
+      `${JSON.stringify(stagingMarker(plan.hash, project))}\n`,
+      false,
+    );
+    const journal = journalFor(plan, path.basename(staging), now());
+    locked = await fs.createExclusive(journalPath, serializeJournal(journal));
+  } finally {
+    if (!locked) await fs.remove(staging);
+  }
+  if (!locked) {
+    throw new ChangeError(
+      "another change to this project began at the same time; nothing was changed",
+    );
+  }
+
   const problems: string[] = [];
   for (const change of plan.changes) {
     const current = await fileNow(fs, root, change.path);
@@ -80,54 +118,24 @@ export async function applyChanges(
       problems.push(describe(change.path, current, change.before));
     }
   }
-  if (problems.length > 0) throw new ChangeConflictError(problems);
-
-  const staging = await fs.createStaging(root);
-  try {
-    for (const change of plan.changes) {
-      const relative = change.path.split("/");
-      const planned = contents.get(change.path);
-      if (planned !== undefined) {
-        await fs.writeFile(
-          path.join(staging, "after", ...relative),
-          planned.content,
-          planned.executable,
-        );
-      }
-      if (change.before !== null) {
-        const kept = `before/${change.path}`;
-        await fs.copyFile(path.join(root, ...relative), path.join(staging, ...kept.split("/")));
-        // The copy must be exactly what was checked, or the original changed meanwhile.
-        if (!fileMatches(await fileNow(fs, staging, kept), change.before)) {
-          throw new ChangeConflictError([`${change.path} changed while it was being kept`]);
-        }
-      }
-    }
-  } catch (error) {
+  if (problems.length > 0) {
+    await fs.remove(journalPath);
     await fs.remove(staging);
-    throw error;
-  }
-  const journal = journalFor(plan, path.basename(staging), now());
-  const journalPath = path.join(root, ...CHANGE_JOURNAL_FILE.split("/"));
-  if (!(await fs.createExclusive(journalPath, serializeJournal(journal)))) {
-    await fs.remove(staging);
-    throw new ChangeError(
-      "another change to this project began at the same time; nothing was changed",
-    );
+    throw new ChangeConflictError(problems);
   }
 
   for (const change of plan.changes) {
-    const target = path.join(root, ...change.path.split("/"));
     if (!fileMatches(await fileNow(fs, root, change.path), change.before)) {
       throw new ChangeError(
         `${change.path} changed while the change was being made, so it and the files after it were left alone; finish or undo the change with ${CHANGE_COMMANDS[plan.operation]} --recover`,
       );
     }
-    if (change.after === null) {
-      await fs.moveFile(target, path.join(staging, "removed", ...change.path.split("/")));
-    } else {
-      await fs.moveFile(path.join(staging, "after", ...change.path.split("/")), target);
+    if (!(await keep(fs, root, staging, change))) {
+      throw new ChangeError(
+        `${change.path} changed while it was being kept, so it and the files after it were left alone; finish or undo the change with ${CHANGE_COMMANDS[plan.operation]} --recover`,
+      );
     }
+    await put(fs, root, staging, change.path, change.after === null ? "removed" : "after");
   }
   await fs.remove(journalPath);
   await fs.remove(staging);
@@ -145,11 +153,15 @@ export interface RecoveryResult {
 }
 
 /**
- * Finishes or undoes a change that stopped part way. Each file's step comes
- * from what is there now: one already as wanted is left alone, one still as
- * the change found it (finishing) or as the change left it (undoing) is
- * replaced, and any other is a file something else changed, which is never
- * overwritten. While any such file remains, the journal stays.
+ * Finishes or undoes a change that stopped part way, and can be run again
+ * either way until it completes. The staging directory must be a real
+ * directory whose marker names this project, not a copy of it, and this
+ * plan. Each file's step comes from what is there now: one already as
+ * wanted is left alone, one still as the change found it (finishing) or as
+ * the change left it (undoing) is replaced, and any other is a file
+ * something else changed, which is never overwritten. While any such file
+ * remains, the journal stays. The kept files are copied into place, never
+ * used up, so finishing and undoing can follow each other.
  */
 export async function recoverChanges(
   fs: ProjectFsPort,
@@ -159,6 +171,7 @@ export async function recoverChanges(
   const journal = await readJournal(fs, root);
   if (journal === undefined) throw new ChangeError("no change to this project stopped part way");
   const staging = path.join(path.dirname(root), journal.staging);
+  await checkStaging(fs, root, staging, journal.plan);
   const current = new Map<string, FileNow>();
   for (const change of journal.changes) {
     current.set(change.path, await fileNow(fs, root, change.path));
@@ -173,27 +186,29 @@ export async function recoverChanges(
       continue;
     }
     const from = mode === "finish" ? change.before : change.after;
-    const relative = step.path.split("/");
-    const target = path.join(root, ...relative);
     // Checked again just before, as when the change was made.
     if (!fileMatches(await fileNow(fs, root, step.path), from)) {
       conflicts.push(step.path);
       continue;
     }
-    if (step.wanted === null) {
-      await fs.moveFile(
-        target,
-        path.join(staging, mode === "finish" ? "removed" : "discarded", ...relative),
-      );
-    } else {
-      const source = `${mode === "finish" ? "after" : "before"}/${step.path}`;
-      if (!fileMatches(await fileNow(fs, staging, source), step.wanted)) {
-        // What it should become is gone or altered, so it is left alone.
-        conflicts.push(step.path);
-        continue;
-      }
-      await fs.moveFile(path.join(staging, ...source.split("/")), target);
+    const source = step.wanted === null ? undefined : mode === "finish" ? "after" : "before";
+    if (
+      (source !== undefined &&
+        !fileMatches(await fileNow(fs, staging, `${source}/${step.path}`), step.wanted)) ||
+      (mode === "finish" && !(await keep(fs, root, staging, change)))
+    ) {
+      // What it should become is gone or altered, or its original could not
+      // be kept, so it is left alone.
+      conflicts.push(step.path);
+      continue;
     }
+    await put(
+      fs,
+      root,
+      staging,
+      step.path,
+      source ?? (mode === "finish" ? "removed" : "discarded"),
+    );
     changed.push(step.path);
   }
   const complete = conflicts.length === 0;
@@ -202,6 +217,79 @@ export async function recoverChanges(
     await fs.remove(staging);
   }
   return { operation: journal.operation, changed, conflicts, complete };
+}
+
+/**
+ * The staging directory a journal names must be a real directory beside
+ * the project whose marker names this project and plan.
+ */
+async function checkStaging(
+  fs: ProjectFsPort,
+  root: string,
+  staging: string,
+  plan: string,
+): Promise<void> {
+  const where = `${path.basename(staging)} beside the project`;
+  if ((await fs.directoryIdentity(staging)) === undefined) {
+    throw new ChangeError(
+      `the files this change kept, in ${where}, are missing or not a directory, so it cannot be recovered; restore the project from version control and delete ${CHANGE_JOURNAL_FILE}`,
+    );
+  }
+  const read = await fs.readWithin(staging, STAGING_MARKER, 4096);
+  const marker =
+    read.kind === "file" && read.text !== undefined ? parseStagingMarker(read.text) : undefined;
+  if (
+    marker === undefined ||
+    marker.plan !== plan ||
+    marker.project !== (await fs.directoryIdentity(root))
+  ) {
+    throw new ChangeError(
+      `${CHANGE_JOURNAL_FILE} belongs to another copy of this project or another change, so it is not recovered here; delete it if this copy was not being changed`,
+    );
+  }
+}
+
+/**
+ * Keeps a byte-for-byte copy of a file's original before it is replaced or
+ * removed, once; false if the original no longer matches the plan.
+ */
+async function keep(
+  fs: ProjectFsPort,
+  root: string,
+  staging: string,
+  change: { readonly path: string; readonly before: string | null },
+): Promise<boolean> {
+  if (change.before === null) return true;
+  const kept = `before/${change.path}`;
+  if (fileMatches(await fileNow(fs, staging, kept), change.before)) return true;
+  const copy = path.join(staging, ...kept.split("/"));
+  await fs.remove(copy);
+  await fs.copyFile(path.join(root, ...change.path.split("/")), copy);
+  return fileMatches(await fileNow(fs, staging, kept), change.before);
+}
+
+/**
+ * Puts a file in its place in one step. A new or original file is copied
+ * from staging first, so it stays there for recovery; "removed" and
+ * "discarded" move the project's file into staging instead.
+ */
+async function put(
+  fs: ProjectFsPort,
+  root: string,
+  staging: string,
+  relative: string,
+  source: "after" | "before" | "removed" | "discarded",
+): Promise<void> {
+  const parts = relative.split("/");
+  const target = path.join(root, ...parts);
+  if (source === "removed" || source === "discarded") {
+    await fs.moveFile(target, path.join(staging, source, ...parts));
+    return;
+  }
+  const placing = path.join(staging, "placing", ...parts);
+  await fs.remove(placing);
+  await fs.copyFile(path.join(staging, source, ...parts), placing);
+  await fs.moveFile(placing, target);
 }
 
 /** The journal of a change that stopped part way, if there is one. */

@@ -85,6 +85,36 @@ export function parseJournal(text: string): ChangeJournal {
   return parsed.data;
 }
 
+/**
+ * The file in a staging directory that says which project and plan it
+ * belongs to, so a journal copied with its project, or edited, cannot send
+ * recovery to another project's staging.
+ */
+export const STAGING_MARKER = "change.json";
+
+const markerSchema = z.strictObject({
+  schema: z.literal("liftoff.change-staging/v1"),
+  plan: sha256,
+  /** The project directory's identity, which a copy of the project does not share. */
+  project: z.string().check(z.minLength(1)),
+});
+
+export type StagingMarker = z.output<typeof markerSchema>;
+
+export function stagingMarker(plan: string, project: string): StagingMarker {
+  return { schema: "liftoff.change-staging/v1", plan, project };
+}
+
+/** The marker's content, or undefined when it is not one. */
+export function parseStagingMarker(text: string): StagingMarker | undefined {
+  try {
+    const parsed = z.safeParse(markerSchema, JSON.parse(text));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** What is at a changed path now: no file, a regular file with this content, or something else. */
 export type FileNow =
   | { readonly kind: "absent" }

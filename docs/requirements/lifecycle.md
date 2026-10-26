@@ -85,17 +85,23 @@ changes:
 
 Its only effect is `modify-files`. It is sealed like an init plan, so an
 edited plan is refused, and each kind of plan is refused where the other is
-expected. A path outside the project, inside `.git`, named twice (ignoring
-case, as macOS and Windows do) or not really changing makes the plan
-invalid.
+expected. These make the plan invalid:
+
+- a path outside the project, or inside `.git`;
+- a name Windows would read as another file: a trailing dot or space, a
+  `:`, a device name such as `nul`, or an 8.3 short name such as `GIT~1`;
+- a path named twice, ignoring case as macOS and Windows do;
+- a change that changes nothing.
 
 Verification: test
 
 ## CHANGE-002 A file changed since the plan is never overwritten
 
-Before anything changes, every file must still be exactly as the plan says:
-the same content, a regular file and not a link, or still absent. If any is
-not, nothing changes and each such file is named. Each new file's content
+Before anything changes, and once no other change can start, every file must
+still be exactly as the plan says: the same content, a regular file and not
+a link, or still absent. If any is not, nothing changes and each such file
+is named. So a change that finished while this one was being prepared is
+never overwritten. Each new file's content
 must hash to what the plan says. Just before each file is replaced it is
 checked again; if it changed meanwhile, it and the files after it are left
 alone and the change can be recovered (CHANGE-003).
@@ -104,9 +110,11 @@ Verification: test
 
 ## CHANGE-003 A change that stops part way can be finished or undone
 
-Before the first file changes, Liftoff keeps a byte-for-byte copy of every
-file the change replaces or removes, beside the project, and writes a
-journal at `.liftoff/change-journal.json`. Only one change runs at a time.
+Liftoff writes a journal at `.liftoff/change-journal.json` before checking
+any file, so only one change runs at a time. Before each file is replaced
+or removed, it keeps a byte-for-byte copy of it beside the project, with a
+marker naming this project and plan. Generated projects ignore the journal
+in Git.
 If a change stops part way, the journal stays and `liftoff validate` reports
 it. Recovery then finishes or undoes it, deciding each file from what is
 there now:
@@ -116,6 +124,11 @@ there now:
   (undoing), is replaced;
 - any other file was changed by something else and is never overwritten. It
   is named, and the journal stays until it is resolved.
+
+Finishing and undoing can follow each other until one completes, because
+the kept copies are copied into place, never used up. Recovery refuses a
+journal whose kept copies are missing, are a link, or belong to another
+copy of the project, such as one duplicated after the change stopped.
 
 Verification: test
 

@@ -13,3 +13,7 @@
 
 # Local coding-agent settings
 .claude/settings.local.json
+
+# What Liftoff keeps only while one of its commands runs
+.liftoff/governance.lock
+.liftoff/change-journal.json

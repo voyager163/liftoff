@@ -326,6 +326,7 @@ describe("INIT-005 what an initializer writes is checked before anything is publ
       hashWithin: (d, r, m) => fs.hashWithin(d, r, m),
       moveFile: (f, t) => fs.moveFile(f, t),
       copyFile: (f, t) => fs.copyFile(f, t),
+      directoryIdentity: (p) => fs.directoryIdentity(p),
       readText: (p) => fs.readText(p),
       createStaging: (p) => fs.createStaging(p),
       writeFile: (p, c, x) => fs.writeFile(p, c, x),
