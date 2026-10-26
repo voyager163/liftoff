@@ -71,3 +71,61 @@ swapped for a FIFO. These are noted by their presence alone:
 - credential records.
 
 Verification: test
+
+## CHANGE-001 A change plan names every file it changes, before and after
+
+A plan to change an existing project (the operations `update`, `repair`,
+`adopt`, `workflow-set`, `profile-set` and `agents-add`) lists every file it
+changes:
+
+- its repository-relative path;
+- the sha256 of the file as it must be now, or that it must not exist;
+- the sha256 it will have, or that it is removed;
+- for a file that is kept, who owns it and whether it is executable.
+
+Its only effect is `modify-files`. It is sealed like an init plan, so an
+edited plan is refused, and each kind of plan is refused where the other is
+expected. A path outside the project, inside `.git`, named twice (ignoring
+case, as macOS and Windows do) or not really changing makes the plan
+invalid.
+
+Verification: test
+
+## CHANGE-002 A file changed since the plan is never overwritten
+
+Before anything changes, every file must still be exactly as the plan says:
+the same content, a regular file and not a link, or still absent. If any is
+not, nothing changes and each such file is named. Each new file's content
+must hash to what the plan says. Just before each file is replaced it is
+checked again; if it changed meanwhile, it and the files after it are left
+alone and the change can be recovered (CHANGE-003).
+
+Verification: test
+
+## CHANGE-003 A change that stops part way can be finished or undone
+
+Before the first file changes, Liftoff keeps a byte-for-byte copy of every
+file the change replaces or removes, beside the project, and writes a
+journal at `.liftoff/change-journal.json`. Only one change runs at a time.
+If a change stops part way, the journal stays and `liftoff validate` reports
+it. Recovery then finishes or undoes it, deciding each file from what is
+there now:
+
+- a file already as wanted is left alone;
+- a file as the change found it (finishing), or as the change left it
+  (undoing), is replaced;
+- any other file was changed by something else and is never overwritten. It
+  is named, and the journal stays until it is resolved.
+
+Verification: test
+
+## CHANGE-004 Files change one at a time, the manifest last
+
+Each file is replaced in one step, keeping the executable bit planned. The
+project's files change first, then `liftoff.yaml`, then
+`.liftoff/manifest.json`, so the manifest never lists files that were not
+written. Once every file has changed, the journal and the kept copies are
+removed. A change across several files is not atomic; the journal is how an
+interrupted one is recovered.
+
+Verification: test

@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   appendFileSync,
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   renameSync,
@@ -13,7 +15,12 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LocalProjectFs, type ReadCalls, readWithin } from "../../src/adapters/project-fs.ts";
+import {
+  hashWithin,
+  LocalProjectFs,
+  type ReadCalls,
+  readWithin,
+} from "../../src/adapters/project-fs.ts";
 
 const fs = new LocalProjectFs();
 let work: string;
@@ -185,5 +192,36 @@ describe("LEGACY-003 reading a record follows no link and stays within its limit
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
+  });
+});
+
+describe("CHANGE-002 hashing a file follows no link and sees it change", () => {
+  it("hashes a whole regular file and says whether it is executable", async () => {
+    write("big.bin", "x".repeat(200 * 1024));
+    write("run.sh", "#!/bin/sh\n");
+    if (process.platform !== "win32") chmodSync(path.join(work, "run.sh"), 0o755);
+    expect(await fs.hashWithin(work, "big.bin", 1024 * 1024)).toEqual({
+      kind: "file",
+      size: 200 * 1024,
+      sha256: createHash("sha256")
+        .update("x".repeat(200 * 1024))
+        .digest("hex"),
+      executable: false,
+    });
+    expect(await fs.hashWithin(work, "run.sh", 100)).toMatchObject({
+      executable: process.platform !== "win32",
+    });
+    expect(await fs.hashWithin(work, "big.bin", 10)).toEqual({ kind: "file", size: 200 * 1024 });
+    expect(await fs.hashWithin(work, "missing", 10)).toEqual({ kind: "missing" });
+  });
+
+  it("does not hash a file that changed while it was being hashed", async () => {
+    write("record.json", "{}");
+    const file = path.join(work, "record.json");
+    const grown = calls({ afterStat: () => appendFileSync(file, "x") });
+    expect(await hashWithin(work, "record.json", 100, grown.calls)).toEqual({ kind: "other" });
+    const runaway = calls({ afterStat: () => appendFileSync(file, "x".repeat(70 * 1024)) });
+    expect(await hashWithin(work, "record.json", 100, runaway.calls)).toEqual({ kind: "other" });
+    expect(runaway.read.bytes).toBeLessThanOrEqual(101);
   });
 });

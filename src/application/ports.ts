@@ -48,6 +48,21 @@ export interface PathEntry {
  * limit. `via` names a directory on the way to it that is a link, a file or
  * closed to this user, or that changed while the file was being opened.
  */
+/**
+ * A file hashed with hashWithin: its sha256 and whether any execute bit is
+ * set (never on Windows), both left out when it is over the limit. The other
+ * kinds are as for RegularFileRead.
+ */
+export type FileHash =
+  | { readonly kind: "missing" | "directory" }
+  | { readonly kind: "other" | "inaccessible"; readonly via?: string }
+  | {
+      readonly kind: "file";
+      readonly size: number;
+      readonly sha256?: string;
+      readonly executable?: boolean;
+    };
+
 export type RegularFileRead =
   | { readonly kind: "missing" | "directory" }
   | { readonly kind: "other" | "inaccessible"; readonly via?: string }
@@ -72,6 +87,15 @@ export interface ProjectFsPort {
    * the way changed while the file was being opened.
    */
   readWithin(directory: string, relative: string, maxBytes: number): Promise<RegularFileRead>;
+  /**
+   * Hashes the whole regular file at `relative` under `directory`, as
+   * readWithin reads it; a file over `maxBytes` is not read.
+   */
+  hashWithin(directory: string, relative: string, maxBytes: number): Promise<FileHash>;
+  /** Moves a file, replacing `to` in one step if it exists, on the same volume. */
+  moveFile(from: string, to: string): Promise<void>;
+  /** Copies a file byte for byte; fails if `to` exists. */
+  copyFile(from: string, to: string): Promise<void>;
   /** Text of a file, or undefined when it does not exist. */
   readText(path: string): Promise<string | undefined>;
   /** A new empty directory beside `target`, on the same volume, for staging. */

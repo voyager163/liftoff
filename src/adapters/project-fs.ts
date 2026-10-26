@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import type { BigIntStats } from "node:fs";
 import { constants } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import {
   chmod,
+  copyFile,
   lstat,
   mkdir,
   mkdtemp,
@@ -17,6 +19,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import type {
+  FileHash,
   PathEntry,
   PathState,
   ProjectFsPort,
@@ -52,6 +55,20 @@ export class LocalProjectFs implements ProjectFsPort {
 
   readWithin(directory: string, relative: string, maxBytes: number): Promise<RegularFileRead> {
     return readWithin(directory, relative, maxBytes);
+  }
+
+  hashWithin(directory: string, relative: string, maxBytes: number): Promise<FileHash> {
+    return hashWithin(directory, relative, maxBytes);
+  }
+
+  async moveFile(from: string, to: string): Promise<void> {
+    await mkdir(path.dirname(to), { recursive: true });
+    await rename(from, to);
+  }
+
+  async copyFile(from: string, to: string): Promise<void> {
+    await mkdir(path.dirname(to), { recursive: true });
+    await copyFile(from, to, constants.COPYFILE_EXCL);
   }
 
   async readText(file: string): Promise<string | undefined> {
@@ -149,15 +166,8 @@ const NODE_CALLS: ReadCalls = {
 
 /**
  * Reads a regular file under `directory` without following a link, however
- * the files change meanwhile. Each directory on the way and the file itself
- * are inspected first. The file is opened without following a link and
- * without blocking where the system allows (a FIFO swapped in would
- * otherwise wait for a writer), and must be the file inspected. Every
- * directory on the way must still be the one inspected, or the open may
- * have gone through a link swapped in. Only then is it read, no more than
- * `maxBytes` of it, and its text is dropped if it changed while being read.
- * Node has no openat, so a directory swapped for a link and back between
- * the two inspections is the one case this cannot see.
+ * the files change meanwhile (see openWithin), no more than `maxBytes` of
+ * it. Its text is dropped if it changed while being read.
  */
 export async function readWithin(
   directory: string,
@@ -165,6 +175,92 @@ export async function readWithin(
   maxBytes: number,
   calls: ReadCalls = NODE_CALLS,
 ): Promise<RegularFileRead> {
+  const opened = await openWithin(directory, relative, calls, maxBytes);
+  if (opened.kind !== "opened") return opened;
+  const { handle } = opened;
+  try {
+    const buffer = Buffer.alloc(maxBytes);
+    let length = 0;
+    while (length < maxBytes) {
+      const { bytesRead } = await handle.read(buffer, length, maxBytes - length, length);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+    }
+    const after = await handle.stat({ bigint: true });
+    if (after.size !== BigInt(length)) {
+      return after.size > BigInt(maxBytes)
+        ? { kind: "file", size: Number(after.size) }
+        : { kind: "other" };
+    }
+    return { kind: "file", size: length, text: buffer.toString("utf8", 0, length) };
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Hashes a whole regular file under `directory` without following a link,
+ * however the files change meanwhile (see openWithin), unless it is over
+ * `maxBytes`. It is "other" if the file changed while it was being hashed.
+ */
+export async function hashWithin(
+  directory: string,
+  relative: string,
+  maxBytes: number,
+  calls: ReadCalls = NODE_CALLS,
+): Promise<FileHash> {
+  const opened = await openWithin(directory, relative, calls, maxBytes);
+  if (opened.kind !== "opened") return opened;
+  const { handle, stats } = opened;
+  try {
+    const hash = createHash("sha256");
+    const buffer = Buffer.alloc(Math.min(64 * 1024, maxBytes + 1));
+    let position = 0;
+    // A file that grows while it is hashed is read no further than the limit.
+    while (position <= maxBytes) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      hash.update(buffer.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+    const after = await handle.stat({ bigint: true });
+    if (position > maxBytes || after.size !== BigInt(position) || after.mtimeNs !== stats.mtimeNs) {
+      return { kind: "other" };
+    }
+    return {
+      kind: "file",
+      sha256: hash.digest("hex"),
+      size: position,
+      executable: process.platform !== "win32" && (Number(stats.mode) & 0o111) !== 0,
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Opens a regular file under `directory` without following a link, however
+ * the files change meanwhile, or says what is there instead. Each directory
+ * on the way and the file itself are inspected first. The file is opened
+ * without following a link and without blocking where the system allows (a
+ * FIFO swapped in would otherwise wait for a writer), and must be the file
+ * inspected. Every directory on the way must still be the one inspected, or
+ * the open may have gone through a link swapped in. A file over `maxBytes`
+ * is not opened. Node has no openat, so a directory swapped for
+ * a link and back between the two inspections is the one case this cannot
+ * see.
+ */
+async function openWithin(
+  directory: string,
+  relative: string,
+  calls: ReadCalls,
+  maxBytes: number,
+): Promise<
+  | { readonly kind: "missing" | "directory" }
+  | { readonly kind: "other" | "inaccessible"; readonly via?: string }
+  | { readonly kind: "file"; readonly size: number }
+  | { readonly kind: "opened"; readonly handle: FileHandle; readonly stats: BigIntStats }
+> {
   const parts = relative.split("/");
   // A path that cannot be inspected is in a directory this user may not
   // search: that directory is the one reported.
@@ -184,7 +280,8 @@ export async function readWithin(
   if (inspected === "missing") return { kind: "missing" };
   if (inspected === "inaccessible") return { kind: "inaccessible", via: container(parts.length) };
   if (!inspected.isFile()) return { kind: inspected.isDirectory() ? "directory" : "other" };
-  if (inspected.size > BigInt(maxBytes)) return { kind: "file", size: Number(inspected.size) };
+  const tooLarge = (size: bigint) => size > BigInt(maxBytes);
+  if (tooLarge(inspected.size)) return { kind: "file", size: Number(inspected.size) };
   let handle: FileHandle;
   try {
     // Windows has neither flag; there the checks below catch a link.
@@ -202,33 +299,27 @@ export async function readWithin(
     // a regular file to read.
     return { kind: "other" };
   }
+  const refuse = async <T>(result: T): Promise<T> => {
+    await handle.close();
+    return result;
+  };
   try {
     const opened = await handle.stat({ bigint: true });
-    if (!opened.isFile() || !sameFile(opened, inspected)) return { kind: "other" };
+    if (!opened.isFile() || !sameFile(opened, inspected)) return refuse({ kind: "other" });
     for (const parent of parents) {
       const now = await inspect(calls, parent.path);
-      if (now === "inaccessible") return { kind: "inaccessible", via: container(parent.depth) };
+      if (now === "inaccessible") {
+        return refuse({ kind: "inaccessible", via: container(parent.depth) });
+      }
       if (now === "missing" || !now.isDirectory() || !sameFile(now, parent.stats)) {
-        return { kind: "other", via: parts.slice(0, parent.depth).join("/") };
+        return refuse({ kind: "other", via: parts.slice(0, parent.depth).join("/") });
       }
     }
-    if (opened.size > BigInt(maxBytes)) return { kind: "file", size: Number(opened.size) };
-    const buffer = Buffer.alloc(maxBytes);
-    let length = 0;
-    while (length < maxBytes) {
-      const { bytesRead } = await handle.read(buffer, length, maxBytes - length, length);
-      if (bytesRead === 0) break;
-      length += bytesRead;
-    }
-    const after = await handle.stat({ bigint: true });
-    if (after.size !== BigInt(length)) {
-      return after.size > BigInt(maxBytes)
-        ? { kind: "file", size: Number(after.size) }
-        : { kind: "other" };
-    }
-    return { kind: "file", size: length, text: buffer.toString("utf8", 0, length) };
-  } finally {
+    if (tooLarge(opened.size)) return refuse({ kind: "file", size: Number(opened.size) });
+    return { kind: "opened", handle, stats: opened };
+  } catch (error) {
     await handle.close();
+    throw error;
   }
 }
 
