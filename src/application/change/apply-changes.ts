@@ -271,10 +271,11 @@ export async function readJournal(
 }
 
 /**
- * Runs `body` holding the change lock. A lock left by a process on this
- * machine that is no longer running is taken over: it is moved aside in one
- * step, which only one taker can do, and the lock is created afresh. A lock
- * held by a running process, or from another machine, is never taken.
+ * Runs `body` holding the change lock. A lock that is already there is
+ * never taken over, even from a process that is no longer running, since
+ * no step of taking it over could keep another process out meanwhile: it
+ * is reported, saying whether its process is still running, for the person
+ * to clear, as Git does with its own locks.
  */
 async function withChangeLock<T>(
   ports: ChangePorts,
@@ -287,16 +288,21 @@ async function withChangeLock<T>(
   await checkRecordsDirectory(fs, root, true);
   if (!(await fs.createExclusive(lock, mine))) {
     const read = await fs.readWithin(root, CHANGE_LOCK_FILE, 4096);
-    const text = read.kind === "file" ? read.text : undefined;
-    const holder = parseLock(text);
-    const running =
-      holder === undefined || holder.host !== processes.host || processes.isRunning(holder.pid);
-    if (running || text === undefined || !(await takeOver(fs, root, processes.pid, text, mine))) {
-      const who = holder
-        ? `process ${holder.pid} on ${holder.host} has been changing this project since ${holder.started}`
-        : "another liftoff command is changing this project";
-      throw new ChangeError(`${who}; if it is not running, delete ${CHANGE_LOCK_FILE}`);
+    const holder = parseLock(read.kind === "file" ? read.text : undefined);
+    if (holder === undefined) {
+      throw new ChangeError(
+        `another liftoff command is changing this project; if none is, delete ${CHANGE_LOCK_FILE}`,
+      );
     }
+    const process = `process ${holder.pid} on ${holder.host}, which began at ${holder.started},`;
+    if (holder.host === processes.host && !processes.isRunning(holder.pid)) {
+      throw new ChangeError(
+        `${process} stopped while changing this project; delete ${CHANGE_LOCK_FILE}, then try again`,
+      );
+    }
+    throw new ChangeError(
+      `${process} is changing this project; wait for it, or if it is not running, delete ${CHANGE_LOCK_FILE}`,
+    );
   }
   try {
     // It may have been swapped for a link while the lock was being made.
@@ -322,34 +328,6 @@ async function checkRecordsDirectory(
   throw new ChangeError(
     ".liftoff is a link, or not a directory; Liftoff keeps a change's lock and journal only in a real .liftoff directory in the project",
   );
-}
-
-/** Moves a stale lock aside and creates a new one, or false if another process got there first. */
-async function takeOver(
-  fs: ProjectFsPort,
-  root: string,
-  pid: number,
-  stale: string,
-  mine: string,
-): Promise<boolean> {
-  const lock = path.join(root, ...CHANGE_LOCK_FILE.split("/"));
-  const asideName = `${CHANGE_LOCK_FILE}.taken-by-${pid}`;
-  const aside = path.join(root, ...asideName.split("/"));
-  try {
-    await fs.moveFile(lock, aside);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    // Another process moved it first, and holds the lock now or soon.
-    return fs.createExclusive(lock, mine);
-  }
-  const moved = await fs.readWithin(root, asideName, 4096);
-  if (moved.kind !== "file" || moved.text !== stale) {
-    // A fresh lock was taken in between: it goes back.
-    await fs.moveFile(aside, lock);
-    return false;
-  }
-  await fs.remove(aside);
-  return fs.createExclusive(lock, mine);
 }
 
 function parseLock(
@@ -420,16 +398,21 @@ async function changeFile(
   const target = path.join(root, ...parts);
   const placing = path.join(staging, "placing", ...parts);
   const replacing = source === "after" || source === "before";
+  const destination = replacing ? target : path.join(staging, source, ...parts);
   if (replacing) {
     await fs.remove(placing);
     await fs.copyFile(path.join(staging, source, ...parts), placing);
   }
+  await fs.makeDirectory(path.dirname(destination));
+  // The last check, of the file and every directory on the way to it; only
+  // the rename comes after. Node has no rename relative to an open
+  // directory, so a directory swapped for a link in the instant between the
+  // two is the one case this cannot see.
   if (!fileMatches(await fileNow(fs, root, change.path), from)) {
     if (replacing) await fs.remove(placing);
     return false;
   }
-  if (replacing) await fs.moveFile(placing, target);
-  else await fs.moveFile(target, path.join(staging, source, ...parts));
+  await fs.moveFile(replacing ? placing : target, destination);
   return true;
 }
 
@@ -448,8 +431,9 @@ async function keep(
   if (fileMatches(await fileNow(fs, staging, kept), change.before)) return true;
   const copy = path.join(staging, ...kept.split("/"));
   await fs.remove(copy);
-  await fs.copyFile(path.join(root, ...change.path.split("/")), copy);
-  return fileMatches(await fileNow(fs, staging, kept), change.before);
+  // Read as every file is: no link followed, never waiting, never past the limit.
+  const copied = await fs.copyWithin(root, change.path, MAX_CHANGED_BYTES, copy);
+  return copied.kind === "file" && copied.sha256 === change.before;
 }
 
 /**

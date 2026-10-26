@@ -18,4 +18,3 @@
 .liftoff/governance.lock
 .liftoff/change-journal.json
 .liftoff/change.lock
-.liftoff/change.lock.taken-by-*

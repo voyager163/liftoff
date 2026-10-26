@@ -104,10 +104,15 @@ is named. So a change that finished while this one was being prepared is
 never overwritten. Each new file's content must hash to what the plan says
 and be no larger than 64 MiB, and a plan whose journal could not be read
 back is refused, both before anything changes. For each file, its original
-is kept and its replacement prepared first; it is then checked again just
-before it is replaced, with nothing slow in between. If it changed
-meanwhile, it and the files after it are left alone, and the change can be
-recovered (CHANGE-003).
+is copied as every file is read (following no link, never waiting on a
+FIFO, never past the limit) and its replacement prepared, with any
+directory it needs. The file and each directory on the way are then checked
+again, and only the rename comes after. A file replaced while it was being
+read, as an editor's save does, counts as changed. If it changed meanwhile,
+it and the files after it are left alone, and the change can be recovered
+(CHANGE-003). Node has no rename relative to an open directory, so a
+directory swapped for a link in the instant between that last check and the
+rename is the one case Liftoff cannot see.
 
 Verification: test
 
@@ -115,9 +120,9 @@ Verification: test
 
 A change, and any recovery, holds a lock at `.liftoff/change.lock` while it
 runs, so only one runs at a time and recovery never runs beside a change
-still being made. A lock left by a process on the same machine that is no
-longer running is taken over; any other lock is reported with how to clear
-it. Liftoff writes a journal at `.liftoff/change-journal.json` before
+still being made. A lock is never taken over, since no step of taking it
+over could keep another process out meanwhile. It is reported, saying
+whether its process is still running, with how to clear it. Liftoff writes a journal at `.liftoff/change-journal.json` before
 checking any file. The lock and journal are kept only in a real `.liftoff`
 directory in the project, never through a link to one elsewhere. Before each file is replaced
 or removed, it keeps a byte-for-byte copy of it beside the project, in a

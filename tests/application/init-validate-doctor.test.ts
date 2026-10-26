@@ -99,27 +99,12 @@ describe("INIT-002 projects are created in one step or not at all", () => {
       { config, target: path.join(work, "demo"), liftoffVersion: "1.0.0" },
     );
     let writes = 0;
-    const failing: ProjectFsPort = {
-      ...fs,
-      state: (p) => fs.state(p),
-      entry: (p) => fs.entry(p),
-      readWithin: (d, r, m) => fs.readWithin(d, r, m),
-      hashWithin: (d, r, m) => fs.hashWithin(d, r, m),
-      moveFile: (f, t) => fs.moveFile(f, t),
-      copyFile: (f, t) => fs.copyFile(f, t),
-      directoryIdentity: (p) => fs.directoryIdentity(p),
-      readText: (p) => fs.readText(p),
-      createStaging: (p) => fs.createStaging(p),
-      publish: (s, t) => fs.publish(s, t),
-      remove: (p) => fs.remove(p),
-      replaceFile: (p, c) => fs.replaceFile(p, c),
-      createExclusive: (p, c) => fs.createExclusive(p, c),
-      listTree: (d) => fs.listTree(d),
-      writeFile: async (p, c, x) => {
+    const failing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      writeFile: async (p: string, c: string, x: boolean) => {
         if (++writes === 5) throw new Error("disk full");
         return fs.writeFile(p, c, x);
       },
-    };
+    });
     await expect(applyInit({ assets, fs: failing, initializer }, plan, "1.0.0")).rejects.toThrow(
       "disk full",
     );
@@ -153,27 +138,12 @@ describe("INIT-002 the working directory and cancellation", () => {
     );
     const controller = new AbortController();
     let writes = 0;
-    const interrupted: ProjectFsPort = {
-      ...fs,
-      state: (p) => fs.state(p),
-      entry: (p) => fs.entry(p),
-      readWithin: (d, r, m) => fs.readWithin(d, r, m),
-      hashWithin: (d, r, m) => fs.hashWithin(d, r, m),
-      moveFile: (f, t) => fs.moveFile(f, t),
-      copyFile: (f, t) => fs.copyFile(f, t),
-      directoryIdentity: (p) => fs.directoryIdentity(p),
-      readText: (p) => fs.readText(p),
-      createStaging: (p) => fs.createStaging(p),
-      publish: (s, t) => fs.publish(s, t),
-      remove: (p) => fs.remove(p),
-      replaceFile: (p, c) => fs.replaceFile(p, c),
-      createExclusive: (p, c) => fs.createExclusive(p, c),
-      listTree: (d) => fs.listTree(d),
-      writeFile: async (p, c, x) => {
+    const interrupted: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      writeFile: async (p: string, c: string, x: boolean) => {
         if (++writes === 3) controller.abort();
         return fs.writeFile(p, c, x);
       },
-    };
+    });
     await expect(
       applyInit({ assets, fs: interrupted, initializer }, plan, "1.0.0", {
         signal: controller.signal,

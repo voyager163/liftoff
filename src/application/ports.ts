@@ -92,8 +92,20 @@ export interface ProjectFsPort {
    * readWithin reads it; a file over `maxBytes` is not read.
    */
   hashWithin(directory: string, relative: string, maxBytes: number): Promise<FileHash>;
-  /** Moves a file, replacing `to` in one step if it exists, on the same volume. */
+  /**
+   * Renames a file, replacing `to` in one step if it exists, on the same
+   * volume; `to`'s directory must exist. Nothing else happens first.
+   */
   moveFile(from: string, to: string): Promise<void>;
+  /** Creates a directory and any missing above it. */
+  makeDirectory(path: string): Promise<void>;
+  /**
+   * Copies the regular file at `relative` under `directory`, read as
+   * hashWithin reads it, to `to`, which must not exist, with its mode. It
+   * returns the hash of exactly what was copied; nothing is left at `to`
+   * unless the whole file was copied unchanged.
+   */
+  copyWithin(directory: string, relative: string, maxBytes: number, to: string): Promise<FileHash>;
   /** Copies a file byte for byte, with its mode; fails if `to` exists. */
   copyFile(from: string, to: string): Promise<void>;
   /**

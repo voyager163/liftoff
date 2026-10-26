@@ -3,10 +3,13 @@ import { createHash } from "node:crypto";
 import {
   appendFileSync,
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -16,6 +19,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  copyWithin,
   hashWithin,
   LocalProjectFs,
   type ReadCalls,
@@ -235,3 +239,63 @@ describe("CHANGE-002 hashing a file follows no link and sees it change", () => {
     expect(runaway.read.bytes).toBeLessThanOrEqual(101);
   });
 });
+
+describe("CHANGE-003 copying an original as it is read", () => {
+  it("copies a regular file with its mode, and its hash", async () => {
+    write("run.sh", "#!/bin/sh\n");
+    if (process.platform !== "win32") chmodSync(path.join(work, "run.sh"), 0o750);
+    const to = path.join(work, "kept", "run.sh");
+    expect(await fs.copyWithin(work, "run.sh", 100, to)).toEqual({
+      kind: "file",
+      size: 10,
+      sha256: createHash("sha256").update("#!/bin/sh\n").digest("hex"),
+      executable: process.platform !== "win32",
+    });
+    expect(readFileSync(to, "utf8")).toBe("#!/bin/sh\n");
+    if (process.platform !== "win32") expect(statSync(to).mode & 0o777).toBe(0o750);
+    await expect(fs.copyWithin(work, "run.sh", 100, to)).rejects.toThrow(/EEXIST/);
+  });
+
+  it("leaves nothing when the file is over the limit, grows past it, or is replaced", async () => {
+    write("record.json", "x".repeat(20));
+    const to = path.join(work, "kept.json");
+    expect(await fs.copyWithin(work, "record.json", 10, to)).toEqual({ kind: "file", size: 20 });
+    expect(existsSync(to)).toBe(false);
+    const file = path.join(work, "record.json");
+    const growing = calls({ afterStat: () => appendFileSync(file, "x".repeat(100)) });
+    expect(await copyWithin(work, "record.json", 50, to, growing.calls)).toEqual({
+      kind: "file",
+      size: 51,
+    });
+    expect(growing.read.bytes).toBeLessThanOrEqual(51);
+    expect(existsSync(to)).toBe(false);
+    writeFileSync(file, "{}");
+    const replacing = calls({ afterStat: () => replace(file, '{"edited":true}') });
+    expect(await copyWithin(work, "record.json", 100, to, replacing.calls)).toEqual({
+      kind: "other",
+    });
+    expect(existsSync(to)).toBe(false);
+  });
+
+  it("does not take a file replaced while it was hashed for the one it opened", async () => {
+    write("record.json", "{}");
+    const file = path.join(work, "record.json");
+    const replacing = calls({ afterStat: () => replace(file, '{"edited":true}') });
+    expect(await hashWithin(work, "record.json", 100, replacing.calls)).toEqual({ kind: "other" });
+    expect(
+      await readWithin(
+        work,
+        "record.json",
+        100,
+        calls({ afterStat: () => replace(file, "{}") }).calls,
+      ),
+    ).toEqual({ kind: "other" });
+  });
+});
+
+/** Replaces a file in one step, as an editor saving it does. */
+function replace(file: string, content: string) {
+  const temporary = `${file}.saving`;
+  writeFileSync(temporary, content);
+  renameSync(temporary, file);
+}

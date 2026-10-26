@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   cpSync,
@@ -183,14 +184,23 @@ describe("CHANGE-002 a file changed since the plan is never overwritten", () => 
   });
 
   it.each([
-    ["its original is kept", "/before/README.md"],
-    ["its replacement is prepared", "/placing/README.md"],
-  ])("never overwrites an edit made while %s", async (_when, copying) => {
+    ["its original is kept", "copyWithin"],
+    ["its replacement is prepared", "copyFile"],
+    ["the directory it goes in is made", "makeDirectory"],
+  ])("never overwrites an edit made while %s", async (_when, step) => {
     const { plan, contents } = project();
+    let edited = false;
     const editing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
-      copyFile: async (from: string, to: string) => {
-        await fs.copyFile(from, to);
-        if (to.split(path.sep).join("/").endsWith(copying)) write("README.md", "# Mine\n");
+      [step]: async (...args: unknown[]) => {
+        const done = await (fs[step as keyof ProjectFsPort] as (...a: unknown[]) => unknown).apply(
+          fs,
+          args,
+        );
+        if (!edited) {
+          edited = true;
+          write("README.md", "# Mine\n");
+        }
+        return done;
       },
     });
     await expect(applyChanges(ports(editing), plan, contents)).rejects.toThrow(
@@ -235,6 +245,66 @@ describe("CHANGE-002 a file changed since the plan is never overwritten", () => 
     ).rejects.toThrow("big.txt would be larger than 67108864 bytes");
     expect(leftovers()).toEqual([]);
     expect(existsSync(path.join(root, ".liftoff", "change.lock"))).toBe(false);
+  });
+
+  it("stops when a later original is swapped for a FIFO, without waiting on it", async () => {
+    const { plan, contents } = project();
+    // Windows has no FIFOs at a file path.
+    if (process.platform === "win32") return;
+    const { port } = recording({
+      afterMove: (count) => {
+        if (count === 1) {
+          rmSync(path.join(root, "data.bin"));
+          execFileSync("mkfifo", [path.join(root, "data.bin")]);
+        }
+      },
+    });
+    await expect(applyChanges(ports(port), plan, contents)).rejects.toThrow(
+      "data.bin changed while the change was being made",
+    );
+  }, 5_000);
+
+  it("stops when a directory on the way is swapped for a link before the last check", async () => {
+    write("docs/index.md", "# Docs\n");
+    const outside = mkdtempSync(path.join(tmpdir(), "liftoff-outside-"));
+    try {
+      const plan = sealChangePlan({
+        schema: PLAN_SCHEMA,
+        operation: "update",
+        liftoff: "1.0.0",
+        target: root,
+        config: { name: "demo" },
+        effects: ["modify-files"],
+        changes: [
+          {
+            path: "docs/guide.md",
+            before: null,
+            after: sha256Hex("# Guide\n"),
+            ownership: "managed",
+            executable: false,
+          },
+        ],
+      });
+      const swapping: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+        makeDirectory: async (target: string) => {
+          await fs.makeDirectory(target);
+          if (target === path.join(root, "docs")) {
+            rmSync(target, { recursive: true });
+            symlinkSync(outside, target, "junction");
+          }
+        },
+      });
+      await expect(
+        applyChanges(
+          ports(swapping),
+          plan,
+          new Map([["docs/guide.md", { content: "# Guide\n", executable: false }]]),
+        ),
+      ).rejects.toThrow("docs/guide.md changed while the change was being made");
+      expect(readdirSync(outside)).toEqual([]);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("stops before a file edited while the change was being made", async () => {
@@ -558,46 +628,34 @@ describe("CHANGE-003 a change and its recovery hold one lock", () => {
     });
     await applyChanges(ports(watching), plan, contents);
     expect(String(recovery)).toContain(
-      `process ${process.pid} on ${HOST} has been changing this project since`,
+      `process ${process.pid} on ${HOST}, which began at ${now()}, is changing this project`,
     );
     expect(read("README.md").toString()).toBe("# New\n");
     expect(existsSync(lockFile())).toBe(false);
   });
 
-  it("takes over a lock only from a process on this machine that is no longer running", async () => {
+  it("never takes over a lock, but says whether its process is still running", async () => {
     const { plan, contents } = project();
     holdLock(process.pid);
     await expect(applyChanges(ports(fs), plan, contents)).rejects.toThrow(
-      `process ${process.pid} on ${HOST} has been changing this project since earlier; if it is not running, delete .liftoff/change.lock`,
+      `process ${process.pid} on ${HOST}, which began at earlier, is changing this project; wait for it, or if it is not running, delete .liftoff/change.lock`,
     );
     holdLock(4_000_000, "another-host");
-    await expect(applyChanges(ports(fs), plan, contents)).rejects.toThrow("on another-host");
+    await expect(applyChanges(ports(fs), plan, contents)).rejects.toThrow(
+      "on another-host, which began at earlier, is changing this project",
+    );
     write(".liftoff/change.lock", "not a lock");
     await expect(applyChanges(ports(fs), plan, contents)).rejects.toThrow(
-      "another liftoff command is changing this project",
+      "another liftoff command is changing this project; if none is, delete .liftoff/change.lock",
     );
     holdLock(4_000_000);
-    expect(await applyChanges(ports(fs), plan, contents)).toEqual({ changed: 5 });
-    expect(existsSync(lockFile())).toBe(false);
-    expect(readdirSync(path.join(root, ".liftoff"))).toEqual(["manifest.json"]);
-  });
-
-  it("gives a lock back that another process took over first", async () => {
-    const { plan, contents } = project();
-    holdLock(4_000_000);
-    const fresh = JSON.stringify({ pid: process.pid, host: HOST, started: "just now" });
-    const racing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
-      moveFile: async (from: string, to: string) => {
-        // Another process took the stale lock over just before this one moved it.
-        if (from === lockFile()) writeFileSync(from, fresh);
-        return fs.moveFile(from, to);
-      },
-    });
-    await expect(applyChanges(ports(racing), plan, contents)).rejects.toThrow(
-      "if it is not running, delete .liftoff/change.lock",
+    await expect(recoverChanges(ports(fs), root, "undo")).rejects.toThrow(
+      "process 4000000 on test-host, which began at earlier, stopped while changing this project; delete .liftoff/change.lock, then try again",
     );
-    expect(readFileSync(lockFile(), "utf8")).toBe(fresh);
     expect(read("README.md").toString()).toBe("# Old\n");
+    rmSync(lockFile());
+    expect(await applyChanges(ports(fs), plan, contents)).toEqual({ changed: 5 });
+    expect(readdirSync(path.join(root, ".liftoff"))).toEqual(["manifest.json"]);
   });
 });
 

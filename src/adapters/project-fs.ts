@@ -62,8 +62,15 @@ export class LocalProjectFs implements ProjectFsPort {
   }
 
   async moveFile(from: string, to: string): Promise<void> {
-    await mkdir(path.dirname(to), { recursive: true });
     await rename(from, to);
+  }
+
+  async makeDirectory(target: string): Promise<void> {
+    await mkdir(target, { recursive: true });
+  }
+
+  copyWithin(directory: string, relative: string, maxBytes: number, to: string): Promise<FileHash> {
+    return copyWithin(directory, relative, maxBytes, to);
   }
 
   async copyFile(from: string, to: string): Promise<void> {
@@ -201,6 +208,8 @@ export async function readWithin(
         ? { kind: "file", size: Number(after.size) }
         : { kind: "other" };
     }
+    const elsewhere = await opened.moved();
+    if (elsewhere !== undefined) return elsewhere;
     return { kind: "file", size: length, text: buffer.toString("utf8", 0, length) };
   } finally {
     await handle.close();
@@ -236,6 +245,8 @@ export async function hashWithin(
     if (position > maxBytes || after.size !== BigInt(position) || after.mtimeNs !== stats.mtimeNs) {
       return { kind: "other" };
     }
+    const elsewhere = await opened.moved();
+    if (elsewhere !== undefined) return elsewhere;
     return {
       kind: "file",
       sha256: hash.digest("hex"),
@@ -244,6 +255,58 @@ export async function hashWithin(
     };
   } finally {
     await handle.close();
+  }
+}
+
+/**
+ * Copies a regular file under `directory` to `to`, which must not exist,
+ * reading it as hashWithin does and keeping its mode. It returns the hash of
+ * exactly what was written. Nothing is left at `to` unless the whole file
+ * was copied and it did not change or move meanwhile.
+ */
+export async function copyWithin(
+  directory: string,
+  relative: string,
+  maxBytes: number,
+  to: string,
+  calls: ReadCalls = NODE_CALLS,
+): Promise<FileHash> {
+  const opened = await openWithin(directory, relative, calls, maxBytes);
+  if (opened.kind !== "opened") return opened;
+  const { handle, stats } = opened;
+  let out: FileHandle | undefined;
+  let copied = false;
+  try {
+    await mkdir(path.dirname(to), { recursive: true });
+    out = await open(to, "wx", 0o600);
+    const hash = createHash("sha256");
+    const buffer = Buffer.alloc(Math.min(64 * 1024, maxBytes + 1));
+    let position = 0;
+    while (position <= maxBytes) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (bytesRead === 0) break;
+      hash.update(buffer.subarray(0, bytesRead));
+      await out.write(buffer, 0, bytesRead, position);
+      position += bytesRead;
+    }
+    if (position > maxBytes) return { kind: "file", size: position };
+    const after = await handle.stat({ bigint: true });
+    if (after.size !== BigInt(position) || after.mtimeNs !== stats.mtimeNs)
+      return { kind: "other" };
+    const elsewhere = await opened.moved();
+    if (elsewhere !== undefined) return elsewhere;
+    if (process.platform !== "win32") await out.chmod(Number(stats.mode) & 0o777);
+    copied = true;
+    return {
+      kind: "file",
+      sha256: hash.digest("hex"),
+      size: position,
+      executable: process.platform !== "win32" && (Number(stats.mode) & 0o111) !== 0,
+    };
+  } finally {
+    await handle.close();
+    await out?.close();
+    if (out !== undefined && !copied) await rm(to, { force: true });
   }
 }
 
@@ -268,7 +331,20 @@ async function openWithin(
   | { readonly kind: "missing" | "directory" }
   | { readonly kind: "other" | "inaccessible"; readonly via?: string }
   | { readonly kind: "file"; readonly size: number }
-  | { readonly kind: "opened"; readonly handle: FileHandle; readonly stats: BigIntStats }
+  | {
+      readonly kind: "opened";
+      readonly handle: FileHandle;
+      readonly stats: BigIntStats;
+      /**
+       * Inspects the path again once the file has been read: every directory
+       * on the way and the file must still be the ones opened, or the file
+       * was replaced meanwhile, as an editor's save does. What it says
+       * instead, or undefined when nothing moved.
+       */
+      readonly moved: () => Promise<
+        { readonly kind: "other" | "inaccessible"; readonly via?: string } | undefined
+      >;
+    }
 > {
   const parts = relative.split("/");
   // A path that cannot be inspected is in a directory this user may not
@@ -312,20 +388,27 @@ async function openWithin(
     await handle.close();
     return result;
   };
+  const moved = async () => {
+    for (const parent of parents) {
+      const now = await inspect(calls, parent.path);
+      if (now === "inaccessible")
+        return { kind: "inaccessible" as const, via: container(parent.depth) };
+      if (now === "missing" || !now.isDirectory() || !sameFile(now, parent.stats)) {
+        return { kind: "other" as const, via: parts.slice(0, parent.depth).join("/") };
+      }
+    }
+    const now = await inspect(calls, file);
+    return typeof now === "string" || !sameFile(now, inspected)
+      ? { kind: "other" as const }
+      : undefined;
+  };
   try {
     const opened = await handle.stat({ bigint: true });
     if (!opened.isFile() || !sameFile(opened, inspected)) return refuse({ kind: "other" });
-    for (const parent of parents) {
-      const now = await inspect(calls, parent.path);
-      if (now === "inaccessible") {
-        return refuse({ kind: "inaccessible", via: container(parent.depth) });
-      }
-      if (now === "missing" || !now.isDirectory() || !sameFile(now, parent.stats)) {
-        return refuse({ kind: "other", via: parts.slice(0, parent.depth).join("/") });
-      }
-    }
+    const elsewhere = await moved();
+    if (elsewhere !== undefined) return refuse(elsewhere);
     if (tooLarge(opened.size)) return refuse({ kind: "file", size: Number(opened.size) });
-    return { kind: "opened", handle, stats: opened };
+    return { kind: "opened", handle, stats: opened, moved };
   } catch (error) {
     await handle.close();
     throw error;
