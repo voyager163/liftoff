@@ -78,6 +78,11 @@ the `RELEASE_APP_CLIENT_ID` variable and the `RELEASE_APP_PRIVATE_KEY`
 secret: release and sync pull requests are then opened with the app and
 start their checks like any other.
 
+Without an app, turn on "Allow GitHub Actions to create and approve pull
+requests" in the repository's Settings > Actions > General: new repositories
+have it off, and the workflows then cannot open the pull requests, which
+they say. A run that stopped there resumes from the branch it created.
+
 Without an app, the workflows open them with the workflow token and start CI
 (`01-pr-ci.yml`) and CodeQL (`02-codeql.yml`) on the pull request's branch
 and the review policy on its base themselves, naming the pull request. Those

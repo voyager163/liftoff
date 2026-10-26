@@ -16,6 +16,8 @@ interface Repo {
   open?: Record<string, number>;
   /** Whether merging develop into a sync branch conflicts. */
   conflict?: boolean;
+  /** Whether the token may not open pull requests, as in a new repository. */
+  forbidPulls?: boolean;
   develop?: string;
   /** compare/<base>...<sha> answers, by base. */
   compare?: Record<string, { ahead_by: number; behind_by: number }>;
@@ -49,6 +51,12 @@ function fakeGitHub(repo: Repo, calls: Call[]) {
       return repo.conflict ? json({ message: "Merge conflict" }, 409) : json({}, 201);
     }
     if (method === "POST" && path.endsWith("/pulls")) {
+      if (repo.forbidPulls) {
+        return json(
+          { message: "GitHub Actions is not permitted to create or approve pull requests." },
+          403,
+        );
+      }
       return json({ number: 21, html_url: "https://github.com/o/r/pull/21" }, 201);
     }
     if (method === "POST" && path.endsWith("/releases")) {
@@ -175,6 +183,17 @@ describe("FLOW-004 cutting a release", () => {
       "/repos/o/r/git/refs",
       "/repos/o/r/pulls",
     ]);
+  });
+
+  it("says what to turn on when GitHub will not let the workflow open the pull request", async () => {
+    const { code, log } = await run(
+      "open-release",
+      { ...OPEN, DISPATCH: "true" },
+      { develop: COMMIT, passed: BUILT, forbidPulls: true },
+    );
+    expect(code).toBe(1);
+    expect(log).toContain('turn on "Allow GitHub Actions to create and approve pull requests"');
+    expect(log).toContain("it resumes from release/1.2.0");
   });
 
   it("resumes a release an earlier run cut, without a second branch or pull request", async () => {
