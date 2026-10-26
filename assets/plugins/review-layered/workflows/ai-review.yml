@@ -31,7 +31,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  REVIEW_AGENT_CLI: "{{liftoff.agentCli}}"
   LIFTOFF_REVIEW_DIR: ai-review
   LIFTOFF_REVIEW_TREE: pr
 
@@ -105,7 +104,10 @@ jobs:
           name: ai-review-plan
           path: ai-review/
       - name: Install the review agent
-        run: npm install --global "$REVIEW_AGENT_CLI"
+        # From the base branch's lockfile, which pins every package by hash.
+        run: |
+          npm ci --prefix .github/liftoff/review-agent --no-audit --no-fund
+          echo "${GITHUB_WORKSPACE}/.github/liftoff/review-agent/node_modules/.bin" >> "$GITHUB_PATH"
       - name: Look for bugs (pass ${{ matrix.pass }})
         env:
           {{liftoff.agentSecret}}: ${{ secrets.{{liftoff.agentSecret}} }}
@@ -158,7 +160,10 @@ jobs:
         run: node .github/liftoff/ai-review.mjs verifier-prompt
       - name: Install the review agent
         if: steps.candidates.outputs.has-candidates == 'true'
-        run: npm install --global "$REVIEW_AGENT_CLI"
+        # From the base branch's lockfile, which pins every package by hash.
+        run: |
+          npm ci --prefix .github/liftoff/review-agent --no-audit --no-fund
+          echo "${GITHUB_WORKSPACE}/.github/liftoff/review-agent/node_modules/.bin" >> "$GITHUB_PATH"
       - name: Verify each candidate independently (run ${{ matrix.run }})
         if: steps.candidates.outputs.has-candidates == 'true'
         env:

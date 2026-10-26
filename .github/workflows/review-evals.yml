@@ -13,7 +13,6 @@ permissions:
   contents: read
 
 env:
-  COPILOT_CLI: "@github/copilot@1.0.98"
   LIFTOFF_REVIEW_DIR: ai-review
 
 jobs:
@@ -68,7 +67,10 @@ jobs:
           git apply --index "$CASE/change.patch"
           git -c user.name=liftoff-eval -c user.email=eval@liftoff.invalid commit --quiet -m "Evaluation change"
       - name: Install the review agent
-        run: npm install --global "$COPILOT_CLI"
+        # The lockfile the AI review uses, which pins every package by hash.
+        run: |
+          npm ci --prefix .github/liftoff/review-agent --no-audit --no-fund
+          echo "${GITHUB_WORKSPACE}/.github/liftoff/review-agent/node_modules/.bin" >> "$GITHUB_PATH"
       - name: Find, verify and score
         env:
           LIFTOFF_EVAL_CASE: ${{ matrix.case }}

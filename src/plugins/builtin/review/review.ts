@@ -9,6 +9,8 @@ import type {
 import { chooseEngine, type ReviewEngine, reviewAgentScript } from "./engines.ts";
 
 export const WORKFLOWS = "plugins/review-layered/workflows";
+/** Each host's review agent CLI, as a package.json and lockfile pinning every package by hash. */
+export const REVIEW_AGENT = "plugins/review-layered/review-agent";
 
 const REVIEW_MD = `# Review guide
 
@@ -153,12 +155,19 @@ export function reviewWorkflowFiles(
         ownership: "managed",
         content: reviewAgentScript(engine),
       },
+      // Installed with npm ci from the base branch, never npm install -g.
+      ...["package.json", "package-lock.json"].map(
+        (name): Artifact => ({
+          path: `.github/liftoff/review-agent/${name}`,
+          ownership: "managed",
+          content: templates.read(`${REVIEW_AGENT}/${engine.host}/${name}`),
+        }),
+      ),
       {
         path: paths.ai,
         ownership: "managed",
         content: workflow("ai-review.yml", {
           agentHost: engine.host,
-          agentCli: engine.cli,
           agentSecret: engine.secret,
         }),
       },
@@ -173,7 +182,7 @@ export const reviewPlugin: ProjectPlugin = {
   kind: "review",
   version: "1",
   summary: "Risk-tiered review policy, review guide and verified AI review",
-  templateRoots: [WORKFLOWS],
+  templateRoots: [WORKFLOWS, REVIEW_AGENT],
   artifacts(context) {
     const { templates, ciBundles, config, hosts } = context;
     const bundle = (name: string): string => {

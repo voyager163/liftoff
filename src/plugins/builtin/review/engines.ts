@@ -7,7 +7,10 @@ import type { AgentHostId } from "../../contracts/agent-host.ts";
  */
 export interface ReviewEngine {
   readonly host: AgentHostId;
-  /** npm package spec of the CLI, pinned to a release at least a week old. */
+  /**
+   * npm package spec of the CLI, pinned to a release at least a week old.
+   * The host's committed lockfile installs exactly this version, by hash.
+   */
   readonly cli: string;
   /** Repository secret holding the credential, chosen by the user. */
   readonly secret: string;
