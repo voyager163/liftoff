@@ -10,7 +10,11 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
 FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS runtime
-RUN useradd --system --uid 10001 --no-create-home app
+# npm installs packages, which the running image never does; without it the
+# image carries none of the packages npm bundles, so their advisories do not
+# fail the build's scan.
+RUN useradd --system --uid 10001 --no-create-home app \
+  && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 WORKDIR /srv/app
 COPY --from=dependencies /srv/app/node_modules ./node_modules
 COPY package.json ./
