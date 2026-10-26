@@ -39,6 +39,11 @@ export interface PathEntry {
   readonly size: number;
 }
 
+/** A regular file read with readRegular: its text is left out when it is over the limit. */
+export type RegularFileRead =
+  | { readonly kind: "missing" | "directory" | "other" }
+  | { readonly kind: "file"; readonly size: number; readonly text?: string };
+
 /** Something under a directory: a regular file, a directory, or anything else such as a link. */
 export interface TreeEntry {
   /** Relative POSIX path. */
@@ -51,6 +56,12 @@ export interface ProjectFsPort {
   state(path: string): Promise<PathState>;
   /** Like state, but a link is "other" rather than what it points at. */
   entry(path: string): Promise<PathEntry>;
+  /**
+   * Reads a regular file without following a link at its path, and no more
+   * than `maxBytes` of it. It is "other" when the path is a link or became
+   * another file while it was being opened.
+   */
+  readRegular(path: string, maxBytes: number): Promise<RegularFileRead>;
   /** Text of a file, or undefined when it does not exist. */
   readText(path: string): Promise<string | undefined>;
   /** A new empty directory beside `target`, on the same volume, for staging. */

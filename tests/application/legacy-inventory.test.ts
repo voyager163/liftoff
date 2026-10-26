@@ -22,13 +22,20 @@ const write = (relative: string, content: unknown) => {
   writeFileSync(target, typeof content === "string" ? content : JSON.stringify(content));
 };
 
-/** Records every path read, so a test can show what was never opened. */
+const relative = (file: string) => path.relative(work, file).split(path.sep).join("/");
+
+/** Records every path whose text was read, so a test can show what was never opened. */
 function spying(): { port: ProjectFsPort; read: string[] } {
   const read: string[] = [];
   const port: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
     readText: async (file: string) => {
-      read.push(path.relative(work, file).split(path.sep).join("/"));
+      read.push(`unbounded ${relative(file)}`);
       return fs.readText(file);
+    },
+    readRegular: async (file: string, maxBytes: number) => {
+      const result = await fs.readRegular(file, maxBytes);
+      if (result.kind === "file" && result.text !== undefined) read.push(relative(file));
+      return result;
     },
   });
   return { port, read };
@@ -89,6 +96,31 @@ describe("LEGACY-003 records that can hold files, credentials or state are never
     const found = await inventoryLegacy(port, work);
     expect(read).toEqual([]);
     expect(found.records[0]).toMatchObject({ state: "unsupported", opened: false });
+  });
+
+  it("drops what it read when a directory on the way became a link meanwhile", async () => {
+    const elsewhere = mkdtempSync(path.join(tmpdir(), "liftoff-elsewhere-"));
+    try {
+      write("liftoff.manifest.json", MANIFEST);
+      write("governance/activation-state.json", { schemaVersion: 3 });
+      const swapping: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+        readRegular: async (file: string, maxBytes: number) => {
+          const result = await fs.readRegular(file, maxBytes);
+          if (relative(file) === "governance/activation-state.json") {
+            rmSync(path.join(work, "governance"), { recursive: true });
+            symlinkSync(elsewhere, path.join(work, "governance"), "junction");
+          }
+          return result;
+        },
+      });
+      const found = await inventoryLegacy(swapping, work);
+      expect(found.records.map(({ path, state, opened }) => [path, state, opened])).toEqual([
+        ["liftoff.manifest.json", "migratable", true],
+        ["governance", "unsupported", false],
+      ]);
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
   });
 
   it("follows no linked directory on the way to a record", async () => {

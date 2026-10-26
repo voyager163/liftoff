@@ -1,3 +1,5 @@
+import type { BigIntStats } from "node:fs";
+import { constants } from "node:fs";
 import {
   chmod,
   lstat,
@@ -13,7 +15,13 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import type { PathEntry, PathState, ProjectFsPort, TreeEntry } from "../application/ports.ts";
+import type {
+  PathEntry,
+  PathState,
+  ProjectFsPort,
+  RegularFileRead,
+  TreeEntry,
+} from "../application/ports.ts";
 
 /** Local file system access for creating projects. */
 export class LocalProjectFs implements ProjectFsPort {
@@ -38,6 +46,19 @@ export class LocalProjectFs implements ProjectFsPort {
       if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing", size: 0 };
       throw error;
     }
+  }
+
+  async readRegular(file: string, maxBytes: number): Promise<RegularFileRead> {
+    let inspected: BigIntStats;
+    try {
+      inspected = await lstat(file, { bigint: true });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing" };
+      throw error;
+    }
+    if (!inspected.isFile()) return { kind: inspected.isDirectory() ? "directory" : "other" };
+    return readUnchanged(file, inspected, maxBytes);
   }
 
   async readText(file: string): Promise<string | undefined> {
@@ -119,5 +140,48 @@ export class LocalProjectFs implements ProjectFsPort {
         }),
       )
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  }
+}
+
+/**
+ * Reads `file` only if it is still the regular file `inspected` describes:
+ * it is opened without following a link where the system allows, and the
+ * file opened must be the same one, so a link or another file swapped in
+ * after the inspection is not read. No more than `maxBytes` and one more
+ * byte are read, however much the file has grown.
+ */
+export async function readUnchanged(
+  file: string,
+  inspected: BigIntStats,
+  maxBytes: number,
+): Promise<RegularFileRead> {
+  let handle: Awaited<ReturnType<typeof open>>;
+  try {
+    // Windows has no O_NOFOLLOW; there the identity check below catches a link.
+    handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing" };
+    if (code === "ELOOP") return { kind: "other" };
+    throw error;
+  }
+  try {
+    const opened = await handle.stat({ bigint: true });
+    if (!opened.isFile() || opened.ino !== inspected.ino || opened.dev !== inspected.dev) {
+      return { kind: "other" };
+    }
+    const buffer = Buffer.alloc(maxBytes + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, length, buffer.length - length, length);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+    }
+    const size = Math.max(Number(opened.size), length);
+    return length > maxBytes
+      ? { kind: "file", size }
+      : { kind: "file", size, text: buffer.toString("utf8", 0, length) };
+  } finally {
+    await handle.close();
   }
 }
