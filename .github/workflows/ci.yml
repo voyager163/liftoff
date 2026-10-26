@@ -334,6 +334,26 @@ jobs:
           test "$ready" = 200
           # The browser test saved an item, which the moved API still lists.
           curl --fail --silent --show-error --max-time 5 "$api/items" | grep -q '"name"'
+      # The images as a generated project's Build scans them, with the same
+      # Trivy, so a fixable high or critical vulnerability fails here first.
+      - name: Scan the images as the project's build would
+        working-directory: ${{ runner.temp }}/demo
+        env:
+          TRIVY_VERSION: "0.76.0"
+          TRIVY_SHA256: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
+        run: |
+          archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${archive}"
+          echo "${TRIVY_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" trivy
+          for service in api web; do
+            container=$(docker compose ps -q "$service")
+            if [ -z "$container" ]; then continue; fi
+            image=$(docker inspect --format '{{.Config.Image}}' "$container")
+            "$RUNNER_TEMP/trivy" image --exit-code 1 --severity HIGH,CRITICAL \
+              --ignore-unfixed --no-progress "$image"
+          done
       - name: Show the Compose logs
         if: failure()
         working-directory: ${{ runner.temp }}/demo
@@ -402,6 +422,27 @@ jobs:
           curl --fail --silent --show-error --max-time 5 "$api/health/ready" | grep -q '"ready"'
           curl --fail --silent --show-error --location --max-time 5 --output /dev/null "$api/docs"
           curl --fail --silent --show-error --max-time 5 "$api/openapi.json" | grep -q '"/v1/'
+      # The images as a generated project's Build scans them, with the same
+      # Trivy, so a fixable high or critical vulnerability fails here first.
+      - name: Scan the images as the project's build would
+        if: runner.os == 'Linux'
+        working-directory: ${{ runner.temp }}/demo
+        env:
+          TRIVY_VERSION: "0.76.0"
+          TRIVY_SHA256: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
+        run: |
+          archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${archive}"
+          echo "${TRIVY_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" trivy
+          for service in api web; do
+            container=$(docker compose ps -q "$service")
+            if [ -z "$container" ]; then continue; fi
+            image=$(docker inspect --format '{{.Config.Image}}' "$container")
+            "$RUNNER_TEMP/trivy" image --exit-code 1 --severity HIGH,CRITICAL \
+              --ignore-unfixed --no-progress "$image"
+          done
       - name: Show the Compose logs
         if: failure() && runner.os == 'Linux'
         working-directory: ${{ runner.temp }}/demo

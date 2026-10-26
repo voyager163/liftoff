@@ -73,6 +73,9 @@ function ruleset(
           required_approving_review_count: approvals,
           required_review_thread_resolution: true,
           required_reviewers: [],
+          // GitHub sets this on every ruleset it creates; naming it keeps the
+          // readback exact, as Liftoff's own rulesets do.
+          require_extra_approval_for_unattributed_changes: true,
         },
       },
       {

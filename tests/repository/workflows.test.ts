@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { TRIVY } from "../../src/plugins/builtin/release.ts";
 import { PATTERNS, STACKS, WORKFLOWS } from "../../src/plugins/registry.ts";
 
 const directory = path.resolve(import.meta.dirname, "../../.github/workflows");
@@ -402,6 +403,20 @@ describe("PROJ-011 probes retry until their deadline", () => {
       );
       expect(result.stdout).toBe("got 000\n");
       expect(result.status).toBe(0);
+    }
+  });
+});
+
+describe("PROJ-011 generated images are scanned as their own build scans them", () => {
+  it("runs the release's Trivy, checked by its checksum, on every image Compose built", () => {
+    const ci = workflows.find((workflow) => workflow.name === "ci.yml")?.data;
+    for (const job of ["services", "genai"]) {
+      const scan = ci?.jobs[job]?.steps?.find((step) => step.name?.startsWith("Scan the images"));
+      expect(scan, job).toBeDefined();
+      const env = (scan as Step & { env?: Record<string, string> }).env;
+      expect(env).toEqual({ TRIVY_VERSION: TRIVY.version, TRIVY_SHA256: TRIVY.sha256 });
+      expect(scan?.run).toContain("sha256sum --check --strict");
+      expect(scan?.run).toContain("--exit-code 1 --severity HIGH,CRITICAL");
     }
   });
 });

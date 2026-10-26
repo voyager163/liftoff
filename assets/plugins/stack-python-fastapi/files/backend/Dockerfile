@@ -17,7 +17,11 @@ COPY app ./app
 COPY migrations ./migrations
 
 FROM python:3.14.9-slim-trixie@sha256:35caba83af2fe6da9a5d922f9b0156f21d1246a48278c58a08bd253303ba42e8 AS runtime
-RUN useradd --system --uid 10001 --no-create-home app
+# pip installs packages, which the running image never does; without it the
+# image carries none of the libraries pip vendors, so their advisories do not
+# fail the build's scan.
+RUN useradd --system --uid 10001 --no-create-home app \
+  && python -m pip uninstall --yes --quiet --root-user-action ignore pip
 COPY --from=build /opt/venv /opt/venv
 COPY --from=build /src /srv/app
 WORKDIR /srv/app
