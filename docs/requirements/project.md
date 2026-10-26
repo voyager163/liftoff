@@ -383,9 +383,10 @@ part. A binding must:
 
 - be for a part the project has;
 - be a repository-relative path every system and Git can hold (no control
-  character, no character Windows forbids, no name Windows reads as another
-  file, no name over 255 bytes), outside `.github` and `.liftoff` and
-  outside `.git` at any depth;
+  character, no character Windows forbids, no invisible character macOS
+  leaves out of a name, no name Windows reads as another file, no name over
+  255 bytes), outside `.github` and `.liftoff` and outside `.git` at any
+  depth;
 - not put one part's directory inside another's, except inside the root,
   comparing names as macOS and Windows do: ignoring letter case and how an
   accented letter is encoded.
@@ -460,8 +461,10 @@ Verification: test
 If a framework's initializer cannot start, fails, takes more than ten
 minutes for all its steps together or is cancelled, nothing is created, and the error says why and what
 it needs. The same happens if it creates a Git repository (a `.git` at any
-depth, in any case) or anything other than regular files, writes a file
-where Liftoff writes one of its own (ignoring case), or writes a path from
+depth, in any case) or anything other than regular files, writes a path
+not every system and Git can hold (by the rules for layout bindings in
+PROJ-024), writes a file where Liftoff writes one of its own (ignoring
+case), or writes a path from
 this machine, such as the home or staging directory, into a file, whether
 as written, with forward slashes or escaped as in JSON. A failure's message
 keeps the end of the initializer's output, where the cause is.

@@ -169,6 +169,10 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
     [{ backend: "services/COM¹" }, config, "has a name Windows would read as another file"],
     [{ backend: "LPT²" }, config, "has a name Windows would read as another file"],
     [{ backend: "COM³.txt" }, config, "has a name Windows would read as another file"],
+    [{ backend: "aux .api" }, config, "has a name Windows would read as another file"],
+    [{ backend: ".g\u200cithub/api" }, config, "has an invisible character macOS leaves out"],
+    [{ backend: "services/.git\u200d" }, config, "has an invisible character macOS leaves out"],
+    [{ backend: ".liftoff\ufeff" }, config, "has an invisible character macOS leaves out"],
     // "é" composed, and "e" with a combining accent: one name to macOS.
     [{ backend: "\u00e9t\u00e9", frontend: "e\u0301te\u0301" }, withFrontend, "share a directory"],
     [

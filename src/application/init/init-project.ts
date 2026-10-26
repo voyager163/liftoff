@@ -9,7 +9,7 @@ import {
 } from "../../domain/plan/plan.ts";
 import { type ProjectConfig, validateConfig } from "../../domain/project/config.ts";
 import { MANIFEST_FILE, parseManifest, serializeManifest } from "../../domain/project/manifest.ts";
-import { pathKey } from "../../domain/project/paths.ts";
+import { pathKey, repositoryPathProblem } from "../../domain/project/paths.ts";
 import type { ProjectFile } from "../../generators/project.ts";
 import type { WorkflowInitializer } from "../../plugins/contracts/project-plugin.ts";
 import type { Selection } from "../../plugins/registry.ts";
@@ -208,8 +208,9 @@ const SHORTEST_MACHINE_PATH = 4;
 
 /**
  * The files an initializer wrote, each checked: only regular files, no Git
- * repository, nothing where Liftoff writes a file of its own, and no path
- * from this machine, since a project's files must work on any machine.
+ * repository, only paths every system can hold, nothing where Liftoff writes
+ * a file of its own, and no path from this machine, since a project's files
+ * must work on any machine.
  */
 async function frameworkFiles(
   ports: { fs: ProjectFsPort; initializer: InitializerPort },
@@ -235,6 +236,11 @@ async function frameworkFiles(
       throw new InitializerError(
         `${who} created a Git repository; Liftoff leaves creating one to you`,
       );
+    }
+    // The manifest records the path, so it must be one every system can hold.
+    const problem = repositoryPathProblem(entry.path);
+    if (problem !== undefined) {
+      throw new InitializerError(`${who} wrote a path not every system can hold: ${problem}`);
     }
     const key = pathKey(entry.path);
     if (entry.kind === "directory") {

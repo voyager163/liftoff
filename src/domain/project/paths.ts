@@ -2,16 +2,22 @@
  * Why a path is not a repository-relative POSIX path that every system and
  * Git can hold, or undefined when it is: no absolute path, drive or
  * backslash, no empty, "." or ".." part, no control character or character
- * Windows forbids in a name, no name Windows would read as another file (a
- * trailing dot or space, a stream with ":", a device such as "nul", or an
- * 8.3 short name such as "GIT~1", any of which could reach .git), no name
- * longer than 255 bytes, and nothing inside a .git directory at any depth.
+ * Windows forbids in a name, no invisible character macOS Extended volumes
+ * leave out of a name (so ".git" with a zero-width joiner is .git there), no
+ * name Windows would read as another file (a trailing dot or space, a stream
+ * with ":", a device such as "nul" or "conin$", or an 8.3 short name such as
+ * "GIT~1", any of which could reach .git), no name longer than 255 bytes,
+ * and nothing inside a .git directory at any depth.
  */
 export function repositoryPathProblem(path: string): string | undefined {
   const parts = path.split("/");
   // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses.
   if (/[\u0000-\u001f\u007f<>"|?*]/.test(path)) {
     return `${JSON.stringify(path)} has a character Git or Windows cannot hold in a name`;
+  }
+  // The characters Git also refuses in .git on macOS (CVE-2014-9390).
+  if (/[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/.test(path)) {
+    return `${JSON.stringify(path)} has an invisible character macOS leaves out of a name`;
   }
   if (
     path.length === 0 ||
@@ -27,8 +33,9 @@ export function repositoryPathProblem(path: string): string | undefined {
       (part) =>
         /[. ]$/.test(part) ||
         part.includes(":") ||
-        // Windows reserves COM¹ to COM³ and LPT¹ to LPT³ too.
-        /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i.test(part) ||
+        // Windows reserves COM¹ to COM³, LPT¹ to LPT³ and the console's
+        // CONIN$ and CONOUT$ too, and reads "nul .txt" as "nul".
+        /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$) *(\..*)?$/i.test(part) ||
         /~\d/.test(part),
     )
   ) {

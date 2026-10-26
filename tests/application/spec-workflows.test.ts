@@ -338,6 +338,26 @@ describe("INIT-005 what an initializer writes is checked before anything is publ
     expect(readdirSync(work)).toEqual([]);
   });
 
+  it.each([
+    ["openspec/aux.md", /openspec\/aux.md has a name Windows would read as another file/],
+    ["openspec/notes~1.md", /has a name Windows would read as another file/],
+    ["openspec/draft.", /has a name Windows would read as another file/],
+    ["openspec/why?.md", /has a character Git or Windows cannot hold/],
+    [".g\u200cit/HEAD", /has an invisible character macOS leaves out of a name/],
+  ])(
+    "refuses %j, a path not every system can hold, and creates nothing",
+    async (written, message) => {
+      // Listed rather than written, since Windows would read some as devices.
+      const listing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+        listTree: async () => [{ path: written, kind: "file" }],
+      });
+      const refusal = create(writes({}), config(), listing);
+      await expect(refusal).rejects.toThrow(/wrote a path not every system can hold/);
+      await expect(create(writes({}), config(), listing)).rejects.toThrow(message);
+      expect(readdirSync(work)).toEqual([]);
+    },
+  );
+
   it("stops when cancelled while the initializer runs", async () => {
     const controller = new AbortController();
     const initializer = new FakeInitializer(() => {
