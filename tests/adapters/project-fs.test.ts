@@ -230,11 +230,22 @@ describe("CHANGE-002 hashing a file follows no link and sees it change", () => {
     expect(await fs.directoryIdentity(path.join(work, "directory"))).toMatch(/^\d+:\d+$/);
   });
 
-  it("does not hash a file that changed while it was being hashed", async () => {
+  it("never hashes a state the file was not in, nor past the limit, when it grows", async () => {
     write("record.json", "{}");
     const file = path.join(work, "record.json");
     const grown = calls({ afterStat: () => appendFileSync(file, "x") });
-    expect(await hashWithin(work, "record.json", 100, grown.calls)).toEqual({ kind: "other" });
+    const hashed = await hashWithin(work, "record.json", 100, grown.calls);
+    // It sees the change, or (where the system does not show it to the open
+    // file, as Windows may not) hashes the whole file as it now is.
+    expect([
+      { kind: "other" },
+      {
+        kind: "file",
+        size: 3,
+        sha256: createHash("sha256").update("{}x").digest("hex"),
+        executable: false,
+      },
+    ]).toContainEqual(hashed);
     const runaway = calls({ afterStat: () => appendFileSync(file, "x".repeat(70 * 1024)) });
     expect(await hashWithin(work, "record.json", 100, runaway.calls)).toEqual({ kind: "other" });
     expect(runaway.read.bytes).toBeLessThanOrEqual(101);
