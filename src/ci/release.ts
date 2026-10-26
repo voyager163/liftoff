@@ -346,6 +346,12 @@ async function sync(context: Context): Promise<void> {
       conflicts = true;
     }
   }
+  // GitHub holds a pull request's own workflows for a maintainer's approval
+  // when its newest commit is the workflow token's, as this merge is; the
+  // required checks wait on those runs, not on the ones started for it.
+  const held = diverged.behind_by > 0 && !conflicts && env.DISPATCH === "true";
+  const approve =
+    "Its newest commit is the release workflow's merge of develop, so GitHub holds this pull request's own workflows until a maintainer approves them: choose \"Approve workflows to run\" on the pull request, and its required checks report once they pass.";
   const pr = await openPullRequest(context, {
     title: `Bring ${version} back into develop`,
     head: branch,
@@ -358,11 +364,12 @@ async function sync(context: Context): Promise<void> {
             "develop has changes that conflict with main. Merge develop into this branch, resolve them and push.",
           ]
         : []),
+      ...(held ? ["", approve] : []),
     ].join("\n"),
   });
   await startChecks(context, pr.number, branch, "develop");
   context.summary(
-    `## Sync\n\nThe pull request into develop is [#${pr.number}](${pr.html_url}).${conflicts ? " develop conflicts with main; resolve that in the pull request." : ""}\n`,
+    `## Sync\n\nThe pull request into develop is [#${pr.number}](${pr.html_url}).${conflicts ? " develop conflicts with main; resolve that in the pull request." : ""}${held ? ` ${approve}` : ""}\n`,
   );
 }
 

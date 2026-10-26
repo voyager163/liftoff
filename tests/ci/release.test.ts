@@ -438,6 +438,22 @@ describe("FLOW-005 after a release merges into main", () => {
     ]);
   });
 
+  it("says when GitHub will hold the sync pull request's workflows for approval", async () => {
+    const diverged = { compare: { develop: { ahead_by: 1, behind_by: 2 } } };
+    const body = async (env: Record<string, string>, repo: Repo) =>
+      String(
+        writes(
+          (await run("sync", { GITHUB_SHA: MAIN, VERSION: "1.2.0", ...env }, repo)).calls,
+        ).find((call) => call.path === "/repos/o/r/pulls")?.body?.body,
+      );
+    // The workflow token's merge of develop is the newest commit.
+    expect(await body({ DISPATCH: "true" }, diverged)).toContain('"Approve workflows to run"');
+    // Not with a release app, nor without a merge.
+    expect(await body({ DISPATCH: "false" }, diverged)).not.toContain("Approve workflows");
+    const ahead = { compare: { develop: { ahead_by: 1, behind_by: 0 } } };
+    expect(await body({ DISPATCH: "true" }, ahead)).not.toContain("Approve workflows");
+  });
+
   it("merges develop into the sync branch when develop moved on", async () => {
     const diverged = { compare: { develop: { ahead_by: 1, behind_by: 2 } } };
     const env = { GITHUB_SHA: MAIN, VERSION: "1.2.0", DISPATCH: "false" };
