@@ -1,12 +1,14 @@
 import {
-  appendFileSync,
-  lstatSync,
+  closeSync,
+  fstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -45,18 +47,30 @@ describe("LEGACY-003 reading a record follows no link and stays within its limit
     expect(await fs.readRegular(file, 11)).toMatchObject({ text: "x".repeat(11) });
   });
 
+  /** Writes a file and returns what an inspection of it saw, taken from its own handle. */
+  const inspectedAfterWriting = (file: string, content: string) => {
+    const handle = openSync(file, "w");
+    try {
+      writeSync(handle, content);
+      return { handle, inspected: fstatSync(handle, { bigint: true }) };
+    } catch (error) {
+      closeSync(handle);
+      throw error;
+    }
+  };
+
   it("reads no more than the limit when the file grew after it was inspected", async () => {
     const file = path.join(work, "record.json");
-    writeFileSync(file, "{}");
-    const inspected = lstatSync(file, { bigint: true });
-    appendFileSync(file, "x".repeat(4096));
+    const { handle, inspected } = inspectedAfterWriting(file, "{}");
+    writeSync(handle, "x".repeat(4096));
+    closeSync(handle);
     expect(await readUnchanged(file, inspected, 10)).toEqual({ kind: "file", size: 4098 });
   });
 
   it("does not read another file swapped in after the inspection", async () => {
     const file = path.join(work, "record.json");
-    writeFileSync(file, "{}");
-    const inspected = lstatSync(file, { bigint: true });
+    const { handle, inspected } = inspectedAfterWriting(file, "{}");
+    closeSync(handle);
     const other = path.join(work, "other.json");
     writeFileSync(other, '{"secret":true}');
     renameSync(other, file);
