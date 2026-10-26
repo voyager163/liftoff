@@ -5,6 +5,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -202,11 +203,36 @@ describe("PROJ-024 layout bindings", () => {
       severity: "warning",
       code: "layout-directory-missing",
       path: "liftoff.yaml",
-      message: "layout: backend is bound to services/api, which is not a directory here",
+      message:
+        "layout: backend is bound to services/api, which is not a directory here, or is reached through a link",
     });
     mkdirSync(path.join(target, "services", "api"), { recursive: true });
     const bound = await validateProject(fs, target);
     expect(bound.findings.map((finding) => finding.code)).not.toContain("layout-directory-missing");
+    // Reached through a link, it is not the project's own directory.
+    const elsewhere = mkdtempSync(path.join(tmpdir(), "liftoff-elsewhere-"));
+    try {
+      mkdirSync(path.join(elsewhere, "api"));
+      rmSync(path.join(target, "services"), { recursive: true });
+      symlinkSync(elsewhere, path.join(target, "services"), "junction");
+      const linked = await validateProject(fs, target);
+      expect(linked.findings.map((finding) => finding.code)).toContain("layout-directory-missing");
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a binding no file system can hold as an invalid config, not a crash", async () => {
+    const target = await create();
+    const yaml = path.join(target, "liftoff.yaml");
+    writeFileSync(yaml, `${readFileSync(yaml, "utf8")}layout:\n  backend: ${"a".repeat(256)}\n`);
+    const result = await validateProject(fs, target);
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        code: "invalid-config",
+        message: expect.stringContaining("has a name longer than 255 bytes"),
+      }),
+    ]);
   });
 });
 

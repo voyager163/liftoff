@@ -79,6 +79,7 @@ describe("CHANGE-001 a change plan names every file it changes, before and after
     ["vendor/lib/.git/config", "is inside a .git directory"],
     ["src/a\u0000b", "has a character Git or Windows cannot hold"],
     ["src/a|b", "has a character Git or Windows cannot hold"],
+    ["services/COM\u00b9", "has a name Windows would read as another file"],
     [".liftoff/change-journal.json", "is not a file a change may touch"],
     ["GIT~1/config", "has a name Windows would read as another file"],
     [".git./config", "has a name Windows would read as another file"],
@@ -94,6 +95,11 @@ describe("CHANGE-001 a change plan names every file it changes, before and after
     expect(() =>
       sealChangePlan(unsigned([kept("README.md", A, B), kept("readme.md", null, A)])),
     ).toThrow("readme.md is listed twice");
+    expect(() =>
+      sealChangePlan(
+        unsigned([kept("\u00e9t\u00e9.md", A, B), kept("e\u0301te\u0301.md", null, A)]),
+      ),
+    ).toThrow("is listed twice");
     expect(() => sealChangePlan(unsigned([kept("README.md", A, A)]))).toThrow("does not change");
     expect(() => sealChangePlan(unsigned([{ path: "README.md", before: A, after: B }]))).toThrow(
       "must say who owns it",

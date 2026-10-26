@@ -3,7 +3,7 @@ import * as z from "zod/mini";
 import { CONFIG_FILE } from "../project/config.ts";
 import { MANIFEST_FILE, OWNERSHIP } from "../project/manifest.ts";
 import { CHANGE_OPERATIONS } from "../project/operations.ts";
-import { repositoryPathProblem } from "../project/paths.ts";
+import { pathKey, repositoryPathProblem } from "../project/paths.ts";
 import { canonicalJson, PLAN_SCHEMA, PlanError, sha256Hex } from "./plan.ts";
 
 z.config(en());
@@ -61,7 +61,7 @@ export function pathsProblem(
     if (change.path === CHANGE_JOURNAL_FILE) {
       return `${change.path} is not a file a change may touch`;
     }
-    const key = change.path.toLowerCase();
+    const key = pathKey(change.path);
     if (seen.has(key)) return `${change.path} is listed twice`;
     seen.add(key);
     if (change.before === change.after) return `${change.path} does not change`;

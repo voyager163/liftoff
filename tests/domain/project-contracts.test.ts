@@ -163,6 +163,18 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
     [{ backend: "api\nx" }, config, "has a character Git or Windows cannot hold"],
     [{ backend: "api|v2" }, config, "has a character Git or Windows cannot hold"],
     [{ backend: "api?" }, config, "has a character Git or Windows cannot hold"],
+    [{ backend: "a".repeat(256) }, config, "has a name longer than 255 bytes"],
+    [{ backend: "é".repeat(128) }, config, "has a name longer than 255 bytes"],
+    [{ backend: "services/COM¹" }, config, "has a name Windows would read as another file"],
+    [{ backend: "LPT²" }, config, "has a name Windows would read as another file"],
+    [{ backend: "COM³.txt" }, config, "has a name Windows would read as another file"],
+    // "é" composed, and "e" with a combining accent: one name to macOS.
+    [{ backend: "\u00e9t\u00e9", frontend: "e\u0301te\u0301" }, withFrontend, "share a directory"],
+    [
+      { backend: "\u00e9t\u00e9", frontend: "E\u0301TE\u0301/web" },
+      withFrontend,
+      "inside backend's",
+    ],
     [{ backend: "app", frontend: "App" }, withFrontend, "backend and frontend share a directory"],
     [
       { backend: "app", frontend: "app/web" },
@@ -246,6 +258,18 @@ describe("PROJ-025 the manifest records its history and anything from before the
     [{ history: [{ operation: "deploy", liftoff: "1.0.0" }] }, "history"],
     [{ legacy: { records: [{ path: "x", record: "manifest", state: "executable" }] } }, "legacy"],
     [{ legacy: { records: [{ path: "../x", record: "manifest", state: "readable" }] } }, "legacy"],
+    [
+      {
+        legacy: {
+          records: [{ path: "C:/outside/legacy.json", record: "manifest", state: "readable" }],
+        },
+      },
+      "legacy",
+    ],
+    [
+      { legacy: { records: [{ path: "C:legacy.json", record: "manifest", state: "readable" }] } },
+      "legacy",
+    ],
   ])("refuses a manifest with %j", (extra, message) => {
     expect(() => parseManifest(JSON.stringify({ ...base, ...extra }))).toThrow(message);
   });

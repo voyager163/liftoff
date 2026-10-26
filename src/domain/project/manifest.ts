@@ -2,6 +2,7 @@ import { en } from "zod/locales";
 import * as z from "zod/mini";
 import { LEGACY_RECORD_KINDS } from "../legacy/inventory.ts";
 import { OPERATIONS } from "./operations.ts";
+import { repositoryPathProblem } from "./paths.ts";
 
 z.config(en());
 
@@ -24,12 +25,9 @@ export type Ownership = (typeof OWNERSHIP)[number];
 
 const sha256 = z.string().check(z.regex(/^[0-9a-f]{64}$/, "must be a sha256 hex digest"));
 const relativePath = z.string().check(
-  z.refine(
-    (p) => p.length > 0 && !p.startsWith("/") && !p.includes("\\") && !p.split("/").includes(".."),
-    {
-      message: "must be a repository-relative POSIX path",
-    },
-  ),
+  z.refine((p) => repositoryPathProblem(p) === undefined, {
+    message: "must be a repository-relative POSIX path every system can hold",
+  }),
 );
 
 const manifestSchema = z.strictObject({

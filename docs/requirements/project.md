@@ -384,12 +384,16 @@ part. A binding must:
 - be for a part the project has;
 - be a repository-relative path every system and Git can hold (no control
   character, no character Windows forbids, no name Windows reads as another
-  file), outside `.github` and `.liftoff` and outside `.git` at any depth;
-- not put one part's directory inside another's, except inside the root.
+  file, no name over 255 bytes), outside `.github` and `.liftoff` and
+  outside `.git` at any depth;
+- not put one part's directory inside another's, except inside the root,
+  comparing names as macOS and Windows do: ignoring letter case and how an
+  accented letter is encoded.
 
 A binding to the standard directory is the same as none and is not written,
 so a project in the standard layout has no `layout`. `liftoff validate`
-warns about a part bound to a directory that is not there. Until adopting a
+warns about a part bound to a directory that is not there, or that is
+reached through a link. Until adopting a
 project, which honors bindings, is available, Liftoff refuses to generate
 files for a project in another layout rather than use the standard
 directories.

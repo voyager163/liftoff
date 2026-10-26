@@ -1,7 +1,7 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { en } from "zod/locales";
 import * as z from "zod/mini";
-import { repositoryPathProblem } from "./paths.ts";
+import { pathKey, repositoryPathProblem } from "./paths.ts";
 
 z.config(en());
 
@@ -153,13 +153,13 @@ function layoutProblem(config: ProjectConfig): string | undefined {
     if (directory === ".") continue;
     const problem = repositoryPathProblem(directory);
     if (problem !== undefined) return `${component}: ${problem}`;
-    if (RESERVED.includes(directory.split("/")[0]?.toLowerCase() ?? "")) {
+    if (RESERVED.includes(pathKey(directory.split("/")[0] ?? ""))) {
       return `${component}: ${directory} is inside a directory Liftoff or Git keeps for itself`;
     }
   }
   const placed = Object.entries(layoutOf(config)).map(([component, directory]) => ({
     component,
-    key: directory.toLowerCase(),
+    key: pathKey(directory),
   }));
   for (const [index, one] of placed.entries()) {
     for (const other of placed.slice(index + 1)) {

@@ -91,7 +91,8 @@ expected. These make the plan invalid:
 - a control character, or a character Windows forbids in a name;
 - a name Windows would read as another file: a trailing dot or space, a
   `:`, a device name such as `nul`, or an 8.3 short name such as `GIT~1`;
-- a path named twice, ignoring case as macOS and Windows do;
+- a path named twice, ignoring letter case and how an accented letter is
+  encoded, as macOS and Windows do;
 - a change that changes nothing.
 
 Verification: test
