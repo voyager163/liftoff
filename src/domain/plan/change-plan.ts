@@ -2,20 +2,13 @@ import { en } from "zod/locales";
 import * as z from "zod/mini";
 import { CONFIG_FILE } from "../project/config.ts";
 import { MANIFEST_FILE, OWNERSHIP } from "../project/manifest.ts";
+import { CHANGE_OPERATIONS } from "../project/operations.ts";
+import { pathKey, repositoryPathProblem } from "../project/paths.ts";
 import { canonicalJson, PLAN_SCHEMA, PlanError, sha256Hex } from "./plan.ts";
 
 z.config(en());
 
-/** Operations that change an existing project in place, file by file. */
-export const CHANGE_OPERATIONS = [
-  "update",
-  "repair",
-  "adopt",
-  "workflow-set",
-  "profile-set",
-  "agents-add",
-] as const;
-export type ChangeOperation = (typeof CHANGE_OPERATIONS)[number];
+export { CHANGE_OPERATIONS, type ChangeOperation } from "../project/operations.ts";
 
 /** Where a change in progress is recorded, so it can be finished or undone if it stops. */
 export const CHANGE_JOURNAL_FILE = ".liftoff/change-journal.json";
@@ -63,33 +56,12 @@ export function pathsProblem(
 ): string | undefined {
   const seen = new Set<string>();
   for (const change of changes) {
-    const parts = change.path.split("/");
-    if (
-      change.path.length === 0 ||
-      change.path.startsWith("/") ||
-      change.path.includes("\\") ||
-      /^[A-Za-z]:/.test(change.path) ||
-      parts.some((part) => part === "" || part === "." || part === "..")
-    ) {
-      return `${change.path} is not a repository-relative path`;
-    }
-    // Names Windows would read as another file, so they could reach .git:
-    // a trailing dot or space, a stream (:), a device, or an 8.3 short name.
-    if (
-      parts.some(
-        (part) =>
-          /[. ]$/.test(part) ||
-          part.includes(":") ||
-          /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(part) ||
-          /~\d/.test(part),
-      )
-    ) {
-      return `${change.path} has a name Windows would read as another file`;
-    }
-    if (parts[0]?.toLowerCase() === ".git" || change.path === CHANGE_JOURNAL_FILE) {
+    const problem = repositoryPathProblem(change.path);
+    if (problem !== undefined) return problem;
+    if (change.path === CHANGE_JOURNAL_FILE) {
       return `${change.path} is not a file a change may touch`;
     }
-    const key = change.path.toLowerCase();
+    const key = pathKey(change.path);
     if (seen.has(key)) return `${change.path} is listed twice`;
     seen.add(key);
     if (change.before === change.after) return `${change.path} does not change`;

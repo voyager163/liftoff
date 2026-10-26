@@ -373,6 +373,50 @@ knows, and on Linux for infrastructure without OpenTofu.
 
 Verification: live
 
+## PROJ-024 Layout bindings say where each part of a project lives
+
+`liftoff.yaml` may bind each part of the project (`backend`, `frontend`,
+`infrastructure`) to the directory it lives in, for a project laid out
+differently from Liftoff's standard (`backend/`, `frontend/`,
+`infrastructure/opentofu/azure/`). The repository root, `.`, may hold one
+part. A binding must:
+
+- be for a part the project has;
+- be a repository-relative path every system and Git can hold (no control
+  character, no character Windows forbids, no invisible character macOS
+  leaves out of a name, no name Windows reads as another file, no name over
+  255 bytes), outside `.github` and `.liftoff` and outside `.git` at any
+  depth;
+- not put one part's directory inside another's, except inside the root,
+  comparing names as macOS and Windows do: ignoring letter case and how an
+  accented letter is encoded.
+
+A binding to the standard directory is the same as none and is not written,
+so a project in the standard layout has no `layout`. `liftoff validate`
+warns about a part bound to a directory that is not there, or that is
+reached through a link. Until adopting a
+project, which honors bindings, is available, Liftoff refuses to generate
+files for a project in another layout rather than use the standard
+directories.
+
+Verification: test
+
+## PROJ-025 The manifest records its history and anything from before the rebuild
+
+`.liftoff/manifest.json` records:
+
+- each Liftoff operation that wrote the project (`init`, `update`, `adopt`
+  and the others), with the release, oldest first;
+- for a project adopted from a Liftoff release before the rebuild, a legacy
+  record: the old release, and each old record's path, kind and state, with
+  the sha256 of a file as it was kept.
+
+Old records stay the project's own, kept byte for byte, and are never
+counted as current configuration or proof. A manifest from before these
+were recorded is read as having no history and no legacy record.
+
+Verification: test
+
 ## INIT-001 Plans are read-only and tamper-evident
 
 `liftoff plan` changes nothing except the plan file named with `--out`. A
@@ -417,8 +461,10 @@ Verification: test
 If a framework's initializer cannot start, fails, takes more than ten
 minutes for all its steps together or is cancelled, nothing is created, and the error says why and what
 it needs. The same happens if it creates a Git repository (a `.git` at any
-depth, in any case) or anything other than regular files, writes a file
-where Liftoff writes one of its own (ignoring case), or writes a path from
+depth, in any case) or anything other than regular files, writes a path
+not every system and Git can hold (by the rules for layout bindings in
+PROJ-024), writes a file where Liftoff writes one of its own (ignoring
+case), or writes a path from
 this machine, such as the home or staging directory, into a file, whether
 as written, with forward slashes or escaped as in JSON. A failure's message
 keeps the end of the initializer's output, where the cause is.

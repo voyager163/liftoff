@@ -1,4 +1,4 @@
-import type { ProjectConfig } from "../../domain/project/config.ts";
+import { ConfigError, isStandardLayout, type ProjectConfig } from "../../domain/project/config.ts";
 import { type GeneratedProject, generateProject } from "../../generators/project.ts";
 import type { GenerationContext, TemplateSet } from "../../plugins/contracts/project-plugin.ts";
 import { resolveSelection, type Selection } from "../../plugins/registry.ts";
@@ -37,6 +37,12 @@ export async function generate(
   config: ProjectConfig,
   liftoffVersion: string,
 ): Promise<Generation> {
+  // Never the standard directories in place of the bound ones.
+  if (!isStandardLayout(config)) {
+    throw new ConfigError(
+      "this release generates only the standard layout; a project whose parts live elsewhere is changed by adopting it, which comes in a later release",
+    );
+  }
   const selection = resolveSelection(config);
   const sources = await loadAgentSources(assets, { projectSkills: true });
   const context: GenerationContext = {

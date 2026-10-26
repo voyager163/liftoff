@@ -74,8 +74,19 @@ describe("CHANGE-001 a change plan names every file it changes, before and after
     ["a/../b", "is not a repository-relative path"],
     ["a//b", "is not a repository-relative path"],
     ["", "is not a repository-relative path"],
-    [".git/config", "is not a file a change may touch"],
-    [".GIT/hooks/pre-commit", "is not a file a change may touch"],
+    [".git/config", "is inside a .git directory"],
+    [".GIT/hooks/pre-commit", "is inside a .git directory"],
+    ["vendor/lib/.git/config", "is inside a .git directory"],
+    [".g\u0131t/config", "is inside a .git directory"],
+    [".git\u200c/hooks/pre-commit", "has an invisible character macOS leaves out"],
+    ["vendor/.g\u200cit/config", "has an invisible character macOS leaves out"],
+    ["src/\ufeffREADME.md", "has an invisible character macOS leaves out"],
+    ["conin$", "has a name Windows would read as another file"],
+    ["logs/CONOUT$.txt", "has a name Windows would read as another file"],
+    ["nul .txt", "has a name Windows would read as another file"],
+    ["src/a\u0000b", "has a character Git or Windows cannot hold"],
+    ["src/a|b", "has a character Git or Windows cannot hold"],
+    ["services/COM\u00b9", "has a name Windows would read as another file"],
     [".liftoff/change-journal.json", "is not a file a change may touch"],
     ["GIT~1/config", "has a name Windows would read as another file"],
     [".git./config", "has a name Windows would read as another file"],
@@ -91,6 +102,17 @@ describe("CHANGE-001 a change plan names every file it changes, before and after
     expect(() =>
       sealChangePlan(unsigned([kept("README.md", A, B), kept("readme.md", null, A)])),
     ).toThrow("readme.md is listed twice");
+    expect(() =>
+      sealChangePlan(
+        unsigned([kept("\u00e9t\u00e9.md", A, B), kept("e\u0301te\u0301.md", null, A)]),
+      ),
+    ).toThrow("is listed twice");
+    expect(() =>
+      sealChangePlan(unsigned([kept("\u03a3/file", A, B), kept("\u03c2/file", null, A)])),
+    ).toThrow("is listed twice");
+    expect(() =>
+      sealChangePlan(unsigned([kept("stra\u00dfe/file", A, B), kept("STRA\u1e9eE/file", null, A)])),
+    ).toThrow("is listed twice");
     expect(() => sealChangePlan(unsigned([kept("README.md", A, A)]))).toThrow("does not change");
     expect(() => sealChangePlan(unsigned([{ path: "README.md", before: A, after: B }]))).toThrow(
       "must say who owns it",

@@ -1,5 +1,8 @@
 import { en } from "zod/locales";
 import * as z from "zod/mini";
+import { LEGACY_RECORD_KINDS } from "../legacy/inventory.ts";
+import { OPERATIONS } from "./operations.ts";
+import { repositoryPathProblem } from "./paths.ts";
 
 z.config(en());
 
@@ -22,17 +25,48 @@ export type Ownership = (typeof OWNERSHIP)[number];
 
 const sha256 = z.string().check(z.regex(/^[0-9a-f]{64}$/, "must be a sha256 hex digest"));
 const relativePath = z.string().check(
-  z.refine(
-    (p) => p.length > 0 && !p.startsWith("/") && !p.includes("\\") && !p.split("/").includes(".."),
-    {
-      message: "must be a repository-relative POSIX path",
-    },
-  ),
+  z.refine((p) => repositoryPathProblem(p) === undefined, {
+    message: "must be a repository-relative POSIX path every system can hold",
+  }),
 );
 
 const manifestSchema = z.strictObject({
   schema: z.literal(MANIFEST_SCHEMA),
   generatedBy: z.strictObject({ liftoff: z.string().check(z.minLength(1)) }),
+  /**
+   * Each Liftoff operation that wrote the project, with its release, oldest
+   * first. A manifest from before this was recorded has none.
+   */
+  history: z._default(
+    z.array(
+      z.strictObject({
+        operation: z.enum(OPERATIONS),
+        liftoff: z.string().check(z.minLength(1)),
+      }),
+    ),
+    [],
+  ),
+  /**
+   * What a Liftoff release before the rebuild left, for a project adopted
+   * from one: kept as the project's own, byte for byte, and never counted
+   * as current configuration or proof.
+   */
+  legacy: z.optional(
+    z.strictObject({
+      /** The old release that last wrote the project, when it said. */
+      release: z.optional(z.string().check(z.minLength(1))),
+      records: z.array(
+        z.strictObject({
+          path: relativePath,
+          record: z.enum(LEGACY_RECORD_KINDS),
+          state: z.enum(["readable", "migratable", "unsupported"]),
+          format: z.optional(z.string()),
+          /** A kept file's sha256 when it was adopted; a directory has none. */
+          sha256: z.optional(sha256),
+        }),
+      ),
+    }),
+  ),
   plugins: z.array(z.strictObject({ id: z.string(), version: z.string() })),
   files: z.array(
     z.strictObject({
@@ -68,11 +102,39 @@ export function parseManifest(text: string): Manifest {
   return parsed.data;
 }
 
+/**
+ * Writes the manifest with every object's keys in the schema's order and
+ * every list sorted, so the same manifest is always the same bytes, however
+ * the caller built it.
+ */
 export function serializeManifest(manifest: Manifest): string {
-  const sorted: Manifest = {
-    ...manifest,
-    plugins: [...manifest.plugins].sort((a, b) => a.id.localeCompare(b.id)),
-    files: [...manifest.files].sort((a, b) => a.path.localeCompare(b.path)),
+  const { legacy } = manifest;
+  const ordered: Manifest = {
+    schema: manifest.schema,
+    generatedBy: { liftoff: manifest.generatedBy.liftoff },
+    history: manifest.history.map(({ operation, liftoff }) => ({ operation, liftoff })),
+    plugins: [...manifest.plugins]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map(({ id, version }) => ({ id, version })),
+    files: [...manifest.files]
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .map(({ path, ownership, sha256, plugin }) => ({ path, ownership, sha256, plugin })),
+    ...(legacy === undefined
+      ? {}
+      : {
+          legacy: {
+            ...(legacy.release === undefined ? {} : { release: legacy.release }),
+            records: [...legacy.records]
+              .sort((a, b) => a.path.localeCompare(b.path))
+              .map(({ path, record, state, format, sha256 }) => ({
+                path,
+                record,
+                state,
+                ...(format === undefined ? {} : { format }),
+                ...(sha256 === undefined ? {} : { sha256 }),
+              })),
+          },
+        }),
   };
-  return `${JSON.stringify(sorted, null, 2)}\n`;
+  return `${JSON.stringify(ordered, null, 2)}\n`;
 }

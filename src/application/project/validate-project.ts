@@ -128,6 +128,25 @@ export async function validateProject(
     return result();
   }
 
+  // A part bound to a directory that is not there, or reached through a link.
+  for (const [component, bound] of Object.entries(config.layout)) {
+    if (bound === undefined || bound === ".") continue;
+    const parts = bound.split("/");
+    let real = true;
+    for (let depth = 1; depth <= parts.length && real; depth++) {
+      const entry = await fs.entry(path.join(directory, ...parts.slice(0, depth)));
+      real = entry.kind === "directory";
+    }
+    if (!real) {
+      findings.push({
+        severity: "warning",
+        code: "layout-directory-missing",
+        path: CONFIG_FILE,
+        message: `layout: ${component} is bound to ${bound}, which is not a directory here, or is reached through a link`,
+      });
+    }
+  }
+
   const manifestText = await read(MANIFEST_FILE);
   if (manifestText === undefined) {
     findings.push({

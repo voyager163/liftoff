@@ -87,10 +87,15 @@ Its only effect is `modify-files`. It is sealed like an init plan, so an
 edited plan is refused, and each kind of plan is refused where the other is
 expected. These make the plan invalid:
 
-- a path outside the project, or inside `.git`;
+- a path outside the project, or inside a `.git` directory at any depth;
+- a control character, a character Windows forbids in a name, or an
+  invisible character macOS leaves out of a name, such as a zero-width
+  joiner;
 - a name Windows would read as another file: a trailing dot or space, a
-  `:`, a device name such as `nul`, or an 8.3 short name such as `GIT~1`;
-- a path named twice, ignoring case as macOS and Windows do;
+  `:`, a device name such as `nul`, `nul .txt` or `conin$`, or an 8.3 short
+  name such as `GIT~1`;
+- a path named twice, ignoring letter case and how an accented letter is
+  encoded, as macOS and Windows do;
 - a change that changes nothing.
 
 Verification: test

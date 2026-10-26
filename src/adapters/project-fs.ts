@@ -49,6 +49,8 @@ export class LocalProjectFs implements ProjectFsPort {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing", size: 0 };
       if (code === "EACCES" || code === "EPERM") return { kind: "inaccessible", size: 0 };
+      // A path no file can have, such as one with a name too long, or links in a loop.
+      if (code === "ENAMETOOLONG" || code === "ELOOP") return { kind: "other", size: 0 };
       throw error;
     }
   }
