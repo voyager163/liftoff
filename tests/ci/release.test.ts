@@ -6,6 +6,8 @@ const COMMIT = "c".repeat(40);
 const MAIN = "d".repeat(40);
 const TREE = "e".repeat(40);
 const DIGEST = `sha256:${"f".repeat(64)}`;
+/** The commit a merge of develop into a sync branch makes, as the workflow token. */
+const MERGED = "a".repeat(40);
 
 interface Repo {
   /** Refs such as "tags/v1.2.0", and the commit each points at. */
@@ -14,8 +16,14 @@ interface Repo {
   releases?: Record<string, string>;
   /** Open pull requests, by head branch. */
   open?: Record<string, number>;
+  /** Open pull requests' descriptions, by number. */
+  bodies?: Record<number, string>;
+  /** Commits' authors' logins, by commit. */
+  authors?: Record<string, string>;
   /** Whether merging develop into a sync branch conflicts. */
   conflict?: boolean;
+  /** Whether a sync branch already has develop, so merging it does nothing. */
+  hasDevelop?: boolean;
   /** Whether the token may not open pull requests, as in a new repository. */
   forbidPulls?: boolean;
   develop?: string;
@@ -35,6 +43,9 @@ interface Call {
 
 /** Answers the GitHub REST routes the release steps use, and records every call. */
 function fakeGitHub(repo: Repo, calls: Call[]) {
+  // Branches the steps create or merge into move, within one run.
+  const refs: Record<string, string> = { ...repo.refs };
+  const authors: Record<string, string> = { ...repo.authors, [MERGED]: "github-actions[bot]" };
   return async (input: string, init?: RequestInit): Promise<Response> => {
     const url = new URL(input);
     const method = init?.method ?? "GET";
@@ -46,10 +57,17 @@ function fakeGitHub(repo: Repo, calls: Call[]) {
       new Response(status === 204 ? null : JSON.stringify(value), { status });
     const path = url.pathname;
     if (method === "POST" && path.endsWith("/dispatches")) return json(null, 204);
-    if (method === "POST" && path.endsWith("/git/refs")) return json({}, 201);
-    if (method === "POST" && path.endsWith("/merges")) {
-      return repo.conflict ? json({ message: "Merge conflict" }, 409) : json({}, 201);
+    if (method === "POST" && path.endsWith("/git/refs")) {
+      refs[String(body?.ref).replace(/^refs\//, "")] = String(body?.sha);
+      return json({}, 201);
     }
+    if (method === "POST" && path.endsWith("/merges")) {
+      if (repo.conflict) return json({ message: "Merge conflict" }, 409);
+      if (repo.hasDevelop) return json(null, 204);
+      refs[`heads/${String(body?.base)}`] = MERGED;
+      return json({ sha: MERGED }, 201);
+    }
+    if (method === "PATCH" && /\/pulls\/\d+$/.test(path)) return json({});
     if (method === "POST" && path.endsWith("/pulls")) {
       if (repo.forbidPulls) {
         return json(
@@ -57,7 +75,10 @@ function fakeGitHub(repo: Repo, calls: Call[]) {
           403,
         );
       }
-      return json({ number: 21, html_url: "https://github.com/o/r/pull/21" }, 201);
+      return json(
+        { number: 21, html_url: "https://github.com/o/r/pull/21", body: body?.body },
+        201,
+      );
     }
     if (method === "POST" && path.endsWith("/releases")) {
       return json({ html_url: "https://github.com/o/r/releases/tag/v1.2.0" }, 201);
@@ -67,13 +88,17 @@ function fakeGitHub(repo: Repo, calls: Call[]) {
     }
     const ref = /\/git\/ref\/(.+)$/.exec(path)?.[1];
     if (ref !== undefined) {
-      const sha = repo.refs?.[ref];
+      const sha = refs[ref];
       return sha === undefined ? json({}, 404) : json({ object: { sha } });
     }
     if (method === "GET" && path === "/repos/o/r/pulls") {
       const head = url.searchParams.get("head")?.replace(/^o:/, "") ?? "";
       const number = repo.open?.[head];
-      return json(number === undefined ? [] : [{ number, html_url: `https://x/pull/${number}` }]);
+      return json(
+        number === undefined
+          ? []
+          : [{ number, html_url: `https://x/pull/${number}`, body: repo.bodies?.[number] ?? "" }],
+      );
     }
     const release = /\/releases\/tags\/(.+)$/.exec(path)?.[1];
     if (release !== undefined) {
@@ -92,6 +117,10 @@ function fakeGitHub(repo: Repo, calls: Call[]) {
       });
     }
     if (/\/commits\/\w+\/pulls$/.test(path)) return json(repo.pulls ?? []);
+    const authored = /\/repos\/o\/r\/commits\/(\w+)$/.exec(path)?.[1];
+    if (authored !== undefined) {
+      return json({ author: { login: authors[authored] ?? "maintainer" } });
+    }
     const commit = /\/git\/commits\/(\w+)$/.exec(path)?.[1];
     if (commit !== undefined) return json({ tree: { sha: repo.trees?.[commit] ?? TREE } });
     return json({ message: "not found" }, 404);
@@ -128,7 +157,7 @@ const run = async (
   return { code, calls, log: logs.join(""), outputs, written };
 };
 
-const writes = (calls: Call[]) => calls.filter((call) => call.method === "POST");
+const writes = (calls: Call[]) => calls.filter((call) => call.method !== "GET");
 const BUILT = [".github/workflows/01-pr-ci.yml", ".github/workflows/10-build.yml"];
 const OPEN = { GITHUB_REF: "refs/heads/develop", VERSION: "1.2.0" };
 
@@ -436,6 +465,83 @@ describe("FLOW-005 after a release merges into main", () => {
       ["/repos/o/r/actions/workflows/02-codeql.yml/dispatches", "sync/main-into-develop-1.2.0"],
       ["/repos/o/r/actions/workflows/03-review-policy.yml/dispatches", "develop"],
     ]);
+  });
+
+  it("says when GitHub will hold the sync pull request's workflows for approval", async () => {
+    const diverged = { compare: { develop: { ahead_by: 1, behind_by: 2 } } };
+    const body = async (env: Record<string, string>, repo: Repo) =>
+      String(
+        writes(
+          (await run("sync", { GITHUB_SHA: MAIN, VERSION: "1.2.0", ...env }, repo)).calls,
+        ).find((call) => call.path === "/repos/o/r/pulls")?.body?.body,
+      );
+    // The workflow token's merge of develop is the newest commit.
+    expect(await body({ DISPATCH: "true" }, diverged)).toContain('"Approve workflows to run"');
+    // Not with a release app, nor without a merge.
+    expect(await body({ DISPATCH: "false" }, diverged)).not.toContain("Approve workflows");
+    const ahead = { compare: { develop: { ahead_by: 1, behind_by: 0 } } };
+    expect(await body({ DISPATCH: "true" }, ahead)).not.toContain("Approve workflows");
+    // Nor once a person resolved a conflict there, so the merge has nothing to do.
+    const resolved = {
+      ...diverged,
+      hasDevelop: true,
+      refs: { "heads/sync/main-into-develop-1.2.0": COMMIT },
+      authors: { [COMMIT]: "maintainer" },
+    };
+    expect(await body({ DISPATCH: "true" }, resolved)).not.toContain("Approve workflows");
+  });
+
+  it("keeps an earlier sync pull request's notes to what its branch needs now", async () => {
+    const earlier = {
+      compare: { develop: { ahead_by: 1, behind_by: 2 } },
+      refs: { "heads/sync/main-into-develop-1.2.0": MERGED },
+      open: { "sync/main-into-develop-1.2.0": 31 },
+      hasDevelop: true,
+    };
+    const env = { GITHUB_SHA: MAIN, VERSION: "1.2.0", DISPATCH: "true" };
+    const rerun = await run("sync", env, { ...earlier, bodies: { 31: "Merges main." } });
+    expect(rerun.code).toBe(0);
+    const patched = writes(rerun.calls).filter((call) => call.method === "PATCH");
+    expect(patched.map((call) => call.path)).toEqual(["/repos/o/r/pulls/31"]);
+    expect(String(patched[0]?.body?.body)).toMatch(
+      /^Merges main\.\n\n.*"Approve workflows to run"/s,
+    );
+    expect(rerun.log).toContain("Approve workflows to run");
+
+    const noted = String(patched[0]?.body?.body);
+    const again = await run("sync", env, { ...earlier, bodies: { 31: noted } });
+    expect(writes(again.calls).filter((call) => call.method === "PATCH")).toEqual([]);
+
+    // A person's commit is now the newest: the approval note goes.
+    const pushed = await run("sync", env, {
+      ...earlier,
+      refs: { "heads/sync/main-into-develop-1.2.0": COMMIT },
+      bodies: { 31: noted },
+    });
+    expect(writes(pushed.calls).filter((call) => call.method === "PATCH")).toEqual([
+      { method: "PATCH", path: "/repos/o/r/pulls/31", body: { body: "Merges main." } },
+    ]);
+    expect(pushed.log).not.toContain("Approve workflows");
+
+    // develop now conflicts: the conflict note comes, and goes once resolved.
+    const conflicting = await run("sync", env, {
+      ...earlier,
+      hasDevelop: false,
+      conflict: true,
+      bodies: { 31: "Merges main." },
+    });
+    const conflictNote = String(
+      writes(conflicting.calls).find((call) => call.method === "PATCH")?.body?.body,
+    );
+    expect(conflictNote).toMatch(/^Merges main\.\n\ndevelop has changes that conflict/);
+    const resolved = await run("sync", env, {
+      ...earlier,
+      refs: { "heads/sync/main-into-develop-1.2.0": COMMIT },
+      bodies: { 31: conflictNote },
+    });
+    expect(writes(resolved.calls).find((call) => call.method === "PATCH")?.body).toEqual({
+      body: "Merges main.",
+    });
   });
 
   it("merges develop into the sync branch when develop moved on", async () => {
