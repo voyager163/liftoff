@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -218,7 +219,8 @@ describe("CHANGE-002 a file changed since the plan is never overwritten", () => 
           fs,
           args,
         );
-        if (!edited) {
+        // Not .liftoff, which a change makes before anything else.
+        if (!edited && !String(args[0]).endsWith(".liftoff")) {
           edited = true;
           write(file, "# Mine\n");
         }
@@ -511,6 +513,42 @@ describe("CHANGE-003 a change that stops part way can be finished or undone", ()
     }
   });
 
+  it("says what to do about a journal that is empty", async () => {
+    write("liftoff.yaml", "name: demo\n");
+    write(".liftoff/change-journal.json", "");
+    await expect(recoverChanges(ports(fs), root, "undo")).rejects.toThrow(
+      "if it is empty, the change stopped before any file changed, so delete it",
+    );
+    expect((await validateProject(fs, root)).findings[0]?.message).toContain(
+      "if it is empty, the change stopped before any file changed",
+    );
+  });
+
+  it("finds no journal behind a linked .liftoff", async () => {
+    write("liftoff.yaml", "name: demo\n");
+    const outside = mkdtempSync(path.join(tmpdir(), "liftoff-outside-"));
+    try {
+      writeFileSync(path.join(outside, "change-journal.json"), "{}");
+      symlinkSync(outside, path.join(root, ".liftoff"), "junction");
+      const codes = (await validateProject(fs, root)).findings.map((finding) => finding.code);
+      expect(codes).not.toContain("interrupted-change");
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("creates nothing for a project that has moved since its plan", async () => {
+    const { plan, contents } = project();
+    renameSync(root, path.join(parent, "moved"));
+    await expect(applyChanges(ports(fs), plan, contents)).rejects.toThrow(
+      `${root} is not a directory Liftoff can change`,
+    );
+    await expect(recoverChanges(ports(fs), root, "undo")).rejects.toThrow(
+      "is not a directory Liftoff can change",
+    );
+    expect(existsSync(root)).toBe(false);
+  });
+
   it("reads a journal that is not one as a problem, in validate too", async () => {
     write("liftoff.yaml", "name: demo\n");
     write(".liftoff/change-journal.json", '{"staging":"../../elsewhere"}');
@@ -567,10 +605,10 @@ describe("CHANGE-003 only one change runs at a time", () => {
   it("leaves nothing beside the project when the journal cannot be written", async () => {
     const { plan, contents } = project();
     const failing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
-      createExclusive: async (file: string, content: string) => {
+      replaceFile: async (file: string, content: string) => {
         if (file.endsWith("change-journal.json"))
           throw new Error("ENOSPC: no space left on device");
-        return fs.createExclusive(file, content);
+        return fs.replaceFile(file, content);
       },
     });
     await expect(applyChanges(ports(failing), plan, contents)).rejects.toThrow("ENOSPC");

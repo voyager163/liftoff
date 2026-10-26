@@ -16,7 +16,11 @@ import {
   parseManifest,
 } from "../../domain/project/manifest.ts";
 import { allPlugins, resolveSelection, SelectionError } from "../../plugins/registry.ts";
-import { CHANGE_COMMANDS, readJournal } from "../change/apply-changes.ts";
+import {
+  CHANGE_COMMANDS,
+  readJournal,
+  UNREADABLE_JOURNAL_ADVICE,
+} from "../change/apply-changes.ts";
 import type { ProjectFsPort } from "../ports.ts";
 import { inventoryLegacy } from "./legacy-inventory.ts";
 
@@ -75,7 +79,7 @@ export async function validateProject(
       severity: "error",
       code: "interrupted-change",
       path: CHANGE_JOURNAL_FILE,
-      message: `a change stopped part way, but its journal cannot be read: ${error.message}`,
+      message: `a change stopped part way, but its journal cannot be read: ${error.message}; ${UNREADABLE_JOURNAL_ADVICE}`,
     });
   }
 

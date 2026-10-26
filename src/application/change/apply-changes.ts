@@ -131,7 +131,10 @@ export async function applyChanges(
       );
       const journal = journalFor(plan, path.basename(staging), now());
       await checkRecordsDirectory(fs, root, false);
-      journaled = await fs.createExclusive(journalPath, serializeJournal(journal));
+      // Written whole under another name, then renamed into place, so a
+      // journal is never found half written. The lock keeps other changes out.
+      await fs.replaceFile(journalPath, serializeJournal(journal));
+      journaled = true;
     } finally {
       if (!journaled) await fs.remove(staging);
     }
@@ -201,7 +204,10 @@ export async function recoverChanges(
 ): Promise<RecoveryResult> {
   const { fs } = ports;
   return withChangeLock(ports, root, async () => {
-    const journal = await readJournal(fs, root);
+    const journal = await readJournal(fs, root).catch((error: unknown) => {
+      if (!(error instanceof JournalError)) throw error;
+      throw new ChangeError(`${error.message}; ${UNREADABLE_JOURNAL_ADVICE}`);
+    });
     if (journal === undefined) {
       throw new ChangeError("no change to this project stopped part way");
     }
@@ -257,13 +263,23 @@ export async function recoverChanges(
   });
 }
 
-/** The journal of a change that has not finished, if there is one. */
+/** What to do about a journal that cannot be read. */
+export const UNREADABLE_JOURNAL_ADVICE = `if it is empty, the change stopped before any file changed, so delete it; otherwise restore the project from version control, then delete ${CHANGE_JOURNAL_FILE}`;
+
+/**
+ * The journal of a change that has not finished, if there is one. A
+ * journal is only ever written in a real .liftoff directory, so behind a
+ * link, or in a directory Liftoff may not search, there is none.
+ */
 export async function readJournal(
   fs: ProjectFsPort,
   root: string,
 ): Promise<ChangeJournal | undefined> {
   const read = await fs.readWithin(root, CHANGE_JOURNAL_FILE, MAX_JOURNAL_BYTES);
   if (read.kind === "missing") return undefined;
+  if ((read.kind === "other" || read.kind === "inaccessible") && read.via !== undefined) {
+    return undefined;
+  }
   if (read.kind !== "file" || read.text === undefined) {
     throw new JournalError(`${CHANGE_JOURNAL_FILE} is not a regular file Liftoff can read`);
   }
@@ -285,7 +301,13 @@ async function withChangeLock<T>(
   const { fs, processes, now } = ports;
   const lock = path.join(root, ...CHANGE_LOCK_FILE.split("/"));
   const mine = `${JSON.stringify({ pid: processes.pid, host: processes.host, started: now() })}\n`;
+  // Nothing is created for a project that is not there, such as one moved
+  // since its plan was made.
+  if ((await fs.directoryIdentity(root)) === undefined) {
+    throw new ChangeError(`${root} is not a directory Liftoff can change`);
+  }
   await checkRecordsDirectory(fs, root, true);
+  await fs.makeDirectory(path.join(root, ".liftoff"));
   if (!(await fs.createExclusive(lock, mine))) {
     const read = await fs.readWithin(root, CHANGE_LOCK_FILE, 4096);
     const holder = parseLock(read.kind === "file" ? read.text : undefined);

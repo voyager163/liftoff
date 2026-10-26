@@ -109,9 +109,10 @@ export interface ProjectFsPort {
   /** Copies a file byte for byte, with its mode; fails if `to` exists. */
   copyFile(from: string, to: string): Promise<void>;
   /**
-   * What identifies a directory, such as its device and inode, while it
-   * exists; undefined when it is missing, a link or not a directory. A copy
-   * of a directory has a different identity.
+   * What identifies a directory, such as its inode, while it exists, even
+   * across the disk being detached and attached again; undefined when it is
+   * missing, a link or not a directory. A copy of a directory has a
+   * different identity.
    */
   directoryIdentity(path: string): Promise<string | undefined>;
   /** Text of a file, or undefined when it does not exist. */

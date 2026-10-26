@@ -85,7 +85,9 @@ export class LocalProjectFs implements ProjectFsPort {
   async directoryIdentity(target: string): Promise<string | undefined> {
     const seen = await inspect(NODE_CALLS, target);
     if (typeof seen === "string" || !seen.isDirectory()) return undefined;
-    return `${seen.dev}:${seen.ino}`;
+    // The inode alone: a disk may get another device number each time it is
+    // attached, but a copy of a directory always gets a new inode.
+    return `${seen.ino}`;
   }
 
   async readText(file: string): Promise<string | undefined> {

@@ -123,16 +123,24 @@ A change, and any recovery, holds a lock at `.liftoff/change.lock` while it
 runs, so only one runs at a time and recovery never runs beside a change
 still being made. A lock is never taken over, since no step of taking it
 over could keep another process out meanwhile. It is reported, saying
-whether its process is still running, with how to clear it. Liftoff writes a journal at `.liftoff/change-journal.json` before
-checking any file. The lock and journal are kept only in a real `.liftoff`
-directory in the project, never through a link to one elsewhere. Before each file is replaced
-or removed, it keeps a byte-for-byte copy of it beside the project, in a
-directory only the person can open, with a marker naming this project and
-plan. Generated projects ignore the journal
-in Git, with the lock.
+whether its process is still running, with how to clear it. Nothing is
+created for a project directory that is not there, such as one moved since
+its plan was made.
+
+Before checking any file, Liftoff writes a journal at
+`.liftoff/change-journal.json`: whole, under another name, then renamed into
+place. The lock and journal are kept only in a real `.liftoff` directory in
+the project, never through a link to one elsewhere, so there is no journal
+behind a link. Before each file is replaced or removed, Liftoff keeps a
+byte-for-byte copy of it beside the project, in a directory only the person
+can open, with a marker naming the project directory (by its inode, which
+survives the disk being attached again) and the plan. Generated projects
+ignore the journal in Git, with the lock.
+
 If a change stops part way, the journal stays and `liftoff validate` reports
-it. Recovery then finishes or undoes it, deciding each file from what is
-there now:
+it. A journal that cannot be read comes with what to do: if it is empty, the
+change stopped before any file changed, so it can be deleted. Recovery
+finishes or undoes the change, deciding each file from what is there now:
 
 - a file already as wanted is left alone;
 - a file as the change found it (finishing), or as the change left it

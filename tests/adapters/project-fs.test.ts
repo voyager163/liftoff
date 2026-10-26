@@ -227,7 +227,10 @@ describe("CHANGE-002 hashing a file follows no link and sees it change", () => {
       via: "link",
     });
     expect(await fs.directoryIdentity(path.join(work, "link"))).toBeUndefined();
-    expect(await fs.directoryIdentity(path.join(work, "directory"))).toMatch(/^\d+:\d+$/);
+    // The inode alone, which stays when a disk is attached again under another device number.
+    expect(await fs.directoryIdentity(path.join(work, "directory"))).toBe(
+      `${statSync(path.join(work, "directory"), { bigint: true }).ino}`,
+    );
   });
 
   it("never hashes a state the file was not in, nor past the limit, when it grows", async () => {
