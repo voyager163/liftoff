@@ -18,10 +18,22 @@ import {
   type ChangePlan,
 } from "../../domain/plan/change-plan.ts";
 import { PlanError, sha256Hex } from "../../domain/plan/plan.ts";
-import type { ProjectFsPort } from "../ports.ts";
+import { CONFIG_FILE } from "../../domain/project/config.ts";
+import { MANIFEST_FILE } from "../../domain/project/manifest.ts";
+import type { ProcessesPort, ProjectFsPort } from "../ports.ts";
 
 /** A file over this is never part of a change; no file Liftoff manages comes near it. */
 export const MAX_CHANGED_BYTES = 64 * 1024 * 1024;
+
+/** The largest journal a change may write, which is also the most recovery reads. */
+export const MAX_JOURNAL_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Held by whichever Liftoff command is changing or recovering the project,
+ * for as long as it runs. The journal outlives a command that stops part
+ * way; the lock says whether one is still running.
+ */
+export const CHANGE_LOCK_FILE = ".liftoff/change.lock";
 
 /** The command that makes, and recovers, each kind of change. */
 export const CHANGE_COMMANDS: Record<ChangeOperation, string> = {
@@ -32,6 +44,13 @@ export const CHANGE_COMMANDS: Record<ChangeOperation, string> = {
   "profile-set": "liftoff governance profile set",
   "agents-add": "liftoff agents add",
 };
+
+export interface ChangePorts {
+  readonly fs: ProjectFsPort;
+  readonly processes: ProcessesPort;
+  /** The person's clock, for the journal and the lock. */
+  readonly now: () => string;
+}
 
 export class ChangeError extends Error {
   override readonly name: string = "ChangeError";
@@ -57,89 +76,94 @@ export interface NewContent {
  * file that changed since the plan was made. `contents` holds each new
  * file's content, which must hash to what the plan says.
  *
- * The new files are staged beside the project with a marker binding them
- * to this project and plan, and the journal is created before anything is
- * checked: it is the lock, so a change that finished meanwhile is seen.
- * Every file must then be as planned, or nothing changes. Each file is
- * checked again, its original kept byte for byte, and replaced in one
- * step. If the change stops part way, the journal stays so recoverChanges
- * can finish or undo it. A change across files is not atomic, and Liftoff
- * does not claim it is.
+ * It holds the change lock throughout. The new files are staged beside the
+ * project with a marker binding them to this project and plan, and the
+ * journal is written. Every file must then be as planned, or nothing
+ * changes. For each file in turn, its original is kept byte for byte, its
+ * replacement prepared, and only then is it checked once more and replaced
+ * in one step. If the change stops part way, the journal stays so
+ * recoverChanges can finish or undo it. A change across files is not
+ * atomic, and Liftoff does not claim it is.
  */
 export async function applyChanges(
-  fs: ProjectFsPort,
+  ports: ChangePorts,
   plan: ChangePlan,
   contents: ReadonlyMap<string, NewContent>,
-  now: () => string,
 ): Promise<{ readonly changed: number }> {
+  const { fs, now } = ports;
   checkContents(plan, contents);
   const root = plan.target;
-  const journalPath = path.join(root, ...CHANGE_JOURNAL_FILE.split("/"));
-  if ((await fs.entry(journalPath)).kind !== "missing") {
-    throw new ChangeError(
-      `a change to this project stopped part way (see ${CHANGE_JOURNAL_FILE}); finish or undo it before making another`,
+  // The staging directory's name has this length, so the size is exact.
+  const named = `.${path.basename(root)}.liftoff-staging-XXXXXX`;
+  if (Buffer.byteLength(serializeJournal(journalFor(plan, named, now()))) > MAX_JOURNAL_BYTES) {
+    throw new PlanError(
+      "the plan changes too many files to recover if it stopped part way; split it into smaller changes",
     );
   }
-  const project = await fs.directoryIdentity(root);
-  if (project === undefined) throw new ChangeError(`${root} is not a directory Liftoff can change`);
-
-  const staging = await fs.createStaging(root);
-  let locked = false;
-  try {
-    for (const change of plan.changes) {
-      const planned = contents.get(change.path);
-      if (planned === undefined) continue;
-      await fs.writeFile(
-        path.join(staging, "after", ...change.path.split("/")),
-        planned.content,
-        planned.executable,
+  return withChangeLock(ports, root, async () => {
+    const journalPath = path.join(root, ...CHANGE_JOURNAL_FILE.split("/"));
+    if ((await fs.entry(journalPath)).kind !== "missing") {
+      throw new ChangeError(
+        `a change to this project stopped part way (see ${CHANGE_JOURNAL_FILE}); finish or undo it before making another`,
       );
     }
-    await fs.writeFile(
-      path.join(staging, STAGING_MARKER),
-      `${JSON.stringify(stagingMarker(plan.hash, project))}\n`,
-      false,
-    );
-    const journal = journalFor(plan, path.basename(staging), now());
-    locked = await fs.createExclusive(journalPath, serializeJournal(journal));
-  } finally {
-    if (!locked) await fs.remove(staging);
-  }
-  if (!locked) {
-    throw new ChangeError(
-      "another change to this project began at the same time; nothing was changed",
-    );
-  }
-
-  const problems: string[] = [];
-  for (const change of plan.changes) {
-    const current = await fileNow(fs, root, change.path);
-    if (!fileMatches(current, change.before)) {
-      problems.push(describe(change.path, current, change.before));
+    const project = await fs.directoryIdentity(root);
+    if (project === undefined) {
+      throw new ChangeError(`${root} is not a directory Liftoff can change`);
     }
-  }
-  if (problems.length > 0) {
+    const staging = await fs.createStaging(root);
+    let journaled = false;
+    try {
+      for (const change of plan.changes) {
+        const planned = contents.get(change.path);
+        if (planned === undefined) continue;
+        await fs.writeFile(
+          path.join(staging, "after", ...change.path.split("/")),
+          planned.content,
+          planned.executable,
+        );
+      }
+      await fs.writeFile(
+        path.join(staging, STAGING_MARKER),
+        `${JSON.stringify(stagingMarker(plan.hash, project))}\n`,
+        false,
+      );
+      const journal = journalFor(plan, path.basename(staging), now());
+      journaled = await fs.createExclusive(journalPath, serializeJournal(journal));
+    } finally {
+      if (!journaled) await fs.remove(staging);
+    }
+    if (!journaled) {
+      throw new ChangeError(
+        `${CHANGE_JOURNAL_FILE} appeared while the change was being prepared; nothing was changed`,
+      );
+    }
+
+    const problems: string[] = [];
+    for (const change of plan.changes) {
+      const current = await fileNow(fs, root, change.path);
+      if (!fileMatches(current, change.before)) {
+        problems.push(describe(change.path, current, change.before));
+      }
+    }
+    if (problems.length > 0) {
+      await fs.remove(journalPath);
+      await fs.remove(staging);
+      throw new ChangeConflictError(problems);
+    }
+
+    for (const change of plan.changes) {
+      const source = change.after === null ? "removed" : "after";
+      if (!(await changeFile(fs, root, staging, change, change.before, source, true))) {
+        throw new ChangeError(
+          `${change.path} changed while the change was being made, so it and the files after it were left alone; finish or undo the change with ${CHANGE_COMMANDS[plan.operation]} --recover`,
+        );
+      }
+    }
     await fs.remove(journalPath);
     await fs.remove(staging);
-    throw new ChangeConflictError(problems);
-  }
-
-  for (const change of plan.changes) {
-    if (!fileMatches(await fileNow(fs, root, change.path), change.before)) {
-      throw new ChangeError(
-        `${change.path} changed while the change was being made, so it and the files after it were left alone; finish or undo the change with ${CHANGE_COMMANDS[plan.operation]} --recover`,
-      );
-    }
-    if (!(await keep(fs, root, staging, change))) {
-      throw new ChangeError(
-        `${change.path} changed while it was being kept, so it and the files after it were left alone; finish or undo the change with ${CHANGE_COMMANDS[plan.operation]} --recover`,
-      );
-    }
-    await put(fs, root, staging, change.path, change.after === null ? "removed" : "after");
-  }
-  await fs.remove(journalPath);
-  await fs.remove(staging);
-  return { changed: plan.changes.length };
+    return { changed: plan.changes.length };
+  });
 }
 
 export interface RecoveryResult {
@@ -148,75 +172,177 @@ export interface RecoveryResult {
   readonly changed: readonly string[];
   /** Files something else changed meanwhile, left as they are. */
   readonly conflicts: readonly string[];
+  /** liftoff.yaml and the manifest, left until no other file conflicts. */
+  readonly waiting: readonly string[];
   /** Whether the change is now finished or undone, and its journal removed. */
   readonly complete: boolean;
 }
 
 /**
  * Finishes or undoes a change that stopped part way, and can be run again
- * either way until it completes. The staging directory must be a real
- * directory whose marker names this project, not a copy of it, and this
- * plan. Each file's step comes from what is there now: one already as
- * wanted is left alone, one still as the change found it (finishing) or as
- * the change left it (undoing) is replaced, and any other is a file
- * something else changed, which is never overwritten. While any such file
- * remains, the journal stays. The kept files are copied into place, never
+ * either way until it completes. It holds the change lock, so it never
+ * runs beside a change still being made or another recovery. The staging
+ * directory must be a real directory whose marker names this project, not a
+ * copy of it, and this plan. Each file's step comes from what is there now:
+ * one already as wanted is left alone, one still as the change found it
+ * (finishing) or as the change left it (undoing) is replaced, and any other
+ * is a file something else changed, which is never overwritten.
+ * liftoff.yaml and the manifest change only once every other file has, so
+ * the manifest never describes files that are not there. While anything is
+ * left, the journal stays. The kept files are copied into place, never
  * used up, so finishing and undoing can follow each other.
  */
 export async function recoverChanges(
-  fs: ProjectFsPort,
+  ports: ChangePorts,
   root: string,
   mode: "finish" | "undo",
 ): Promise<RecoveryResult> {
-  const journal = await readJournal(fs, root);
-  if (journal === undefined) throw new ChangeError("no change to this project stopped part way");
-  const staging = path.join(path.dirname(root), journal.staging);
-  await checkStaging(fs, root, staging, journal.plan);
-  const current = new Map<string, FileNow>();
-  for (const change of journal.changes) {
-    current.set(change.path, await fileNow(fs, root, change.path));
-  }
-  const changed: string[] = [];
-  const conflicts: string[] = [];
-  for (const step of recoverySteps(journal, current, mode)) {
-    if (step.step === "done") continue;
-    const change = journal.changes.find((entry) => entry.path === step.path);
-    if (step.step === "conflict" || change === undefined) {
-      conflicts.push(step.path);
-      continue;
+  const { fs } = ports;
+  return withChangeLock(ports, root, async () => {
+    const journal = await readJournal(fs, root);
+    if (journal === undefined) {
+      throw new ChangeError("no change to this project stopped part way");
     }
-    const from = mode === "finish" ? change.before : change.after;
-    // Checked again just before, as when the change was made.
-    if (!fileMatches(await fileNow(fs, root, step.path), from)) {
-      conflicts.push(step.path);
-      continue;
+    const staging = path.join(path.dirname(root), journal.staging);
+    await checkStaging(fs, root, staging, journal.plan);
+    const current = new Map<string, FileNow>();
+    for (const change of journal.changes) {
+      current.set(change.path, await fileNow(fs, root, change.path));
     }
-    const source = step.wanted === null ? undefined : mode === "finish" ? "after" : "before";
-    if (
-      (source !== undefined &&
-        !fileMatches(await fileNow(fs, staging, `${source}/${step.path}`), step.wanted)) ||
-      (mode === "finish" && !(await keep(fs, root, staging, change)))
-    ) {
-      // What it should become is gone or altered, or its original could not
-      // be kept, so it is left alone.
-      conflicts.push(step.path);
-      continue;
+    const changed: string[] = [];
+    const conflicts: string[] = [];
+    const waiting: string[] = [];
+    for (const step of recoverySteps(journal, current, mode)) {
+      if (step.step === "done") continue;
+      const change = journal.changes.find((entry) => entry.path === step.path);
+      // Changes are ordered with liftoff.yaml and the manifest last.
+      if ((step.path === CONFIG_FILE || step.path === MANIFEST_FILE) && conflicts.length > 0) {
+        waiting.push(step.path);
+        continue;
+      }
+      if (step.step === "conflict" || change === undefined) {
+        conflicts.push(step.path);
+        continue;
+      }
+      const source =
+        step.wanted === null
+          ? mode === "finish"
+            ? "removed"
+            : "discarded"
+          : mode === "finish"
+            ? "after"
+            : "before";
+      const sourceIntact =
+        (source !== "after" && source !== "before") ||
+        fileMatches(await fileNow(fs, staging, `${source}/${step.path}`), step.wanted);
+      const from = mode === "finish" ? change.before : change.after;
+      if (
+        sourceIntact &&
+        (await changeFile(fs, root, staging, change, from, source, mode === "finish"))
+      ) {
+        changed.push(step.path);
+      } else {
+        // What it should become is gone or altered, or it changed meanwhile.
+        conflicts.push(step.path);
+      }
     }
-    await put(
-      fs,
-      root,
-      staging,
-      step.path,
-      source ?? (mode === "finish" ? "removed" : "discarded"),
-    );
-    changed.push(step.path);
+    const complete = conflicts.length === 0 && waiting.length === 0;
+    if (complete) {
+      await fs.remove(path.join(root, ...CHANGE_JOURNAL_FILE.split("/")));
+      await fs.remove(staging);
+    }
+    return { operation: journal.operation, changed, conflicts, waiting, complete };
+  });
+}
+
+/** The journal of a change that has not finished, if there is one. */
+export async function readJournal(
+  fs: ProjectFsPort,
+  root: string,
+): Promise<ChangeJournal | undefined> {
+  const read = await fs.readWithin(root, CHANGE_JOURNAL_FILE, MAX_JOURNAL_BYTES);
+  if (read.kind === "missing") return undefined;
+  if (read.kind !== "file" || read.text === undefined) {
+    throw new JournalError(`${CHANGE_JOURNAL_FILE} is not a regular file Liftoff can read`);
   }
-  const complete = conflicts.length === 0;
-  if (complete) {
-    await fs.remove(path.join(root, ...CHANGE_JOURNAL_FILE.split("/")));
-    await fs.remove(staging);
+  return parseJournal(read.text);
+}
+
+/**
+ * Runs `body` holding the change lock. A lock left by a process on this
+ * machine that is no longer running is taken over: it is moved aside in one
+ * step, which only one taker can do, and the lock is created afresh. A lock
+ * held by a running process, or from another machine, is never taken.
+ */
+async function withChangeLock<T>(
+  ports: ChangePorts,
+  root: string,
+  body: () => Promise<T>,
+): Promise<T> {
+  const { fs, processes, now } = ports;
+  const lock = path.join(root, ...CHANGE_LOCK_FILE.split("/"));
+  const mine = `${JSON.stringify({ pid: processes.pid, host: processes.host, started: now() })}\n`;
+  if (!(await fs.createExclusive(lock, mine))) {
+    const read = await fs.readWithin(root, CHANGE_LOCK_FILE, 4096);
+    const text = read.kind === "file" ? read.text : undefined;
+    const holder = parseLock(text);
+    const running =
+      holder === undefined || holder.host !== processes.host || processes.isRunning(holder.pid);
+    if (running || text === undefined || !(await takeOver(fs, root, processes.pid, text, mine))) {
+      const who = holder
+        ? `process ${holder.pid} on ${holder.host} has been changing this project since ${holder.started}`
+        : "another liftoff command is changing this project";
+      throw new ChangeError(`${who}; if it is not running, delete ${CHANGE_LOCK_FILE}`);
+    }
   }
-  return { operation: journal.operation, changed, conflicts, complete };
+  try {
+    return await body();
+  } finally {
+    await fs.remove(lock);
+  }
+}
+
+/** Moves a stale lock aside and creates a new one, or false if another process got there first. */
+async function takeOver(
+  fs: ProjectFsPort,
+  root: string,
+  pid: number,
+  stale: string,
+  mine: string,
+): Promise<boolean> {
+  const lock = path.join(root, ...CHANGE_LOCK_FILE.split("/"));
+  const asideName = `${CHANGE_LOCK_FILE}.taken-by-${pid}`;
+  const aside = path.join(root, ...asideName.split("/"));
+  try {
+    await fs.moveFile(lock, aside);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    // Another process moved it first, and holds the lock now or soon.
+    return fs.createExclusive(lock, mine);
+  }
+  const moved = await fs.readWithin(root, asideName, 4096);
+  if (moved.kind !== "file" || moved.text !== stale) {
+    // A fresh lock was taken in between: it goes back.
+    await fs.moveFile(aside, lock);
+    return false;
+  }
+  await fs.remove(aside);
+  return fs.createExclusive(lock, mine);
+}
+
+function parseLock(
+  text: string | undefined,
+): { readonly pid: number; readonly host: string; readonly started: string } | undefined {
+  try {
+    const value = JSON.parse(text ?? "") as { pid?: unknown; host?: unknown; started?: unknown };
+    return Number.isInteger(value.pid) &&
+      typeof value.host === "string" &&
+      typeof value.started === "string"
+      ? { pid: value.pid as number, host: value.host, started: value.started }
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -250,6 +376,42 @@ async function checkStaging(
 }
 
 /**
+ * Changes one file that should now be `from`. Its original is kept first
+ * when `keepOriginal`, and what replaces it is prepared in staging; only
+ * then is it checked once more and replaced in one step, so nothing slow
+ * comes between the last check and the change. False, changing nothing,
+ * when it is not `from` or its original could not be kept. A new or
+ * original file stays in staging for recovery; "removed" and "discarded"
+ * move the project's file into staging instead.
+ */
+async function changeFile(
+  fs: ProjectFsPort,
+  root: string,
+  staging: string,
+  change: { readonly path: string; readonly before: string | null },
+  from: string | null,
+  source: "after" | "before" | "removed" | "discarded",
+  keepOriginal: boolean,
+): Promise<boolean> {
+  if (keepOriginal && !(await keep(fs, root, staging, change))) return false;
+  const parts = change.path.split("/");
+  const target = path.join(root, ...parts);
+  const placing = path.join(staging, "placing", ...parts);
+  const replacing = source === "after" || source === "before";
+  if (replacing) {
+    await fs.remove(placing);
+    await fs.copyFile(path.join(staging, source, ...parts), placing);
+  }
+  if (!fileMatches(await fileNow(fs, root, change.path), from)) {
+    if (replacing) await fs.remove(placing);
+    return false;
+  }
+  if (replacing) await fs.moveFile(placing, target);
+  else await fs.moveFile(target, path.join(staging, source, ...parts));
+  return true;
+}
+
+/**
  * Keeps a byte-for-byte copy of a file's original before it is replaced or
  * removed, once; false if the original no longer matches the plan.
  */
@@ -269,43 +431,9 @@ async function keep(
 }
 
 /**
- * Puts a file in its place in one step. A new or original file is copied
- * from staging first, so it stays there for recovery; "removed" and
- * "discarded" move the project's file into staging instead.
+ * Every new file's content must be given, hash to the plan's, be
+ * executable as planned, and be no larger than a change can recover.
  */
-async function put(
-  fs: ProjectFsPort,
-  root: string,
-  staging: string,
-  relative: string,
-  source: "after" | "before" | "removed" | "discarded",
-): Promise<void> {
-  const parts = relative.split("/");
-  const target = path.join(root, ...parts);
-  if (source === "removed" || source === "discarded") {
-    await fs.moveFile(target, path.join(staging, source, ...parts));
-    return;
-  }
-  const placing = path.join(staging, "placing", ...parts);
-  await fs.remove(placing);
-  await fs.copyFile(path.join(staging, source, ...parts), placing);
-  await fs.moveFile(placing, target);
-}
-
-/** The journal of a change that stopped part way, if there is one. */
-export async function readJournal(
-  fs: ProjectFsPort,
-  root: string,
-): Promise<ChangeJournal | undefined> {
-  const read = await fs.readWithin(root, CHANGE_JOURNAL_FILE, 1024 * 1024);
-  if (read.kind === "missing") return undefined;
-  if (read.kind !== "file" || read.text === undefined) {
-    throw new JournalError(`${CHANGE_JOURNAL_FILE} is not a regular file Liftoff can read`);
-  }
-  return parseJournal(read.text);
-}
-
-/** Every new file's content must be given, hash to the plan's, and be executable as planned. */
 function checkContents(plan: ChangePlan, contents: ReadonlyMap<string, NewContent>): void {
   const expected = plan.changes.filter((change) => change.after !== null);
   if (contents.size !== expected.length) {
@@ -322,6 +450,11 @@ function checkContents(plan: ChangePlan, contents: ReadonlyMap<string, NewConten
         `${change.path} would now differ from what the plan lists; make a new plan`,
       );
     }
+    if (Buffer.byteLength(content.content) > MAX_CHANGED_BYTES) {
+      throw new PlanError(
+        `${change.path} would be larger than ${MAX_CHANGED_BYTES} bytes, more than a change can recover`,
+      );
+    }
   }
 }
 
@@ -336,7 +469,7 @@ async function fileNow(fs: ProjectFsPort, root: string, relative: string): Promi
 
 const describe = (relative: string, now: FileNow, before: string | null) =>
   now.kind === "other"
-    ? `${relative} is not a regular file Liftoff can read`
+    ? `${relative} is not a regular file of at most ${MAX_CHANGED_BYTES} bytes that Liftoff can read`
     : now.kind === "absent"
       ? `${relative} is missing`
       : before === null

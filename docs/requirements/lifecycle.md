@@ -101,20 +101,27 @@ Before anything changes, and once no other change can start, every file must
 still be exactly as the plan says: the same content, a regular file and not
 a link, or still absent. If any is not, nothing changes and each such file
 is named. So a change that finished while this one was being prepared is
-never overwritten. Each new file's content
-must hash to what the plan says. Just before each file is replaced it is
-checked again; if it changed meanwhile, it and the files after it are left
-alone and the change can be recovered (CHANGE-003).
+never overwritten. Each new file's content must hash to what the plan says
+and be no larger than 64 MiB, and a plan whose journal could not be read
+back is refused, both before anything changes. For each file, its original
+is kept and its replacement prepared first; it is then checked again just
+before it is replaced, with nothing slow in between. If it changed
+meanwhile, it and the files after it are left alone, and the change can be
+recovered (CHANGE-003).
 
 Verification: test
 
 ## CHANGE-003 A change that stops part way can be finished or undone
 
-Liftoff writes a journal at `.liftoff/change-journal.json` before checking
-any file, so only one change runs at a time. Before each file is replaced
+A change, and any recovery, holds a lock at `.liftoff/change.lock` while it
+runs, so only one runs at a time and recovery never runs beside a change
+still being made. A lock left by a process on the same machine that is no
+longer running is taken over; any other lock is reported with how to clear
+it. Liftoff writes a journal at `.liftoff/change-journal.json` before
+checking any file. Before each file is replaced
 or removed, it keeps a byte-for-byte copy of it beside the project, with a
 marker naming this project and plan. Generated projects ignore the journal
-in Git.
+in Git, with the lock.
 If a change stops part way, the journal stays and `liftoff validate` reports
 it. Recovery then finishes or undoes it, deciding each file from what is
 there now:
@@ -124,6 +131,9 @@ there now:
   (undoing), is replaced;
 - any other file was changed by something else and is never overwritten. It
   is named, and the journal stays until it is resolved.
+
+`liftoff.yaml` and the manifest change only once every other file has, so
+the manifest never describes files that are not there.
 
 Finishing and undoing can follow each other until one completes, because
 the kept copies are copied into place, never used up. Recovery refuses a

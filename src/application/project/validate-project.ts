@@ -66,7 +66,7 @@ export async function validateProject(
         severity: "error",
         code: "interrupted-change",
         path: CHANGE_JOURNAL_FILE,
-        message: `a change by ${CHANGE_COMMANDS[journal.operation]} that began ${journal.started} stopped part way; finish or undo it with ${CHANGE_COMMANDS[journal.operation]} --recover before anything else changes the project`,
+        message: `a change by ${CHANGE_COMMANDS[journal.operation]} that began ${journal.started} has not finished; unless it is still running, finish or undo it with ${CHANGE_COMMANDS[journal.operation]} --recover before anything else changes the project`,
       });
     }
   } catch (error) {

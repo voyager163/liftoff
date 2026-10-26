@@ -130,6 +130,16 @@ export interface InitializerOutcome {
   readonly output: string;
 }
 
+/**
+ * This process, and whether another is still running, so a lock that a
+ * crashed process left can be told from one that is held.
+ */
+export interface ProcessesPort {
+  readonly pid: number;
+  readonly host: string;
+  isRunning(pid: number): boolean;
+}
+
 /** Runs a development framework's own pinned initializer. */
 export interface InitializerPort {
   /**
