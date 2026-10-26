@@ -12,6 +12,12 @@ COPY . .
 RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:1.30.6-alpine3.24@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03 AS runtime
+# The base image's Alpine packages can lag their security fixes, so the build
+# takes them; curl goes, since the health check uses BusyBox wget. Then back
+# to the image's unprivileged user.
+USER root
+RUN apk upgrade --no-cache && apk del --no-cache curl
+USER 101
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /srv/app/dist /usr/share/nginx/html
 # Where nginx forwards /api/: the api service in Docker Compose. nginx looks

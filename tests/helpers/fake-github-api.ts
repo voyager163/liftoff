@@ -309,6 +309,10 @@ export class FakeGitHubApi implements GitHubApiPort {
       const head = repo.branches[branch];
       if (head === undefined) throw new FakeGitHubError(404, "Not Found");
       if (method === "DELETE") {
+        // As GitHub does, whatever the rules.
+        if (branch === repo.defaultBranch) {
+          throw new FakeGitHubError(422, "Cannot delete the default branch");
+        }
         if (has("deletion", branch))
           throw new FakeGitHubError(422, "Repository rule violations: deletion");
         delete repo.branches[branch];

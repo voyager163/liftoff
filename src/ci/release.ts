@@ -376,7 +376,18 @@ async function openPullRequest(
   const [open] = await client.get<{ number: number; html_url: string }[]>(
     `/repos/${repository}/pulls?head=${encodeURIComponent(`${owner}:${request.head}`)}&base=${encodeURIComponent(request.base)}&state=open`,
   );
-  return open ?? client.post(`/repos/${repository}/pulls`, request);
+  if (open) return open;
+  try {
+    return await client.post(`/repos/${repository}/pulls`, request);
+  } catch (error) {
+    // New repositories do not let the workflow token open pull requests.
+    if (error instanceof GitHubError && error.status === 403 && context.env.DISPATCH === "true") {
+      throw new Error(
+        `GitHub does not let workflows open pull requests in ${repository}: turn on "Allow GitHub Actions to create and approve pull requests" in its Settings > Actions > General, or set up a release app (RELEASE_APP_CLIENT_ID and RELEASE_APP_PRIVATE_KEY), then run this again; it resumes from ${request.head}`,
+      );
+    }
+    throw error;
+  }
 }
 
 /**

@@ -13,7 +13,9 @@ installation.
 
 1. builds the image from its Dockerfile;
 2. scans it with [Trivy](https://trivy.dev/) 0.76.0, which fails on fixable
-   high and critical vulnerabilities, and with
+   high and critical vulnerabilities and on secrets, except in the files of
+   installed Python and npm packages, whose documentation can carry example
+   keys; and with
    [Grype](https://github.com/anchore/grype), for information only;
 3. writes a CycloneDX SBOM;
 4. publishes it to GitHub Container Registry as
@@ -77,6 +79,11 @@ requests and read access to actions, install it on the repository, and set
 the `RELEASE_APP_CLIENT_ID` variable and the `RELEASE_APP_PRIVATE_KEY`
 secret: release and sync pull requests are then opened with the app and
 start their checks like any other.
+
+Without an app, turn on "Allow GitHub Actions to create and approve pull
+requests" in the repository's Settings > Actions > General: new repositories
+have it off, and the workflows then cannot open the pull requests, which
+they say. A run that stopped there resumes from the branch it created.
 
 Without an app, the workflows open them with the workflow token and start CI
 (`01-pr-ci.yml`) and CodeQL (`02-codeql.yml`) on the pull request's branch

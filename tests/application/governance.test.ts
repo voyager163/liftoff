@@ -457,6 +457,10 @@ describe("GOV-004 the proof tries what the rules forbid", () => {
       "force-push main true",
       "deletion main true",
     ]);
+    // develop is the default branch, which GitHub never deletes.
+    expect(result.results[2]?.detail).toBe(
+      "refused (HTTP 422): it is the default branch, which GitHub never deletes",
+    );
     expect(repo.branches).toEqual({ main: "1".repeat(40), develop: "1".repeat(40) });
   });
 
@@ -681,9 +685,12 @@ describe("GOV-004 the proof tries what the rules forbid", () => {
     });
     expect(github.writes()).toHaveLength(before);
     expect(repo.branches.develop).toBeUndefined();
-    // One it does show is created again at the head it had.
+    // One it does show is created again at the head it had. GitHub never
+    // deletes the default branch, so main is the default for this.
     repo.branches.develop = head;
+    repo.defaultBranch = "main";
     await github.send("DELETE", "/repos/octo/demo/git/refs/heads/develop");
+    repo.defaultBranch = "develop";
     probe({ branch: "develop", proof: "deletion", head });
     expect(await resume({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
       detail: `develop was created again at ${head.slice(0, 12)}`,

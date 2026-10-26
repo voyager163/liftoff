@@ -30,6 +30,11 @@ const REFUSALS = new Set([403, 409, 422]);
  * answer rate limits and invalid requests, which prove nothing.
  */
 const RULE_REFUSAL = /rule violation|protected branch|protected ref/i;
+/**
+ * GitHub never deletes a repository's default branch, whatever its rules, so
+ * that refusal also stands: the branch cannot be deleted.
+ */
+const DEFAULT_BRANCH_REFUSAL = /cannot delete the default branch/i;
 
 /** The commit a branch points at, or undefined when it does not exist. */
 export const branchHead = async (api: GitHubApiPort, repository: string, branch: string) =>
@@ -187,15 +192,22 @@ export async function proveBranch(
       proof === "deletion"
         ? await api.attempt("DELETE", ref)
         : await api.attempt("PATCH", ref, { sha, force: proof === "force-push" });
-    if (
-      !outcome.ok &&
-      outcome.status !== undefined &&
-      REFUSALS.has(outcome.status) &&
-      RULE_REFUSAL.test(outcome.message)
-    ) {
-      await journal.finish();
-      results.push({ branch, proof, refused: true, detail: `refused (HTTP ${outcome.status})` });
-      continue;
+    if (!outcome.ok && outcome.status !== undefined && REFUSALS.has(outcome.status)) {
+      const why = RULE_REFUSAL.test(outcome.message)
+        ? ""
+        : proof === "deletion" && DEFAULT_BRANCH_REFUSAL.test(outcome.message)
+          ? ": it is the default branch, which GitHub never deletes"
+          : undefined;
+      if (why !== undefined) {
+        await journal.finish();
+        results.push({
+          branch,
+          proof,
+          refused: true,
+          detail: `refused (HTTP ${outcome.status})${why}`,
+        });
+        continue;
+      }
     }
     // Allowed, or no clear answer: what the branch is now says which.
     const current = await branchHead(api, repository, branch);

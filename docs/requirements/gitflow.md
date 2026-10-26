@@ -47,7 +47,9 @@ Verification: test
 A GitFlow project with container images gets a Build workflow that runs on
 every push to `develop` and to `hotfix/…` branches, once per image. It builds
 the image, scans it with Trivy installed from its release and checked against
-the published checksum (fixable high and critical vulnerabilities fail it)
+the published checksum (fixable high and critical vulnerabilities fail it,
+as does a secret anywhere but the files of installed packages, whose
+documentation can carry example keys)
 and with Grype for information, publishes it tagged with its commit, and
 attests its build provenance and CycloneDX SBOM. A re-run keeps an image
 whose provenance shows this workflow built it for the commit, attesting its
@@ -67,7 +69,9 @@ version that is not X.Y.Z or is already tagged, a release branch already at
 another commit, a commit not on `develop`, or one whose CI or build has not
 passed. Without a release app it starts CI and the review policy for the
 pull request, and CodeQL, at its exact head commit; with one it does not
-need to. A run started that way checks the pull request as GitHub's own
+need to. Without one, the repository must let GitHub Actions create pull
+requests; when it does not, the workflow stops and says which setting to
+turn on. A run started that way checks the pull request as GitHub's own
 would: the branch checks run its base's copy, dependency review compares its
 base and head, and CodeQL reports on the pull request. Re-running the workflow after a failure resumes the release it cut,
 reusing the branch and pull request rather than refusing or duplicating them.

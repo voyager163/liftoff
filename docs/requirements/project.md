@@ -149,7 +149,9 @@ on Linux, where service containers and Docker exist, and checks:
 - the frontend serves the application and forwards `/api/` to the API, and
   its Playwright browser test passes against it;
 - when the API container is replaced and gets a new address, the frontend
-  reaches it again within 30 seconds without being restarted.
+  reaches it again within 30 seconds without being restarted;
+- the images it built pass the same Trivy scan, from the same checksum-
+  verified release, that the project's own Build workflow runs.
 
 This qualifies the generated containers as a deployment target; Linux is not
 a supported platform for the Liftoff CLI.

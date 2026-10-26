@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { TRIVY } from "../../src/plugins/builtin/release.ts";
 import { PATTERNS, STACKS, WORKFLOWS } from "../../src/plugins/registry.ts";
 
 const directory = path.resolve(import.meta.dirname, "../../.github/workflows");
@@ -403,6 +404,92 @@ describe("PROJ-011 probes retry until their deadline", () => {
       expect(result.stdout).toBe("got 000\n");
       expect(result.status).toBe(0);
     }
+  });
+});
+
+describe("PROJ-011 generated images are scanned as their own build scans them", () => {
+  const ci = () => workflows.find((workflow) => workflow.name === "ci.yml")?.data;
+  const step = (job: string, name: string) => {
+    const found = ci()?.jobs[job]?.steps?.find((candidate) => candidate.name?.startsWith(name));
+    if (!found) throw new Error(`${job} has no "${name}" step`);
+    return found as Step & { env?: Record<string, string> };
+  };
+
+  it("allows exactly the secrets a generated project's own build allows", () => {
+    const rules = (text: string) =>
+      /<<'RULES'\n([\s\S]*?)\n\s*RULES\n/.exec(text)?.[1]?.replace(/^\s+/gm, "");
+    const build = readFileSync(
+      path.resolve(import.meta.dirname, "../../assets/templates/release/10-build.yml"),
+      "utf8",
+    );
+    const expected = rules(build);
+    expect(expected).toContain("allow-rules:");
+    for (const job of ["services", "genai"]) {
+      expect(rules(step(job, "Scan the images").run ?? ""), job).toBe(expected);
+    }
+  });
+
+  it("runs the release's Trivy, checked by its checksum, on every image Compose built", () => {
+    for (const job of ["services", "genai"]) {
+      const install = step(job, "Install Trivy");
+      expect(install.env).toEqual({ TRIVY_VERSION: TRIVY.version, TRIVY_SHA256: TRIVY.sha256 });
+      expect(install.run).toContain("sha256sum --check --strict");
+      expect(step(job, "Scan the images").run).toContain("--exit-code 1 --severity HIGH,CRITICAL");
+    }
+  });
+
+  // Runs the scan with docker and Trivy replaced, for a project whose
+  // Compose file has `services`.
+  const scan = (services: string, trivyStatus = 0) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "liftoff-scan-"));
+    try {
+      const calls = path.join(dir, "calls.txt");
+      writeFileSync(
+        path.join(dir, "trivy"),
+        `#!/usr/bin/env bash\necho "trivy $*" >> "${calls.replaceAll("\\", "/")}"\nexit ${trivyStatus}\n`,
+        { mode: 0o755 },
+      );
+      const docker = [
+        "docker() {",
+        '  case "$*" in',
+        `    "compose config --services") printf '${services}' ;;`,
+        '    "compose ps -q "*) echo "container-$4" ;;',
+        '    inspect*) local args="$*"; echo "demo-${args##*container-}" ;;',
+        '    *) echo "unexpected docker $*" >&2; return 1 ;;',
+        "  esac",
+        "}",
+      ].join("\n");
+      const file = path.join(dir, "scan.sh");
+      writeFileSync(file, `${docker}\n${step("genai", "Scan the images").run ?? ""}`);
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", file], {
+        encoding: "utf8",
+        env: { ...process.env, RUNNER_TEMP: dir },
+      });
+      const rules = path.join(dir, "trivy-secret.yaml");
+      return {
+        status: result.status,
+        scanned: existsSync(calls)
+          ? readFileSync(calls, "utf8").trim().replaceAll(dir, "$RUNNER_TEMP").split("\n")
+          : [],
+        rules: existsSync(rules) ? readFileSync(rules, "utf8") : "",
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("scans only the images a project has, and fails when Trivy finds something", () => {
+    const flags =
+      "--exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --no-progress --secret-config $RUNNER_TEMP/trivy-secret.yaml";
+    const apiOnly = scan("database\\napi\\nmigrate\\n");
+    expect(apiOnly).toMatchObject({ status: 0, scanned: [`trivy image ${flags} demo-api`] });
+    // Installed packages' example keys are allowed; secrets elsewhere are not.
+    expect(apiOnly.rules).toContain("path: '.*/(site-packages|node_modules)/.*'");
+    expect(scan("api\\nweb\\n").scanned).toEqual([
+      `trivy image ${flags} demo-api`,
+      `trivy image ${flags} demo-web`,
+    ]);
+    expect(scan("api\\n", 1).status).toBe(1);
   });
 });
 
