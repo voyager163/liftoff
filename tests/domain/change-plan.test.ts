@@ -77,6 +77,7 @@ describe("CHANGE-001 a change plan names every file it changes, before and after
     [".git/config", "is inside a .git directory"],
     [".GIT/hooks/pre-commit", "is inside a .git directory"],
     ["vendor/lib/.git/config", "is inside a .git directory"],
+    [".g\u0131t/config", "is inside a .git directory"],
     ["src/a\u0000b", "has a character Git or Windows cannot hold"],
     ["src/a|b", "has a character Git or Windows cannot hold"],
     ["services/COM\u00b9", "has a name Windows would read as another file"],
@@ -99,6 +100,9 @@ describe("CHANGE-001 a change plan names every file it changes, before and after
       sealChangePlan(
         unsigned([kept("\u00e9t\u00e9.md", A, B), kept("e\u0301te\u0301.md", null, A)]),
       ),
+    ).toThrow("is listed twice");
+    expect(() =>
+      sealChangePlan(unsigned([kept("\u03a3/file", A, B), kept("\u03c2/file", null, A)])),
     ).toThrow("is listed twice");
     expect(() => sealChangePlan(unsigned([kept("README.md", A, A)]))).toThrow("does not change");
     expect(() => sealChangePlan(unsigned([{ path: "README.md", before: A, after: B }]))).toThrow(

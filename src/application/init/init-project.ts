@@ -9,6 +9,7 @@ import {
 } from "../../domain/plan/plan.ts";
 import { type ProjectConfig, validateConfig } from "../../domain/project/config.ts";
 import { MANIFEST_FILE, parseManifest, serializeManifest } from "../../domain/project/manifest.ts";
+import { pathKey } from "../../domain/project/paths.ts";
 import type { ProjectFile } from "../../generators/project.ts";
 import type { WorkflowInitializer } from "../../plugins/contracts/project-plugin.ts";
 import type { Selection } from "../../plugins/registry.ts";
@@ -218,7 +219,7 @@ async function frameworkFiles(
 ): Promise<{ path: string; sha256: string }[]> {
   const who = `${workflow.name}'s initializer`;
   // macOS and Windows file systems usually ignore case, so neither does this.
-  const ours = liftoff.map((file) => file.path.toLowerCase());
+  const ours = liftoff.map((file) => pathKey(file.path));
   // As written, with forward slashes, and with backslashes escaped as in JSON.
   const machinePaths = [staging, ...ports.initializer.machinePaths()]
     .filter((machinePath) => machinePath.length >= SHORTEST_MACHINE_PATH)
@@ -230,16 +231,16 @@ async function frameworkFiles(
   const files: { path: string; sha256: string }[] = [];
   for (const entry of await ports.fs.listTree(staging)) {
     // At any depth, and in any case, since macOS and Windows ignore case.
-    if (entry.path.split("/").some((part) => part.toLowerCase() === ".git")) {
+    if (entry.path.split("/").some((part) => pathKey(part) === ".git")) {
       throw new InitializerError(
         `${who} created a Git repository; Liftoff leaves creating one to you`,
       );
     }
-    const lower = entry.path.toLowerCase();
+    const key = pathKey(entry.path);
     if (entry.kind === "directory") {
       // Liftoff may add files inside the framework's directories, but a
       // directory cannot stand where Liftoff writes a file.
-      if (ours.includes(lower)) {
+      if (ours.includes(key)) {
         throw new InitializerError(`${who} wrote ${entry.path}, where Liftoff writes its own file`);
       }
       continue;
@@ -247,11 +248,7 @@ async function frameworkFiles(
     if (entry.kind !== "file") {
       throw new InitializerError(`${who} created ${entry.path}, which is not a regular file`);
     }
-    if (
-      ours.some(
-        (own) => own === lower || own.startsWith(`${lower}/`) || lower.startsWith(`${own}/`),
-      )
-    ) {
+    if (ours.some((own) => own === key || own.startsWith(`${key}/`) || key.startsWith(`${own}/`))) {
       throw new InitializerError(`${who} wrote ${entry.path}, where Liftoff writes its own file`);
     }
     const text = (await ports.fs.readText(path.join(staging, ...entry.path.split("/")))) ?? "";

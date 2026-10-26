@@ -176,6 +176,10 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
       "inside backend's",
     ],
     [{ backend: "app", frontend: "App" }, withFrontend, "backend and frontend share a directory"],
+    // Windows and macOS read "Σ" and the final "ς" as one letter.
+    [{ backend: "\u03a3", frontend: "\u03c2/web" }, withFrontend, "inside backend's"],
+    [{ backend: "\u0131", frontend: "i" }, withFrontend, "share a directory"],
+    [{ backend: ".G\u0131thub/api" }, config, "is inside a directory Liftoff or Git keeps"],
     [
       { backend: "app", frontend: "app/web" },
       withFrontend,

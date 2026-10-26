@@ -253,6 +253,11 @@ describe("INIT-005 what an initializer writes is checked before anything is publ
       /created a Git repository/,
     ],
     [
+      "a Git repository with a dotless i, which Windows reads as .git",
+      writes({ ".g\u0131t/HEAD": "ref: x\n" }),
+      /created a Git repository/,
+    ],
+    [
       "an empty Git directory",
       new FakeInitializer(() => ({ directories: [".git"] })),
       /created a Git repository/,
@@ -290,6 +295,11 @@ describe("INIT-005 what an initializer writes is checked before anything is publ
       /wrote README.md, where Liftoff writes its own file/,
     ],
     ["the same file in another case", writes({ "readme.md": "# Mine\n" }), /wrote readme.md/],
+    [
+      "the same file with a dotless i",
+      writes({ "l\u0131ftoff.yaml": "x\n" }),
+      /wrote l\u0131ftoff.yaml, where Liftoff writes its own file/,
+    ],
     ["a file where Liftoff writes a directory", writes({ backend: "" }), /wrote backend, where/],
     [
       "a path from this machine",
