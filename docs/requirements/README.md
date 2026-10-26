@@ -36,6 +36,7 @@ Verification: test
 | --- | --- |
 | [cli.md](cli.md) | Command surface, parsing, output and exit codes |
 | [project.md](project.md) | Creating, validating and checking projects |
+| [lifecycle.md](lifecycle.md) | Existing projects, including those from before the rebuild |
 | [review.md](review.md) | Risk policy, review tiers and approvals |
 | [skills.md](skills.md) | Coding-agent review skills and their rendering |
 | [gitflow.md](gitflow.md) | Branches, releases and their lineage in generated projects |

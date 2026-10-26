@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { LegacyInventory } from "../../domain/legacy/inventory.ts";
 import { sha256Hex } from "../../domain/plan/plan.ts";
 import {
   CONFIG_FILE,
@@ -14,6 +15,7 @@ import {
 } from "../../domain/project/manifest.ts";
 import { allPlugins, resolveSelection, SelectionError } from "../../plugins/registry.ts";
 import type { ProjectFsPort } from "../ports.ts";
+import { inventoryLegacy } from "./legacy-inventory.ts";
 
 export type Severity = "error" | "warning" | "info";
 
@@ -29,11 +31,10 @@ export interface ValidationResult {
   readonly valid: boolean;
   readonly config?: ProjectConfig;
   readonly manifest?: Manifest;
+  /** What a Liftoff release before the rebuild left, when there is no liftoff.yaml. */
+  readonly legacy?: LegacyInventory;
   readonly findings: readonly Finding[];
 }
-
-/** Files only the Liftoff release before the rebuild wrote. */
-const LEGACY_FILES = ["liftoff.config.json", "liftoff.manifest.json"];
 
 /**
  * Checks a project against its own configuration and manifest. It reads only:
@@ -54,17 +55,25 @@ export async function validateProject(
 
   const configText = await read(CONFIG_FILE);
   if (configText === undefined) {
-    for (const legacy of LEGACY_FILES) {
-      if ((await read(legacy)) !== undefined) {
+    const legacy = await inventoryLegacy(fs, directory);
+    if (legacy.project) {
+      const marker = legacy.records[0];
+      findings.push({
+        severity: "error",
+        code: "pre-rebuild-project",
+        ...(marker ? { path: marker.path } : {}),
+        message:
+          "this was made by a Liftoff release before the rebuild; this release changes and runs nothing in it. Adopting existing projects comes in a later release.",
+      });
+      for (const record of legacy.records) {
         findings.push({
-          severity: "error",
-          code: "pre-rebuild-project",
-          path: legacy,
-          message:
-            "this was made by a Liftoff release before the rebuild; this release cannot read or update it. Adopting existing projects comes in a later release.",
+          severity: record.blocks ? "error" : record.state === "unsupported" ? "warning" : "info",
+          code: `legacy-${record.state}`,
+          path: record.path,
+          message: `${record.state}: ${record.blocks ?? record.reason}${record.format ? ` [${record.format}${record.release ? ` from ${record.release}` : ""}]` : ""}`,
         });
-        return result();
       }
+      return result({ legacy });
     }
     findings.push({
       severity: "error",

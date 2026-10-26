@@ -102,6 +102,8 @@ describe("INIT-002 projects are created in one step or not at all", () => {
     const failing: ProjectFsPort = {
       ...fs,
       state: (p) => fs.state(p),
+      entry: (p) => fs.entry(p),
+      readWithin: (d, r, m) => fs.readWithin(d, r, m),
       readText: (p) => fs.readText(p),
       createStaging: (p) => fs.createStaging(p),
       publish: (s, t) => fs.publish(s, t),
@@ -150,6 +152,8 @@ describe("INIT-002 the working directory and cancellation", () => {
     const interrupted: ProjectFsPort = {
       ...fs,
       state: (p) => fs.state(p),
+      entry: (p) => fs.entry(p),
+      readWithin: (d, r, m) => fs.readWithin(d, r, m),
       readText: (p) => fs.readText(p),
       createStaging: (p) => fs.createStaging(p),
       publish: (s, t) => fs.publish(s, t),
@@ -278,8 +282,39 @@ describe("VALID-002 projects from before the rebuild", () => {
   it.each(["liftoff.config.json", "liftoff.manifest.json"])("recognizes %s", async (file) => {
     writeFileSync(path.join(work, file), "{}");
     const result = await validateProject(fs, work);
+    expect(result.valid).toBe(false);
     expect(result.findings).toEqual([
       expect.objectContaining({ code: "pre-rebuild-project", path: file, severity: "error" }),
+      expect.objectContaining({ code: "legacy-unsupported", path: file, severity: "warning" }),
+    ]);
+  });
+
+  it("reports each record, its state and why", async () => {
+    writeFileSync(
+      path.join(work, "liftoff.manifest.json"),
+      JSON.stringify({
+        artifactVersion: 7,
+        generatedBy: "Mission Control Liftoff",
+        liftoffVersion: "0.12.3",
+      }),
+    );
+    mkdirSync(path.join(work, ".liftoff"));
+    writeFileSync(path.join(work, ".liftoff", "reviewed-update-transaction.json"), "{}");
+    const result = await validateProject(fs, work);
+    expect(result.legacy?.project).toBe(true);
+    expect(result.findings.slice(1)).toEqual([
+      {
+        severity: "info",
+        code: "legacy-migratable",
+        path: "liftoff.manifest.json",
+        message:
+          "migratable: the project's old manifest; adopting the project can carry its choices over [manifest v7 from 0.12.3]",
+      },
+      expect.objectContaining({
+        severity: "error",
+        code: "legacy-readable",
+        path: ".liftoff/reviewed-update-transaction.json",
+      }),
     ]);
   });
 

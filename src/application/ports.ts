@@ -33,6 +33,26 @@ export interface AssetPort {
 
 export type PathState = "missing" | "empty-directory" | "directory" | "file";
 
+/**
+ * What a path itself is, without following a link, and a file's size in
+ * bytes. It is "inaccessible" when a directory it is in may not be searched
+ * by this user, so whether it exists is unknown.
+ */
+export interface PathEntry {
+  readonly kind: "missing" | "file" | "directory" | "other" | "inaccessible";
+  readonly size: number;
+}
+
+/**
+ * A file read with readWithin. Its text is left out when it is over the
+ * limit. `via` names a directory on the way to it that is a link, a file or
+ * closed to this user, or that changed while the file was being opened.
+ */
+export type RegularFileRead =
+  | { readonly kind: "missing" | "directory" }
+  | { readonly kind: "other" | "inaccessible"; readonly via?: string }
+  | { readonly kind: "file"; readonly size: number; readonly text?: string };
+
 /** Something under a directory: a regular file, a directory, or anything else such as a link. */
 export interface TreeEntry {
   /** Relative POSIX path. */
@@ -43,6 +63,15 @@ export interface TreeEntry {
 /** File system access for creating a project. */
 export interface ProjectFsPort {
   state(path: string): Promise<PathState>;
+  /** Like state, but a link is "other" rather than what it points at. */
+  entry(path: string): Promise<PathEntry>;
+  /**
+   * Reads the regular file at `relative`, a POSIX path under `directory`,
+   * following no link on the way or at the file, and no more than `maxBytes`
+   * of it: a file over the limit is not read. It is "other" when anything on
+   * the way changed while the file was being opened.
+   */
+  readWithin(directory: string, relative: string, maxBytes: number): Promise<RegularFileRead>;
   /** Text of a file, or undefined when it does not exist. */
   readText(path: string): Promise<string | undefined>;
   /** A new empty directory beside `target`, on the same volume, for staging. */

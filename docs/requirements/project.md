@@ -455,10 +455,11 @@ Verification: test
 
 ## VALID-002 Projects from before the rebuild are recognized
 
-A directory with the old `liftoff.config.json` or `liftoff.manifest.json` is
-reported as a project from a Liftoff release before the rebuild, which this
-release cannot read or update. Nothing from the old format is executed or
-migrated.
+A directory without `liftoff.yaml` that holds a record only the Liftoff
+releases before the rebuild wrote ([LEGACY-001](lifecycle.md)) is reported as
+a project from before the rebuild, with each record found, its state and
+why. An old change that did not finish is an error, and an unsupported
+record is a warning. Nothing from the old format is executed or migrated.
 
 Verification: test
 
