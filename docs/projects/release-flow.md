@@ -13,7 +13,9 @@ installation.
 
 1. builds the image from its Dockerfile;
 2. scans it with [Trivy](https://trivy.dev/) 0.76.0, which fails on fixable
-   high and critical vulnerabilities, and with
+   high and critical vulnerabilities and on secrets, except in the files of
+   installed Python and npm packages, whose documentation can carry example
+   keys; and with
    [Grype](https://github.com/anchore/grype), for information only;
 3. writes a CycloneDX SBOM;
 4. publishes it to GitHub Container Registry as

@@ -349,13 +349,22 @@ jobs:
       - name: Scan the images as the project's build would
         working-directory: ${{ runner.temp }}/demo
         run: |
+          # Example keys in installed packages' documentation, such as an
+          # SDK's, are not the project's secrets; Trivy still looks for
+          # secrets everywhere else in the image.
+          cat > "$RUNNER_TEMP/trivy-secret.yaml" <<'RULES'
+          allow-rules:
+            - id: installed-packages
+              description: Files of installed Python and npm packages
+              path: '.*/(site-packages|node_modules)/.*'
+          RULES
           # The images the project builds, api and, with a frontend, web.
           services=$(docker compose config --services)
           for service in api web; do
             if ! grep -qx "$service" <<< "$services"; then continue; fi
             image=$(docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q "$service")")
             "$RUNNER_TEMP/trivy" image --exit-code 1 --severity HIGH,CRITICAL \
-              --ignore-unfixed --no-progress "$image"
+              --ignore-unfixed --no-progress --secret-config "$RUNNER_TEMP/trivy-secret.yaml" "$image"
           done
       - name: Show the Compose logs
         if: failure()
@@ -442,13 +451,22 @@ jobs:
         if: runner.os == 'Linux'
         working-directory: ${{ runner.temp }}/demo
         run: |
+          # Example keys in installed packages' documentation, such as an
+          # SDK's, are not the project's secrets; Trivy still looks for
+          # secrets everywhere else in the image.
+          cat > "$RUNNER_TEMP/trivy-secret.yaml" <<'RULES'
+          allow-rules:
+            - id: installed-packages
+              description: Files of installed Python and npm packages
+              path: '.*/(site-packages|node_modules)/.*'
+          RULES
           # The images the project builds, api and, with a frontend, web.
           services=$(docker compose config --services)
           for service in api web; do
             if ! grep -qx "$service" <<< "$services"; then continue; fi
             image=$(docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q "$service")")
             "$RUNNER_TEMP/trivy" image --exit-code 1 --severity HIGH,CRITICAL \
-              --ignore-unfixed --no-progress "$image"
+              --ignore-unfixed --no-progress --secret-config "$RUNNER_TEMP/trivy-secret.yaml" "$image"
           done
       - name: Show the Compose logs
         if: failure() && runner.os == 'Linux'

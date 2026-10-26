@@ -114,9 +114,19 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" trivy
       - name: Scan for fixable high and critical vulnerabilities
         if: steps.existing.outputs.built != 'true'
-        run: >-
-          "$RUNNER_TEMP/trivy" image --exit-code 1 --severity HIGH,CRITICAL
-          --ignore-unfixed --no-progress "candidate:${GITHUB_SHA}"
+        run: |
+          # Example keys in installed packages' documentation, such as an
+          # SDK's, are not the project's secrets; Trivy still looks for
+          # secrets everywhere else in the image.
+          cat > "$RUNNER_TEMP/trivy-secret.yaml" <<'RULES'
+          allow-rules:
+            - id: installed-packages
+              description: Files of installed Python and npm packages
+              path: '.*/(site-packages|node_modules)/.*'
+          RULES
+          "$RUNNER_TEMP/trivy" image --exit-code 1 --severity HIGH,CRITICAL \
+            --ignore-unfixed --no-progress --secret-config "$RUNNER_TEMP/trivy-secret.yaml" \
+            "candidate:${GITHUB_SHA}"
       - name: Write the CycloneDX SBOM
         if: steps.existing.outputs.sbom != 'true'
         env:
