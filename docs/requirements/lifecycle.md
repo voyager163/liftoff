@@ -71,3 +71,100 @@ swapped for a FIFO. These are noted by their presence alone:
 - credential records.
 
 Verification: test
+
+## CHANGE-001 A change plan names every file it changes, before and after
+
+A plan to change an existing project (the operations `update`, `repair`,
+`adopt`, `workflow-set`, `profile-set` and `agents-add`) lists every file it
+changes:
+
+- its repository-relative path;
+- the sha256 of the file as it must be now, or that it must not exist;
+- the sha256 it will have, or that it is removed;
+- for a file that is kept, who owns it and whether it is executable.
+
+Its only effect is `modify-files`. It is sealed like an init plan, so an
+edited plan is refused, and each kind of plan is refused where the other is
+expected. These make the plan invalid:
+
+- a path outside the project, or inside `.git`;
+- a name Windows would read as another file: a trailing dot or space, a
+  `:`, a device name such as `nul`, or an 8.3 short name such as `GIT~1`;
+- a path named twice, ignoring case as macOS and Windows do;
+- a change that changes nothing.
+
+Verification: test
+
+## CHANGE-002 A file changed since the plan is never overwritten
+
+Before anything changes, and once no other change can start, every file must
+still be exactly as the plan says: the same content, a regular file and not
+a link, or still absent. If any is not, nothing changes and each such file
+is named. So a change that finished while this one was being prepared is
+never overwritten. Each new file's content must hash to what the plan says
+and be no larger than 64 MiB, and a plan whose journal could not be read
+back is refused, both before anything changes. For each file, its original
+is copied as every file is read (following no link, never waiting on a
+FIFO, never past the limit, every byte written) and its replacement
+prepared, with any directory it needs, made one at a time and never through
+a link. The file and each directory on the way are then checked
+again, and only the rename comes after. A file replaced while it was being
+read, as an editor's save does, counts as changed. If it changed meanwhile,
+it and the files after it are left alone, and the change can be recovered
+(CHANGE-003). Node has no rename relative to an open directory, so a
+directory swapped for a link in the instant between that last check and the
+rename is the one case Liftoff cannot see.
+
+Verification: test
+
+## CHANGE-003 A change that stops part way can be finished or undone
+
+A change, and any recovery, holds a lock at `.liftoff/change.lock` while it
+runs, so only one runs at a time and recovery never runs beside a change
+still being made. A lock is never taken over, since no step of taking it
+over could keep another process out meanwhile. It is reported, saying
+whether its process is still running, with how to clear it. Nothing is
+created for a project directory that is not there, such as one moved since
+its plan was made.
+
+Before checking any file, Liftoff writes a journal at
+`.liftoff/change-journal.json`: whole, under another name, then renamed into
+place. The lock and journal are kept only in a real `.liftoff` directory in
+the project, never through a link to one elsewhere, so there is no journal
+behind a link. Before each file is replaced or removed, Liftoff keeps a
+byte-for-byte copy of it beside the project, in a directory only the person
+can open, with a marker naming the project directory (by its inode, which
+survives the disk being attached again) and the plan. Generated projects
+ignore the journal in Git, with the lock.
+
+If a change stops part way, the journal stays and `liftoff validate` reports
+it. A journal that cannot be read comes with what to do: if it is empty, the
+change stopped before any file changed, so it can be deleted. Recovery
+finishes or undoes the change, deciding each file from what is there now:
+
+- a file already as wanted is left alone;
+- a file as the change found it (finishing), or as the change left it
+  (undoing), is replaced;
+- any other file was changed by something else and is never overwritten. It
+  is named, and the journal stays until it is resolved.
+
+`liftoff.yaml` and the manifest change only once every other file has, so
+the manifest never describes files that are not there.
+
+Finishing and undoing can follow each other until one completes, because
+the kept copies are copied into place, never used up. Recovery refuses a
+journal whose kept copies are missing, are a link, or belong to another
+copy of the project, such as one duplicated after the change stopped.
+
+Verification: test
+
+## CHANGE-004 Files change one at a time, the manifest last
+
+Each file is replaced in one step, keeping the executable bit planned. The
+project's files change first, then `liftoff.yaml`, then
+`.liftoff/manifest.json`, so the manifest never lists files that were not
+written. Once every file has changed, the journal and the kept copies are
+removed. A change across several files is not atomic; the journal is how an
+interrupted one is recovered.
+
+Verification: test

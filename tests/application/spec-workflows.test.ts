@@ -319,19 +319,9 @@ describe("INIT-005 what an initializer writes is checked before anything is publ
   });
 
   it("refuses anything that is not a regular file", async () => {
-    const linking: ProjectFsPort = {
-      state: (p) => fs.state(p),
-      entry: (p) => fs.entry(p),
-      readWithin: (d, r, m) => fs.readWithin(d, r, m),
-      readText: (p) => fs.readText(p),
-      createStaging: (p) => fs.createStaging(p),
-      writeFile: (p, c, x) => fs.writeFile(p, c, x),
-      publish: (s, t) => fs.publish(s, t),
-      remove: (p) => fs.remove(p),
-      replaceFile: (p, c) => fs.replaceFile(p, c),
-      createExclusive: (p, c) => fs.createExclusive(p, c),
+    const linking: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
       listTree: async () => [{ path: "openspec/link", kind: "other" }],
-    };
+    });
     await expect(create(writes({}), config(), linking)).rejects.toThrow(
       /created openspec\/link, which is not a regular file/,
     );

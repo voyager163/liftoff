@@ -1,5 +1,7 @@
 import path from "node:path";
+import { JournalError } from "../../domain/change/journal.ts";
 import type { LegacyInventory } from "../../domain/legacy/inventory.ts";
+import { CHANGE_JOURNAL_FILE } from "../../domain/plan/change-plan.ts";
 import { sha256Hex } from "../../domain/plan/plan.ts";
 import {
   CONFIG_FILE,
@@ -14,6 +16,11 @@ import {
   parseManifest,
 } from "../../domain/project/manifest.ts";
 import { allPlugins, resolveSelection, SelectionError } from "../../plugins/registry.ts";
+import {
+  CHANGE_COMMANDS,
+  readJournal,
+  UNREADABLE_JOURNAL_ADVICE,
+} from "../change/apply-changes.ts";
 import type { ProjectFsPort } from "../ports.ts";
 import { inventoryLegacy } from "./legacy-inventory.ts";
 
@@ -52,6 +59,29 @@ export async function validateProject(
     findings,
     ...extra,
   });
+
+  // A change that stopped part way, such as an adoption before liftoff.yaml
+  // was written, may explain other findings, so it is reported first and the
+  // checks go on.
+  try {
+    const journal = await readJournal(fs, directory);
+    if (journal !== undefined) {
+      findings.push({
+        severity: "error",
+        code: "interrupted-change",
+        path: CHANGE_JOURNAL_FILE,
+        message: `a change by ${CHANGE_COMMANDS[journal.operation]} that began ${journal.started} has not finished; unless it is still running, finish or undo it with ${CHANGE_COMMANDS[journal.operation]} --recover before anything else changes the project`,
+      });
+    }
+  } catch (error) {
+    if (!(error instanceof JournalError)) throw error;
+    findings.push({
+      severity: "error",
+      code: "interrupted-change",
+      path: CHANGE_JOURNAL_FILE,
+      message: `a change stopped part way, but its journal cannot be read: ${error.message}; ${UNREADABLE_JOURNAL_ADVICE}`,
+    });
+  }
 
   const configText = await read(CONFIG_FILE);
   if (configText === undefined) {

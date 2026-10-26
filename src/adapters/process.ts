@@ -1,6 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { statSync } from "node:fs";
+import { hostname } from "node:os";
 import path from "node:path";
+import type { ProcessesPort } from "../application/ports.ts";
 
 export interface RunOptions {
   readonly cwd: string;
@@ -253,5 +255,22 @@ class BoundedBuffer {
 
   text(): string {
     return Buffer.concat(this.chunks).toString("utf8");
+  }
+}
+
+/** This process and the others on this machine, for locks a crashed process may leave. */
+export class LocalProcesses implements ProcessesPort {
+  readonly pid = process.pid;
+  readonly host = hostname();
+
+  isRunning(pid: number): boolean {
+    try {
+      // Signal 0 checks that a process exists without touching it.
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      // EPERM: it exists, but belongs to someone else.
+      return (error as NodeJS.ErrnoException).code === "EPERM";
+    }
   }
 }

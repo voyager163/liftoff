@@ -44,6 +44,21 @@ export interface PathEntry {
 }
 
 /**
+ * A file hashed with hashWithin: its sha256 and whether any execute bit is
+ * set (never on Windows), both left out when it is over the limit. The other
+ * kinds are as for RegularFileRead.
+ */
+export type FileHash =
+  | { readonly kind: "missing" | "directory" }
+  | { readonly kind: "other" | "inaccessible"; readonly via?: string }
+  | {
+      readonly kind: "file";
+      readonly size: number;
+      readonly sha256?: string;
+      readonly executable?: boolean;
+    };
+
+/**
  * A file read with readWithin. Its text is left out when it is over the
  * limit. `via` names a directory on the way to it that is a link, a file or
  * closed to this user, or that changed while the file was being opened.
@@ -72,10 +87,42 @@ export interface ProjectFsPort {
    * the way changed while the file was being opened.
    */
   readWithin(directory: string, relative: string, maxBytes: number): Promise<RegularFileRead>;
+  /**
+   * Hashes the whole regular file at `relative` under `directory`, as
+   * readWithin reads it; a file over `maxBytes` is not read.
+   */
+  hashWithin(directory: string, relative: string, maxBytes: number): Promise<FileHash>;
+  /**
+   * Renames a file, replacing `to` in one step if it exists, on the same
+   * volume; `to`'s directory must exist. Nothing else happens first.
+   */
+  moveFile(from: string, to: string): Promise<void>;
+  /** Creates one directory whose parent exists; nothing if it already exists. */
+  makeDirectory(path: string): Promise<void>;
+  /**
+   * Copies the regular file at `relative` under `directory`, read as
+   * hashWithin reads it, to `to`, which must not exist, with its mode. It
+   * returns the hash of exactly what was copied; nothing is left at `to`
+   * unless the whole file was copied unchanged.
+   */
+  copyWithin(directory: string, relative: string, maxBytes: number, to: string): Promise<FileHash>;
+  /** Copies a file byte for byte, with its mode; fails if `to` exists. */
+  copyFile(from: string, to: string): Promise<void>;
+  /**
+   * What identifies a directory, such as its inode, while it exists, even
+   * across the disk being detached and attached again; undefined when it is
+   * missing, a link or not a directory. A copy of a directory has a
+   * different identity.
+   */
+  directoryIdentity(path: string): Promise<string | undefined>;
   /** Text of a file, or undefined when it does not exist. */
   readText(path: string): Promise<string | undefined>;
-  /** A new empty directory beside `target`, on the same volume, for staging. */
-  createStaging(target: string): Promise<string>;
+  /**
+   * A new empty directory beside `target`, on the same volume, for staging:
+   * with the usual permissions for a new directory, or only for this user
+   * when `access` is "private".
+   */
+  createStaging(target: string, access?: "private"): Promise<string>;
   writeFile(path: string, content: string, executable: boolean): Promise<void>;
   /** Writes a file, replacing it if it exists, so a reader sees the old or the new text. */
   replaceFile(path: string, content: string): Promise<void>;
@@ -98,6 +145,16 @@ export interface InitializerOutcome {
   readonly timedOut: boolean;
   /** The end of what it printed, for an error message. */
   readonly output: string;
+}
+
+/**
+ * This process, and whether another is still running, so a lock that a
+ * crashed process left can be told from one that is held.
+ */
+export interface ProcessesPort {
+  readonly pid: number;
+  readonly host: string;
+  isRunning(pid: number): boolean;
 }
 
 /** Runs a development framework's own pinned initializer. */

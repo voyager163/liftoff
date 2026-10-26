@@ -74,6 +74,12 @@ export function parsePlan(text: string): Plan {
   } catch (error) {
     throw new PlanError(`the plan is not valid JSON: ${(error as Error).message}`);
   }
+  const operation = (raw as { operation?: unknown } | null)?.operation;
+  if (typeof operation === "string" && operation !== "init") {
+    throw new PlanError(
+      `this plan changes an existing project (${operation}), not one that creates a project`,
+    );
+  }
   const parsed = z.safeParse(planSchema, raw);
   if (!parsed.success) {
     throw new PlanError(

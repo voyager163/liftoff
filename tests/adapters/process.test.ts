@@ -1,8 +1,9 @@
+import { spawn } from "node:child_process";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ProcessError, run, windowsLaunch } from "../../src/adapters/process.ts";
+import { LocalProcesses, ProcessError, run, windowsLaunch } from "../../src/adapters/process.ts";
 
 const node = process.execPath;
 const cwd = process.cwd();
@@ -200,5 +201,18 @@ describe("CLI-010 batch files on Windows", () => {
     } finally {
       rmSync(bin, { recursive: true, force: true });
     }
+  });
+});
+
+describe("CHANGE-003 telling a held change lock from one a crashed process left", () => {
+  it("knows whether a process is still running", async () => {
+    const processes = new LocalProcesses();
+    expect(processes.pid).toBe(process.pid);
+    expect(processes.host.length).toBeGreaterThan(0);
+    expect(processes.isRunning(process.pid)).toBe(true);
+    const child = spawn(process.execPath, ["-e", ""]);
+    const pid = child.pid ?? 0;
+    await new Promise((resolve) => child.on("exit", resolve));
+    expect(processes.isRunning(pid)).toBe(false);
   });
 });
