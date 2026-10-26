@@ -75,7 +75,10 @@ function fakeGitHub(repo: Repo, calls: Call[]) {
           403,
         );
       }
-      return json({ number: 21, html_url: "https://github.com/o/r/pull/21" }, 201);
+      return json(
+        { number: 21, html_url: "https://github.com/o/r/pull/21", body: body?.body },
+        201,
+      );
     }
     if (method === "POST" && path.endsWith("/releases")) {
       return json({ html_url: "https://github.com/o/r/releases/tag/v1.2.0" }, 201);
@@ -488,7 +491,7 @@ describe("FLOW-005 after a release merges into main", () => {
     expect(await body({ DISPATCH: "true" }, resolved)).not.toContain("Approve workflows");
   });
 
-  it("adds the approval note once to a sync pull request an earlier run opened", async () => {
+  it("keeps an earlier sync pull request's notes to what its branch needs now", async () => {
     const earlier = {
       compare: { develop: { ahead_by: 1, behind_by: 2 } },
       refs: { "heads/sync/main-into-develop-1.2.0": MERGED },
@@ -508,6 +511,37 @@ describe("FLOW-005 after a release merges into main", () => {
     const noted = String(patched[0]?.body?.body);
     const again = await run("sync", env, { ...earlier, bodies: { 31: noted } });
     expect(writes(again.calls).filter((call) => call.method === "PATCH")).toEqual([]);
+
+    // A person's commit is now the newest: the approval note goes.
+    const pushed = await run("sync", env, {
+      ...earlier,
+      refs: { "heads/sync/main-into-develop-1.2.0": COMMIT },
+      bodies: { 31: noted },
+    });
+    expect(writes(pushed.calls).filter((call) => call.method === "PATCH")).toEqual([
+      { method: "PATCH", path: "/repos/o/r/pulls/31", body: { body: "Merges main." } },
+    ]);
+    expect(pushed.log).not.toContain("Approve workflows");
+
+    // develop now conflicts: the conflict note comes, and goes once resolved.
+    const conflicting = await run("sync", env, {
+      ...earlier,
+      hasDevelop: false,
+      conflict: true,
+      bodies: { 31: "Merges main." },
+    });
+    const conflictNote = String(
+      writes(conflicting.calls).find((call) => call.method === "PATCH")?.body?.body,
+    );
+    expect(conflictNote).toMatch(/^Merges main\.\n\ndevelop has changes that conflict/);
+    const resolved = await run("sync", env, {
+      ...earlier,
+      refs: { "heads/sync/main-into-develop-1.2.0": COMMIT },
+      bodies: { 31: conflictNote },
+    });
+    expect(writes(resolved.calls).find((call) => call.method === "PATCH")?.body).toEqual({
+      body: "Merges main.",
+    });
   });
 
   it("merges develop into the sync branch when develop moved on", async () => {

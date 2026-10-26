@@ -355,31 +355,44 @@ async function sync(context: Context): Promise<void> {
     env.DISPATCH === "true" && !conflicts && (await newestCommitByWorkflow(context, branch));
   const approve =
     "Its newest commit is the release workflow's merge of develop, so GitHub holds this pull request's own workflows until a maintainer approves them: choose \"Approve workflows to run\" on the pull request, and its required checks report once they pass.";
+  // The description's notes on what the branch needs now, each added or
+  // taken out on every run.
+  const notes: [string, boolean][] = [
+    [
+      "develop has changes that conflict with main. Merge develop into this branch, resolve them and push.",
+      conflicts,
+    ],
+    [approve, held],
+  ];
   const pr = await openPullRequest(context, {
     title: `Bring ${version} back into develop`,
     head: branch,
     base: "develop",
-    body: [
+    body: withNotes(
       `Merges main at ${sha}, after ${version}, back into develop. Merge it with a merge commit, never a squash, so develop keeps main's history.`,
-      ...(conflicts
-        ? [
-            "",
-            "develop has changes that conflict with main. Merge develop into this branch, resolve them and push.",
-          ]
-        : []),
-      ...(held ? ["", approve] : []),
-    ].join("\n"),
+      notes,
+    ),
   });
-  // A pull request an earlier run opened gets the note too, added once.
-  if (held && !(pr.body ?? "").includes(approve)) {
-    await client.patch(`/repos/${repository}/pulls/${pr.number}`, {
-      body: `${pr.body ?? ""}\n\n${approve}`,
-    });
+  // A pull request an earlier run opened keeps the rest of its description.
+  const body = withNotes(pr.body ?? "", notes);
+  if (body !== (pr.body ?? "")) {
+    await client.patch(`/repos/${repository}/pulls/${pr.number}`, { body });
   }
   await startChecks(context, pr.number, branch, "develop");
   context.summary(
     `## Sync\n\nThe pull request into develop is [#${pr.number}](${pr.html_url}).${conflicts ? " develop conflicts with main; resolve that in the pull request." : ""}${held ? ` ${approve}` : ""}\n`,
   );
+}
+
+/** Adds each wanted note that a description lacks, as its own paragraph, and removes the rest. */
+function withNotes(description: string, notes: [string, boolean][]): string {
+  let next = description;
+  for (const [note, wanted] of notes) {
+    const has = next.includes(note);
+    if (wanted && !has) next = [next.trimEnd(), note].filter(Boolean).join("\n\n");
+    if (!wanted && has) next = next.replace(`\n\n${note}`, "").replace(note, "");
+  }
+  return next;
 }
 
 /** Whether a branch's newest commit is the workflow token's, made by github-actions[bot]. */

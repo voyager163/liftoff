@@ -104,9 +104,10 @@ gives. If the two conflict, its description says to merge `develop` into it
 and resolve them. Without an app, that merge is the workflow token's commit,
 so GitHub holds the pull request's own workflows until a maintainer chooses
 "Approve workflows to run" on it; its required checks report once they pass.
-Its description says so whenever that merge is its newest commit, including
-on a pull request an earlier run opened, but not once a person's commit is,
-as after resolving a conflict.
+Its description says so while that merge is its newest commit, and not once a
+person's commit is, as after resolving a conflict. Each run adds or removes
+these notes on conflicts and approval as the branch now needs, also on a pull
+request an earlier run opened, and leaves the rest of its description alone.
 
 ## Release manifest
 
