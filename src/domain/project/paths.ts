@@ -47,10 +47,11 @@ export function repositoryPathProblem(path: string): string | undefined {
 /**
  * The form two paths are compared in: macOS and Windows ignore letter case,
  * and macOS also treats a letter and its decomposed form (such as "é" and
- * "e" with a combining accent) as the same name. Letters are folded through
- * their capitals, so letters that share one match: "Σ", "σ" and "ς", "ı" and
- * "i", and "ß" and "ss". That joins a few names one system keeps apart,
- * erring toward refusing a path rather than missing an alias.
+ * "e" with a combining accent) as the same name. A path is lowercased, then
+ * folded through its capitals and lowercased again, so that letters sharing
+ * a small letter or a capital match: "Σ", "σ" and "ς", "ı" and "i", and "ß",
+ * "ẞ" and "ss". That joins a few names one system keeps apart, erring toward
+ * refusing a path rather than missing an alias.
  */
 export const pathKey = (path: string): string =>
-  path.normalize("NFC").toUpperCase().toLowerCase().normalize("NFC");
+  path.normalize("NFC").toLowerCase().toUpperCase().toLowerCase().normalize("NFC");

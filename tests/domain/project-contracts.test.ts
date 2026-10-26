@@ -20,6 +20,7 @@ import {
   parseManifest,
   serializeManifest,
 } from "../../src/domain/project/manifest.ts";
+import { pathKey } from "../../src/domain/project/paths.ts";
 
 const config = {
   schema: "liftoff.config/v1",
@@ -179,6 +180,8 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
     // Windows and macOS read "Σ" and the final "ς" as one letter.
     [{ backend: "\u03a3", frontend: "\u03c2/web" }, withFrontend, "inside backend's"],
     [{ backend: "\u0131", frontend: "i" }, withFrontend, "share a directory"],
+    // "ẞ" lowercases to "ß", whose capital is "SS".
+    [{ backend: "stra\u00dfe", frontend: "STRA\u1e9eE/web" }, withFrontend, "inside backend's"],
     [{ backend: ".G\u0131thub/api" }, config, "is inside a directory Liftoff or Git keeps"],
     [
       { backend: "app", frontend: "app/web" },
@@ -189,6 +192,23 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
     [{ cli: "tools" }, config, "layout"],
   ])("refuses the layout %j", (layout, base, message) => {
     expect(() => validateConfig({ ...base, layout })).toThrow(message);
+  });
+
+  it("compares every character as one name with its small letter and its capital", () => {
+    const apart: string[] = [];
+    for (let point = 0; point <= 0x10ffff; point++) {
+      if (point >= 0xd800 && point <= 0xdfff) continue;
+      const character = String.fromCodePoint(point);
+      const key = pathKey(character);
+      if (
+        pathKey(character.toLowerCase()) !== key ||
+        pathKey(character.toUpperCase()) !== key ||
+        pathKey(key) !== key
+      ) {
+        apart.push(`U+${point.toString(16)}`);
+      }
+    }
+    expect(apart).toEqual([]);
   });
 });
 
