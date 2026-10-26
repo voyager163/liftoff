@@ -195,9 +195,12 @@ export async function readWithin(
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing" };
-    if (code === "ELOOP") return { kind: "other" };
     if (code === "EACCES" || code === "EPERM") return { kind: "inaccessible" };
-    throw error;
+    // The machine failing, rather than the path, is an error.
+    if (code === "EMFILE" || code === "ENFILE" || code === "EIO") throw error;
+    // Anything else, such as a link (ELOOP) or a socket swapped in, is not
+    // a regular file to read.
+    return { kind: "other" };
   }
   try {
     const opened = await handle.stat({ bigint: true });

@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { type FileHandle, lstat, open } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -34,7 +35,7 @@ interface Hooks {
   /** Run ahead of the first lstat of a path, by its path under the test directory. */
   readonly beforeLstat?: Record<string, () => void>;
   /** Run once, after the inspections and before the file is opened. */
-  readonly beforeOpen?: () => void;
+  readonly beforeOpen?: () => void | Promise<void>;
   /** Run once, after the opened file's first stat. */
   readonly afterStat?: () => void;
 }
@@ -53,7 +54,7 @@ function calls({ beforeLstat = {}, beforeOpen, afterStat }: Hooks = {}) {
       return lstat(target, { bigint: true });
     },
     open: async (target, flags) => {
-      beforeOpen?.();
+      await beforeOpen?.();
       const handle = await open(target, flags);
       let stats = 0;
       return new Proxy(handle, {
@@ -166,4 +167,23 @@ describe("LEGACY-003 reading a record follows no link and stays within its limit
     });
     expect(await readWithin(work, "record.json", 100, swapping)).toEqual({ kind: "other" });
   }, 5_000);
+
+  it("does not fail on a socket swapped in after the inspection", async () => {
+    write("record.json", "{}");
+    const file = path.join(work, "record.json");
+    // Windows has no sockets at a file path.
+    if (process.platform === "win32") return;
+    const server = createServer();
+    try {
+      const { calls: swapping } = calls({
+        beforeOpen: async () => {
+          rmSync(file);
+          await new Promise<void>((resolve) => server.listen(file, resolve));
+        },
+      });
+      expect(await readWithin(work, "record.json", 100, swapping)).toEqual({ kind: "other" });
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });

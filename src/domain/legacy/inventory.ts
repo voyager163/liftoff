@@ -179,7 +179,8 @@ export function classifyLegacy(
   // A directory on the way that is a link or cannot be looked into, such as
   // a linked .liftoff, says nothing of the old releases.
   const project = found.some(
-    ({ candidate, observed }) => candidate.marker && !("via" in observed && observed.via),
+    ({ candidate, observed }) =>
+      candidate.marker && observed.kind !== "other" && !("via" in observed && observed.via),
   );
   if (!project) return { project, records: [] };
   // Such a directory is reported once, at its own path, not for each record beneath it.

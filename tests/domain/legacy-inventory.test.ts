@@ -183,6 +183,14 @@ describe("LEGACY-002 unknown and newer formats fail safely", () => {
     expect(
       inventory({ ".liftoff/governance": { kind: "inaccessible", via: ".liftoff" } }).project,
     ).toBe(false);
+    // Nor does a link at one of the old releases' own paths.
+    for (const path of [
+      ".liftoff/governance",
+      ".liftoff/repair-history",
+      "liftoff.manifest.json",
+    ]) {
+      expect(inventory({ [path]: { kind: "other" } }).project).toBe(false);
+    }
   });
 
   it("reports a link on the way once, at its own path", () => {
