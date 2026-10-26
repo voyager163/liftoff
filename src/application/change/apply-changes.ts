@@ -403,7 +403,13 @@ async function changeFile(
     await fs.remove(placing);
     await fs.copyFile(path.join(staging, source, ...parts), placing);
   }
-  await fs.makeDirectory(path.dirname(destination));
+  const made = replacing
+    ? await makeDirectories(fs, root, change.path)
+    : await makeDirectories(fs, staging, `${source}/${change.path}`);
+  if (!made) {
+    if (replacing) await fs.remove(placing);
+    return false;
+  }
   // The last check, of the file and every directory on the way to it; only
   // the rename comes after. Node has no rename relative to an open
   // directory, so a directory swapped for a link in the instant between the
@@ -413,6 +419,28 @@ async function changeFile(
     return false;
   }
   await fs.moveFile(replacing ? placing : target, destination);
+  return true;
+}
+
+/**
+ * Creates the directories a file at `relative` under `base` needs, one at a
+ * time and never through a link; false, creating nothing more, when one on
+ * the way is not a real directory.
+ */
+async function makeDirectories(
+  fs: ProjectFsPort,
+  base: string,
+  relative: string,
+): Promise<boolean> {
+  const parts = relative.split("/").slice(0, -1);
+  for (let depth = 1; depth <= parts.length; depth++) {
+    const directory = path.join(base, ...parts.slice(0, depth));
+    const entry = await fs.entry(directory);
+    if (entry.kind === "directory") continue;
+    if (entry.kind !== "missing") return false;
+    await fs.makeDirectory(directory);
+    if ((await fs.entry(directory)).kind !== "directory") return false;
+  }
   return true;
 }
 

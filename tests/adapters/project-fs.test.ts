@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   appendFileSync,
   chmodSync,
+  constants,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -270,32 +271,95 @@ describe("CHANGE-003 copying an original as it is read", () => {
     expect(growing.read.bytes).toBeLessThanOrEqual(51);
     expect(existsSync(to)).toBe(false);
     writeFileSync(file, "{}");
-    const replacing = calls({ afterStat: () => replace(file, '{"edited":true}') });
-    expect(await copyWithin(work, "record.json", 100, to, replacing.calls)).toEqual({
-      kind: "other",
+    let replaced = false;
+    const replacing = calls({ afterStat: () => (replaced = replace(file, '{"edited":true}')) });
+    const copied = await copyWithin(work, "record.json", 100, to, replacing.calls);
+    if (replaced) {
+      expect(copied).toEqual({ kind: "other" });
+      expect(existsSync(to)).toBe(false);
+    } else {
+      expect(copied).toMatchObject({ kind: "file", size: 2 });
+    }
+  });
+
+  it("writes every byte when the disk takes fewer at a time, or fails", async () => {
+    const content = Buffer.from(Array.from({ length: 1000 }, (_, index) => index % 256));
+    writeFileSync(path.join(work, "data.bin"), content);
+    const to = path.join(work, "kept.bin");
+    expect(await copyWithin(work, "data.bin", 2000, to, shortWrites(7))).toMatchObject({
+      kind: "file",
+      sha256: createHash("sha256").update(content).digest("hex"),
     });
+    expect(readFileSync(to)).toEqual(content);
+    rmSync(to);
+    await expect(copyWithin(work, "data.bin", 2000, to, shortWrites(0))).rejects.toThrow(
+      "no progress",
+    );
     expect(existsSync(to)).toBe(false);
   });
 
   it("does not take a file replaced while it was hashed for the one it opened", async () => {
     write("record.json", "{}");
     const file = path.join(work, "record.json");
-    const replacing = calls({ afterStat: () => replace(file, '{"edited":true}') });
-    expect(await hashWithin(work, "record.json", 100, replacing.calls)).toEqual({ kind: "other" });
-    expect(
-      await readWithin(
-        work,
-        "record.json",
-        100,
-        calls({ afterStat: () => replace(file, "{}") }).calls,
-      ),
-    ).toEqual({ kind: "other" });
+    let replaced = false;
+    const hashed = await hashWithin(
+      work,
+      "record.json",
+      100,
+      calls({ afterStat: () => (replaced = replace(file, '{"edited":true}')) }).calls,
+    );
+    const read = await readWithin(
+      work,
+      "record.json",
+      100,
+      calls({ afterStat: () => replace(file, "{}") }).calls,
+    );
+    if (replaced) {
+      expect([hashed, read]).toEqual([{ kind: "other" }, { kind: "other" }]);
+    } else {
+      // Windows refused to replace the open file, so what was read stands.
+      expect([hashed.kind, read.kind]).toEqual(["file", "file"]);
+    }
   });
 });
 
-/** Replaces a file in one step, as an editor saving it does. */
-function replace(file: string, content: string) {
+/**
+ * Replaces a file in one step, as an editor saving it does: true if it was
+ * replaced. Windows refuses to replace a file that is open, so there the
+ * race cannot happen at all.
+ */
+function replace(file: string, content: string): boolean {
   const temporary = `${file}.saving`;
   writeFileSync(temporary, content);
-  renameSync(temporary, file);
+  try {
+    renameSync(temporary, file);
+    return true;
+  } catch (error) {
+    if (process.platform !== "win32" || (error as NodeJS.ErrnoException).code !== "EPERM")
+      throw error;
+    rmSync(temporary);
+    return false;
+  }
+}
+
+/** The real calls, writing no more than a few bytes at a time to a file opened for writing. */
+function shortWrites(limit: number): ReadCalls {
+  const real = calls().calls;
+  return {
+    ...real,
+    open: async (target, flags, mode) => {
+      const handle = await open(target, flags, mode);
+      if ((flags & constants.O_WRONLY) === 0) return handle;
+      return new Proxy(handle, {
+        get(fileHandle, property) {
+          if (property === "write") {
+            return (buffer: Buffer, offset: number, length: number, position: number) =>
+              fileHandle.write(buffer, offset, Math.min(length, limit), position);
+          }
+          const value = Reflect.get(fileHandle, property);
+          return typeof value === "function" ? value.bind(fileHandle) : value;
+        },
+      });
+    },
+  };
 }

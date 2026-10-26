@@ -66,7 +66,11 @@ export class LocalProjectFs implements ProjectFsPort {
   }
 
   async makeDirectory(target: string): Promise<void> {
-    await mkdir(target, { recursive: true });
+    try {
+      await mkdir(target);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
   }
 
   copyWithin(directory: string, relative: string, maxBytes: number, to: string): Promise<FileHash> {
@@ -172,12 +176,12 @@ export class LocalProjectFs implements ProjectFsPort {
 /** The calls readWithin makes, which a test can replace to change files between them. */
 export interface ReadCalls {
   lstat(path: string): Promise<BigIntStats>;
-  open(path: string, flags: number): Promise<FileHandle>;
+  open(path: string, flags: number, mode?: number): Promise<FileHandle>;
 }
 
 const NODE_CALLS: ReadCalls = {
   lstat: (target) => lstat(target, { bigint: true }),
-  open: (target, flags) => open(target, flags),
+  open: (target, flags, mode) => open(target, flags, mode),
 };
 
 /**
@@ -278,7 +282,7 @@ export async function copyWithin(
   let copied = false;
   try {
     await mkdir(path.dirname(to), { recursive: true });
-    out = await open(to, "wx", 0o600);
+    out = await calls.open(to, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
     const hash = createHash("sha256");
     const buffer = Buffer.alloc(Math.min(64 * 1024, maxBytes + 1));
     let position = 0;
@@ -286,7 +290,12 @@ export async function copyWithin(
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
       if (bytesRead === 0) break;
       hash.update(buffer.subarray(0, bytesRead));
-      await out.write(buffer, 0, bytesRead, position);
+      // A write may take fewer bytes than given, as on a nearly full disk.
+      for (let done = 0; done < bytesRead; ) {
+        const { bytesWritten } = await out.write(buffer, done, bytesRead - done, position + done);
+        if (bytesWritten === 0) throw new Error(`could not write ${to}: no progress`);
+        done += bytesWritten;
+      }
       position += bytesRead;
     }
     if (position > maxBytes) return { kind: "file", size: position };

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  constants,
   cpSync,
   existsSync,
   mkdirSync,
@@ -12,10 +13,11 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { lstat, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LocalProjectFs } from "../../src/adapters/project-fs.ts";
+import { copyWithin, LocalProjectFs, type ReadCalls } from "../../src/adapters/project-fs.ts";
 import {
   applyChanges,
   ChangeConflictError,
@@ -109,6 +111,25 @@ function project(): { plan: ChangePlan; contents: Map<string, NewContent> } {
   return { plan, contents };
 }
 
+/** The real file calls, writing no more than three bytes at a time, as a nearly full disk may. */
+const writingThreeBytesAtATime: ReadCalls = {
+  lstat: (target) => lstat(target, { bigint: true }),
+  open: async (target, flags, mode) => {
+    const handle = await open(target, flags, mode);
+    if ((flags & constants.O_WRONLY) === 0) return handle;
+    return new Proxy(handle, {
+      get(fileHandle, property) {
+        if (property === "write") {
+          return (buffer: Buffer, offset: number, length: number, position: number) =>
+            fileHandle.write(buffer, offset, Math.min(length, 3), position);
+        }
+        const value = Reflect.get(fileHandle, property);
+        return typeof value === "function" ? value.bind(fileHandle) : value;
+      },
+    });
+  },
+};
+
 /** Files Liftoff left beside the project: there should be none once a change is done. */
 const leftovers = () => readdirSync(parent).filter((name) => name !== "demo");
 
@@ -184,10 +205,11 @@ describe("CHANGE-002 a file changed since the plan is never overwritten", () => 
   });
 
   it.each([
-    ["its original is kept", "copyWithin"],
-    ["its replacement is prepared", "copyFile"],
-    ["the directory it goes in is made", "makeDirectory"],
-  ])("never overwrites an edit made while %s", async (_when, step) => {
+    ["its original is kept", "copyWithin", "README.md"],
+    ["its replacement is prepared", "copyFile", "README.md"],
+    // data.bin is moved into a directory in staging made for it.
+    ["the directory it goes in is made", "makeDirectory", "data.bin"],
+  ])("never overwrites an edit made while %s", async (_when, step, file) => {
     const { plan, contents } = project();
     let edited = false;
     const editing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
@@ -198,15 +220,15 @@ describe("CHANGE-002 a file changed since the plan is never overwritten", () => 
         );
         if (!edited) {
           edited = true;
-          write("README.md", "# Mine\n");
+          write(file, "# Mine\n");
         }
         return done;
       },
     });
     await expect(applyChanges(ports(editing), plan, contents)).rejects.toThrow(
-      "README.md changed while the change was being made",
+      `${file} changed while the change was being made`,
     );
-    expect(read("README.md").toString()).toBe("# Mine\n");
+    expect(read(file).toString()).toBe("# Mine\n");
     expect(existsSync(path.join(root, ".liftoff", "change-journal.json"))).toBe(true);
   });
 
@@ -264,7 +286,7 @@ describe("CHANGE-002 a file changed since the plan is never overwritten", () => 
     );
   }, 5_000);
 
-  it("stops when a directory on the way is swapped for a link before the last check", async () => {
+  it("never makes a directory through a link swapped in on the way", async () => {
     write("docs/index.md", "# Docs\n");
     const outside = mkdtempSync(path.join(tmpdir(), "liftoff-outside-"));
     try {
@@ -277,7 +299,7 @@ describe("CHANGE-002 a file changed since the plan is never overwritten", () => 
         effects: ["modify-files"],
         changes: [
           {
-            path: "docs/guide.md",
+            path: "docs/new/guide.md",
             before: null,
             after: sha256Hex("# Guide\n"),
             ownership: "managed",
@@ -285,22 +307,21 @@ describe("CHANGE-002 a file changed since the plan is never overwritten", () => 
           },
         ],
       });
+      // Swapped as the new file is prepared, before its directory is made.
       const swapping: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
-        makeDirectory: async (target: string) => {
-          await fs.makeDirectory(target);
-          if (target === path.join(root, "docs")) {
-            rmSync(target, { recursive: true });
-            symlinkSync(outside, target, "junction");
-          }
+        copyFile: async (from: string, to: string) => {
+          await fs.copyFile(from, to);
+          rmSync(path.join(root, "docs"), { recursive: true });
+          symlinkSync(outside, path.join(root, "docs"), "junction");
         },
       });
       await expect(
         applyChanges(
           ports(swapping),
           plan,
-          new Map([["docs/guide.md", { content: "# Guide\n", executable: false }]]),
+          new Map([["docs/new/guide.md", { content: "# Guide\n", executable: false }]]),
         ),
-      ).rejects.toThrow("docs/guide.md changed while the change was being made");
+      ).rejects.toThrow("docs/new/guide.md changed while the change was being made");
       expect(readdirSync(outside)).toEqual([]);
     } finally {
       rmSync(outside, { recursive: true, force: true });
@@ -382,6 +403,19 @@ describe("CHANGE-003 a change that stops part way can be finished or undone", ()
     expect(existsSync(path.join(root, "run.sh"))).toBe(false);
     expect(leftovers()).toEqual([]);
     await expect(recoverChanges(ports(fs), root, "undo")).rejects.toThrow(ChangeError);
+  });
+
+  it("restores originals byte for byte however few bytes the disk takes at a time", async () => {
+    const { plan, contents } = project();
+    const { port } = recording({ failOnMove: 3 });
+    const slow: ProjectFsPort = Object.assign(Object.create(port) as ProjectFsPort, {
+      copyWithin: (directory: string, relative: string, maxBytes: number, to: string) =>
+        copyWithin(directory, relative, maxBytes, to, writingThreeBytesAtATime),
+    });
+    await expect(applyChanges(ports(slow), plan, contents)).rejects.toThrow("the machine stopped");
+    expect(await recoverChanges(ports(fs), root, "undo")).toMatchObject({ complete: true });
+    expect(read("data.bin")).toEqual(BINARY);
+    expect(read("README.md").toString()).toBe("# Old\n");
   });
 
   it("undoes a file the change added", async () => {

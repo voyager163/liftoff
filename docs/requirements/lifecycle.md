@@ -105,8 +105,9 @@ never overwritten. Each new file's content must hash to what the plan says
 and be no larger than 64 MiB, and a plan whose journal could not be read
 back is refused, both before anything changes. For each file, its original
 is copied as every file is read (following no link, never waiting on a
-FIFO, never past the limit) and its replacement prepared, with any
-directory it needs. The file and each directory on the way are then checked
+FIFO, never past the limit, every byte written) and its replacement
+prepared, with any directory it needs, made one at a time and never through
+a link. The file and each directory on the way are then checked
 again, and only the rename comes after. A file replaced while it was being
 read, as an editor's save does, counts as changed. If it changed meanwhile,
 it and the files after it are left alone, and the change can be recovered

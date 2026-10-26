@@ -97,7 +97,7 @@ export interface ProjectFsPort {
    * volume; `to`'s directory must exist. Nothing else happens first.
    */
   moveFile(from: string, to: string): Promise<void>;
-  /** Creates a directory and any missing above it. */
+  /** Creates one directory whose parent exists; nothing if it already exists. */
   makeDirectory(path: string): Promise<void>;
   /**
    * Copies the regular file at `relative` under `directory`, read as
