@@ -321,6 +321,7 @@ describe("INIT-005 what an initializer writes is checked before anything is publ
   it("refuses anything that is not a regular file", async () => {
     const linking: ProjectFsPort = {
       state: (p) => fs.state(p),
+      entry: (p) => fs.entry(p),
       readText: (p) => fs.readText(p),
       createStaging: (p) => fs.createStaging(p),
       writeFile: (p, c, x) => fs.writeFile(p, c, x),

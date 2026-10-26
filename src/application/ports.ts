@@ -33,6 +33,12 @@ export interface AssetPort {
 
 export type PathState = "missing" | "empty-directory" | "directory" | "file";
 
+/** What a path itself is, without following a link, and a file's size in bytes. */
+export interface PathEntry {
+  readonly kind: "missing" | "file" | "directory" | "other";
+  readonly size: number;
+}
+
 /** Something under a directory: a regular file, a directory, or anything else such as a link. */
 export interface TreeEntry {
   /** Relative POSIX path. */
@@ -43,6 +49,8 @@ export interface TreeEntry {
 /** File system access for creating a project. */
 export interface ProjectFsPort {
   state(path: string): Promise<PathState>;
+  /** Like state, but a link is "other" rather than what it points at. */
+  entry(path: string): Promise<PathEntry>;
   /** Text of a file, or undefined when it does not exist. */
   readText(path: string): Promise<string | undefined>;
   /** A new empty directory beside `target`, on the same volume, for staging. */

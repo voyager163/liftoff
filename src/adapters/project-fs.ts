@@ -1,5 +1,6 @@
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   open,
@@ -12,7 +13,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import type { PathState, ProjectFsPort, TreeEntry } from "../application/ports.ts";
+import type { PathEntry, PathState, ProjectFsPort, TreeEntry } from "../application/ports.ts";
 
 /** Local file system access for creating projects. */
 export class LocalProjectFs implements ProjectFsPort {
@@ -23,6 +24,18 @@ export class LocalProjectFs implements ProjectFsPort {
       return (await readdir(target)).length === 0 ? "empty-directory" : "directory";
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+      throw error;
+    }
+  }
+
+  async entry(target: string): Promise<PathEntry> {
+    try {
+      const info = await lstat(target);
+      if (info.isFile()) return { kind: "file", size: info.size };
+      return { kind: info.isDirectory() ? "directory" : "other", size: 0 };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing", size: 0 };
       throw error;
     }
   }

@@ -18,7 +18,7 @@ export function makeValidateCommand(
     path: ["validate"],
     summary: "Check a project's Liftoff configuration and managed files.",
     description:
-      "Checks liftoff.yaml, the plugins it names and every file in .liftoff/manifest.json. Files Liftoff manages that are missing or were changed by hand are reported; files the project owns may change freely. Nothing is repaired or changed.",
+      "Checks liftoff.yaml, the plugins it names and every file in .liftoff/manifest.json. Files Liftoff manages that are missing or were changed by hand are reported; files the project owns may change freely. In a project made by a Liftoff release before the rebuild, it reports what that release left and whether each record can be carried over. Nothing is repaired, changed or run.",
     readOnly: true,
     reportSchema: "liftoff.validation/v1",
     options: { dir: DIR },
