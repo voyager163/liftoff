@@ -98,6 +98,39 @@ describe("CHANGE-001 a change plan names every file it changes, before and after
     expect(() => sealChangePlan(unsigned([kept(path, A, B)]))).toThrow(problem);
   });
 
+  it("seals the files a change rests on, so an edited one is refused", () => {
+    const plan = sealChangePlan({
+      ...unsigned([kept("README.md", A, B)]),
+      unchanged: [
+        { path: "pyproject.toml", sha256: A },
+        { path: "liftoff.yaml", sha256: null },
+      ],
+    });
+    expect(plan.unchanged.map((file) => file.path)).toEqual(["liftoff.yaml", "pyproject.toml"]);
+    const text = JSON.stringify(plan);
+    expect(parseChangePlan(text)).toEqual(plan);
+    expect(() => parseChangePlan(text.replace(`"sha256":"${A}"`, `"sha256":"${B}"`))).toThrow(
+      "the plan was changed after it was made",
+    );
+    // A plan made without any reads as resting on none.
+    expect(sealChangePlan(unsigned([kept("README.md", A, B)])).unchanged).toEqual([]);
+    for (const [unchanged, problem] of [
+      [[{ path: "README.md", sha256: A }], "README.md is listed twice"],
+      [
+        [
+          { path: "a.txt", sha256: A },
+          { path: "A.TXT", sha256: null },
+        ],
+        "a.txt is listed twice",
+      ],
+      [[{ path: "../a.txt", sha256: A }], "is not a repository-relative path"],
+    ] as const) {
+      expect(() =>
+        sealChangePlan({ ...unsigned([kept("README.md", A, B)]), unchanged: [...unchanged] }),
+      ).toThrow(problem);
+    }
+  });
+
   it("refuses a path named twice, a change that changes nothing, and a missing owner", () => {
     expect(() =>
       sealChangePlan(unsigned([kept("README.md", A, B), kept("readme.md", null, A)])),

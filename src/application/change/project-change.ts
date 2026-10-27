@@ -172,9 +172,9 @@ export async function generateFor(
 }
 
 /**
- * Seals a change to a project, with the manifest changed last and the
- * operation added to its history. The manifest must stay within what
- * Liftoff reads.
+ * Seals a change to a project, with the manifest changed last, the
+ * operation added to its history, and the files it rests on without
+ * changing them. The manifest must stay within what Liftoff reads.
  */
 export function sealProjectChange(
   project: ProjectRecords,
@@ -183,6 +183,7 @@ export function sealProjectChange(
   changes: readonly FileChange[],
   contents: ReadonlyMap<string, NewContent>,
   manifest: Omit<Manifest, "history">,
+  unchanged: readonly Unchanged[] = [],
 ): { readonly plan: ChangePlan; readonly contents: ReadonlyMap<string, NewContent> } {
   const updated = serializeManifest({
     ...manifest,
@@ -211,6 +212,7 @@ export function sealProjectChange(
         executable: false,
       },
     ],
+    unchanged,
   });
   return {
     plan,

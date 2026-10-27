@@ -90,8 +90,6 @@ export interface Unchanged {
 }
 
 export interface ChangeOptions {
-  /** Files the change rests on without changing them. */
-  readonly unchanged?: readonly Unchanged[];
   /**
    * Stops the change between files. Before the first, nothing changes;
    * after, it stops part way and can be recovered.
@@ -111,9 +109,9 @@ export interface ChangeResult {
 /**
  * Makes a planned change to a project, file by file, never overwriting a
  * file that changed since the plan was made. `contents` holds each new
- * file's content, which must hash to what the plan says. Each file in
- * `unchanged` must still be as it was, too, or nothing changes. A `signal`
- * stops it between files.
+ * file's content, which must hash to what the plan says. Each file the
+ * plan rests on without changing must still be as it was, too, or nothing
+ * changes. A `signal` stops it between files.
  *
  * It holds the change lock throughout. The new files are staged beside the
  * project with a marker binding them to this project and plan, and the
@@ -131,7 +129,7 @@ export async function applyChanges(
   options: ChangeOptions = {},
 ): Promise<ChangeResult> {
   const { fs, now } = ports;
-  const { unchanged = [], signal } = options;
+  const { signal } = options;
   checkContents(plan, contents);
   signal?.throwIfAborted();
   const root = plan.target;
@@ -190,7 +188,7 @@ export async function applyChanges(
     const problems: string[] = [];
     for (const { path: relative, before } of [
       ...plan.changes,
-      ...unchanged.map((file) => ({ path: file.path, before: file.sha256 })),
+      ...plan.unchanged.map((file) => ({ path: file.path, before: file.sha256 })),
     ]) {
       const current = await fileNow(fs, root, relative);
       if (!fileMatches(current, before)) problems.push(describe(relative, current, before));

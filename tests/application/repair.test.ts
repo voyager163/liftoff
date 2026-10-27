@@ -74,7 +74,7 @@ const changePorts = {
 };
 const apply = (repair: RepairPlan) => {
   if (repair.plan === undefined) throw new Error("the repair changes nothing");
-  return applyChanges(changePorts, repair.plan, repair.contents, { unchanged: repair.unchanged });
+  return applyChanges(changePorts, repair.plan, repair.contents);
 };
 
 /** A port that reports these files as hashWithin would see them, and the rest as they are. */
@@ -245,7 +245,7 @@ describe("REPAIR-002 recipes put back files Liftoff wrote, only those chosen", (
     rmSync(at("README.md"));
     const repair = await restore([VERIFY, "README.md"]);
     expect(steps(repair)).toEqual([`restore ${VERIFY}`, `offer ${POLICY}`, "restore README.md"]);
-    expect(repair.unchanged).toEqual([{ path: CONFIG_FILE, sha256: sha(read(CONFIG_FILE)) }]);
+    expect(repair.plan?.unchanged).toEqual([{ path: CONFIG_FILE, sha256: sha(read(CONFIG_FILE)) }]);
     await apply(repair);
     expect(read(VERIFY)).toBe(current.verify);
     expect(read("README.md")).toBe(current.readme);
@@ -334,7 +334,7 @@ describe("REPAIR-003 a reviewed patch changes only the project's own files, with
       { path: "backend/app/old.py", step: "remove", ownership: "project" },
       { path: "README.md", step: "change", ownership: "seeded" },
     ]);
-    expect(repair.unchanged).toEqual([]);
+    expect(repair.plan?.unchanged).toEqual([]);
     await apply(repair);
     expect(read("backend/app/main.py")).toBe(`${main}# fixed\n`);
     expect(read("backend/app/extra.py")).toBe("y = 2\n");

@@ -118,7 +118,6 @@ describe("REPAIR-001 the inventory from the command line", () => {
       name: "demo",
       files: [{ path: "x", step: "cannot", problem: "p", reason: "r‮eason" }],
       contents: new Map(),
-      unchanged: [],
     };
     const text = renderRepair(plan).join("\n");
     expect(text).toContain("/work/a\\u001b[2Jb");

@@ -4,12 +4,7 @@ import { PlanError, sha256Hex } from "../../domain/plan/plan.ts";
 import { MANIFEST_FILE, type ManifestFile, type Ownership } from "../../domain/project/manifest.ts";
 import { pathKey, repositoryPathProblem } from "../../domain/project/paths.ts";
 import { isExecutable, type ProjectFile } from "../../generators/project.ts";
-import {
-  CHANGE_COMMANDS,
-  MAX_CHANGED_BYTES,
-  type NewContent,
-  type Unchanged,
-} from "../change/apply-changes.ts";
+import { CHANGE_COMMANDS, MAX_CHANGED_BYTES, type NewContent } from "../change/apply-changes.ts";
 import {
   generateFor,
   ProjectChangeError,
@@ -51,8 +46,6 @@ export interface RepairPlan {
   /** The change to make, or undefined when there is nothing to change. */
   readonly plan?: ChangePlan;
   readonly contents: ReadonlyMap<string, NewContent>;
-  /** Files the repair rests on without changing them. */
-  readonly unchanged: readonly Unchanged[];
 }
 
 /** Whether any Liftoff file has a problem, fixable or not. */
@@ -145,15 +138,20 @@ export async function planRestore(
     directory,
     name: project.config.name,
     files: sorted(steps),
-    unchanged: [generated.config],
   };
   if (changes.length === 0) return { ...result, contents: new Map() };
   return {
     ...result,
-    ...sealProjectChange(project, "repair", liftoffVersion, changes, contents, {
-      ...project.manifest,
-      files: [...entries.values()],
-    }),
+    // Put back from liftoff.yaml as it was when the files were generated.
+    ...sealProjectChange(
+      project,
+      "repair",
+      liftoffVersion,
+      changes,
+      contents,
+      { ...project.manifest, files: [...entries.values()] },
+      [generated.config],
+    ),
   };
 }
 
@@ -233,7 +231,6 @@ export async function planPatch(
     directory,
     name: project.config.name,
     files: sorted(steps),
-    unchanged: [],
     ...sealProjectChange(project, "repair", liftoffVersion, changes, contents, project.manifest),
   };
 }

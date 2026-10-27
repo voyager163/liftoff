@@ -11,7 +11,6 @@ import {
   readJournal,
   recoverChanges,
   UNREADABLE_JOURNAL_ADVICE,
-  type Unchanged,
 } from "../../application/change/apply-changes.ts";
 import { ProjectChangeUnsupportedError } from "../../application/change/project-change.ts";
 import { JournalError } from "../../domain/change/journal.ts";
@@ -39,7 +38,6 @@ export interface Planned {
   readonly directory: string;
   readonly plan: ChangePlan;
   readonly contents: ReadonlyMap<string, NewContent>;
-  readonly unchanged: readonly Unchanged[];
 }
 
 export const changePortsFor = (ports: ProjectPorts): ChangePorts => ({
@@ -162,7 +160,6 @@ export async function applyApproved(
   }
   try {
     return await applyChanges(changePortsFor(ports), planned.plan, planned.contents, {
-      unchanged: planned.unchanged,
       signal: io.signal,
     });
   } catch (error) {

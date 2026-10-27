@@ -144,17 +144,15 @@ export interface AdoptPlan {
   /** The change to make, or undefined when adopting is blocked. */
   readonly plan?: ChangePlan;
   readonly contents: ReadonlyMap<string, NewContent>;
-  /**
-   * Files the adoption rests on without changing them: the declarations it
-   * was proposed from, and the old records it records.
-   */
-  readonly unchanged: readonly Unchanged[];
 }
 
 /** An option chose something this release cannot adopt the project with. */
 export class AdoptOptionError extends ProjectChangeError {
   override readonly name = "AdoptOptionError";
 }
+
+const changedWhilePlanned = (file: string) =>
+  `${file} changed while adopting was being planned, or is not UTF-8 text; plan it again`;
 
 /** Whether a plan says the project cannot be adopted as it is. */
 export const isBlocked = (adopt: AdoptPlan): boolean => adopt.blocked.length > 0;
@@ -205,7 +203,9 @@ export async function planAdopt(
     }
   }
 
-  const assessment = await assessProject(fs, directory, where);
+  // The hash of each declaration and old record, as the assessment read it.
+  const read = new Map<string, string>();
+  const assessment = await assessProject(fs, directory, { ...where, read });
   const blocked: string[] = [];
   const legacy = assessment.legacy?.records ?? [];
   for (const record of legacy) {
@@ -216,7 +216,7 @@ export async function planAdopt(
       );
     }
   }
-  const old = await oldChoices(fs, directory, legacy);
+  const old = await oldChoices(fs, directory, legacy, read);
   const parts = resolveParts(assessment, choices);
   blocked.push(...parts.blocked);
 
@@ -228,7 +228,6 @@ export async function planAdopt(
     application: [],
     legacy,
     contents: new Map<string, NewContent>(),
-    unchanged: [],
   };
   const backend = parts.chosen.backend;
   const stack = backend === undefined ? undefined : STACKS[backend.stack];
@@ -422,24 +421,24 @@ export async function planAdopt(
   if (manifestAt !== undefined) blocked.push(`${MANIFEST_FILE} cannot be added: ${manifestAt}`);
 
   // The declarations the proposal rests on, and the old records the
-  // manifest records, must still be as they were when it applies.
+  // manifest records, must still be exactly as the assessment read them
+  // when it applies; so must they be now.
   const unchanged: Unchanged[] = [];
   const rest = async (file: string): Promise<string> => {
+    const seen = read.get(file);
     const now = await fs.hashWithin(directory, file, MAX_CHANGED_BYTES);
-    if (now.kind !== "file" || now.sha256 === undefined) {
-      throw new ProjectChangeError(
-        `${file} changed while adopting was being planned; plan it again`,
-      );
+    if (seen === undefined || now.kind !== "file" || now.sha256 !== seen) {
+      throw new ProjectChangeError(changedWhilePlanned(file));
     }
-    unchanged.push({ path: file, sha256: now.sha256 });
-    return now.sha256;
+    unchanged.push({ path: file, sha256: seen });
+    return seen;
   };
-  const read = new Set(
+  const declarations = new Set(
     Object.values(parts.chosen).flatMap((part) =>
       part.evidence.filter((evidence) => evidence.how === "read").map(({ path: file }) => file),
     ),
   );
-  for (const file of [...read].sort()) await rest(file);
+  for (const file of [...declarations].sort()) await rest(file);
   const records: NonNullable<Manifest["legacy"]>["records"] = [];
   for (const record of legacy) {
     if (record.state === "executable") continue;
@@ -475,7 +474,6 @@ export async function planAdopt(
     config,
     files: files.sort((a, b) => a.path.localeCompare(b.path)),
     application,
-    unchanged,
   };
   if (blocked.length > 0) return { ...planned, blocked };
 
@@ -516,6 +514,7 @@ export async function planAdopt(
     config: { ...config },
     effects: ["modify-files"],
     changes,
+    unchanged,
   });
   return { ...planned, blocked, plan, contents };
 }
@@ -815,14 +814,22 @@ async function oldChoices(
   fs: ProjectFsPort,
   directory: string,
   records: readonly LegacyRecord[],
+  read: ReadonlyMap<string, string>,
 ): Promise<OldChoices> {
   const config = records.find((record) => record.record === "config");
   if (config?.state !== "migratable") return {};
-  const read = await fs.readWithin(directory, config.path, MAX_LEGACY_BYTES);
-  if (read.kind !== "file" || read.text === undefined) return {};
+  // Only the configuration that was found migratable is carried over.
+  const now = await fs.readWithin(directory, config.path, MAX_LEGACY_BYTES);
+  if (
+    now.kind !== "file" ||
+    now.text === undefined ||
+    sha256Hex(now.text) !== read.get(config.path)
+  ) {
+    throw new ProjectChangeError(changedWhilePlanned(config.path));
+  }
   let fields: Record<string, unknown>;
   try {
-    fields = JSON.parse(read.text) as Record<string, unknown>;
+    fields = JSON.parse(now.text) as Record<string, unknown>;
   } catch {
     return {};
   }

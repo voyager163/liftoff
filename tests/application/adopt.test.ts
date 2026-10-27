@@ -93,7 +93,7 @@ const changePorts = {
 };
 const apply = (plan: AdoptPlan) => {
   if (plan.plan === undefined) throw new Error(`blocked: ${plan.blocked.join("; ")}`);
-  return applyChanges(changePorts, plan.plan, plan.contents, { unchanged: plan.unchanged });
+  return applyChanges(changePorts, plan.plan, plan.contents);
 };
 const chosen = (plan: AdoptPlan) =>
   Object.fromEntries(
@@ -428,7 +428,7 @@ describe("ADOPT-003 adopting adds Liftoff's own files, never over the project's"
         ".gitignore does not list .liftoff/governance.lock, .liftoff/change-journal.json, .liftoff/change.lock, which Liftoff writes only while one of its commands runs",
     });
     // The change rests on the declaration the backend was found from.
-    expect(plan.unchanged).toEqual([{ path: "pyproject.toml", sha256: sha(PYPROJECT) }]);
+    expect(plan.plan?.unchanged).toEqual([{ path: "pyproject.toml", sha256: sha(PYPROJECT) }]);
 
     await apply(plan);
     const after = snapshot();
@@ -654,7 +654,63 @@ describe("ADOPT-004 records from before the rebuild stay the project's, byte for
   });
 });
 
+describe("ADOPT-003 the adoption rests on exactly what was assessed", () => {
+  it("refuses a declaration that changed after it was read, before it was hashed", async () => {
+    service();
+    let edited = false;
+    const port = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (directory: string, relative: string, maxBytes: number) => {
+        // Edited by something else after the assessment read it.
+        if (relative === "pyproject.toml" && !edited) {
+          edited = true;
+          write("pyproject.toml", PYPROJECT.replace("fastapi>=0.115", "fastapi>=0.116"));
+        }
+        return fs.hashWithin(directory, relative, maxBytes);
+      },
+    });
+    await expect(
+      planAdopt({ assets, fs: port }, root, VERSION, {}, { named: true, refused: [] }),
+    ).rejects.toThrow(
+      "pyproject.toml changed while adopting was being planned, or is not UTF-8 text; plan it again",
+    );
+  });
+
+  it("refuses an old configuration that changed after it was found migratable", async () => {
+    write("backend/pyproject.toml", PYPROJECT);
+    write(
+      "liftoff.config.json",
+      JSON.stringify({ projectName: "legacy-shop", projectType: "standard" }),
+    );
+    let reads = 0;
+    const port = Object.assign(Object.create(fs) as ProjectFsPort, {
+      readWithin: (directory: string, relative: string, maxBytes: number) => {
+        if (relative === "liftoff.config.json" && ++reads === 2) {
+          write("liftoff.config.json", JSON.stringify({ projectName: "other", projectType: "x" }));
+        }
+        return fs.readWithin(directory, relative, maxBytes);
+      },
+    });
+    await expect(
+      planAdopt({ assets, fs: port }, root, VERSION, {}, { named: true, refused: [] }),
+    ).rejects.toThrow("liftoff.config.json changed while adopting was being planned");
+  });
+});
+
 describe("ADOPT-005 adopting applies exactly what was approved", () => {
+  it("refuses a saved plan once a declaration it rests on changed, even keeping its stack", async () => {
+    service();
+    const saved = (await adopt()).plan ?? fail();
+    write("pyproject.toml", PYPROJECT.replace("fastapi>=0.115", "fastapi>=0.116"));
+    const before = snapshot();
+    await expect(
+      planAdoptFromSaved({ assets, fs }, saved, VERSION, { refused: [] }),
+    ).rejects.toThrow("the project changed since the plan was made");
+    // Nor does the saved plan itself apply.
+    const contents = (await adopt()).contents;
+    await expect(applyChanges(changePorts, saved, contents)).rejects.toThrow(ChangeError);
+    expect(snapshot()).toEqual(before);
+  });
+
   it("plans a saved adoption again, and refuses it once the project changed", async () => {
     service();
     const plan = await adopt({ agents: ["copilot"], governance: "team-gitflow" });

@@ -56,12 +56,6 @@ export interface UpdatePlan {
   readonly plan?: ChangePlan;
   /** The new content of each file the plan writes. */
   readonly contents: ReadonlyMap<string, NewContent>;
-  /**
-   * Files the update rests on without changing them, which must still be as
-   * planned when it applies: liftoff.yaml, and each file only its manifest
-   * entry changes for, as it was seen or still absent.
-   */
-  readonly unchanged: readonly Unchanged[];
 }
 
 /**
@@ -213,7 +207,6 @@ export async function planUpdate(
   const result = {
     directory,
     name: config.name,
-    unchanged,
     files: steps.sort((a, b) => a.path.localeCompare(b.path)),
     plugins,
   };
@@ -224,11 +217,21 @@ export async function planUpdate(
     return { ...result, contents: new Map() };
   }
 
-  const sealed = sealProjectChange(project, "update", liftoffVersion, changes, contents, {
-    ...manifest,
-    plugins: selection.plugins.map(({ id, version }) => ({ id, version })),
-    files: [...entries.values()],
-  });
+  // The update rests on liftoff.yaml, and on each file only its manifest
+  // entry changes for, as it was seen or still absent.
+  const sealed = sealProjectChange(
+    project,
+    "update",
+    liftoffVersion,
+    changes,
+    contents,
+    {
+      ...manifest,
+      plugins: selection.plugins.map(({ id, version }) => ({ id, version })),
+      files: [...entries.values()],
+    },
+    unchanged,
+  );
   return { ...result, ...sealed };
 }
 

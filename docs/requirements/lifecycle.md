@@ -86,7 +86,9 @@ changes:
   as the manifest says, or `project` for a file the manifest does not list)
   and whether it is executable.
 
-Its only effect is `modify-files`. It is sealed like an init plan, so an
+It also lists each file the change rests on without changing it, with the
+sha256 it must still have or that it must still not exist (CHANGE-002), so
+a saved plan carries them too. Its only effect is `modify-files`. It is sealed like an init plan, so an
 edited plan is refused, and each kind of plan is refused where the other is
 expected. These make the plan invalid:
 
@@ -97,8 +99,9 @@ expected. These make the plan invalid:
 - a name Windows would read as another file: a trailing dot or space, a
   `:`, a device name such as `nul`, `nul .txt` or `conin$`, or an 8.3 short
   name such as `GIT~1`;
-- a path named twice, ignoring letter case and how an accented letter is
-  encoded, as macOS and Windows do;
+- a path named twice, among the files it changes and those it rests on,
+  ignoring letter case and how an accented letter is encoded, as macOS and
+  Windows do;
 - a change that changes nothing.
 
 Verification: test
@@ -407,8 +410,9 @@ validates. They are the person's to make, for example with a reviewed patch
 and `liftoff repair --patch` once the project is adopted.
 
 The change rests on the declarations the proposal was made from, and on the
-old records the manifest records: if any of them changes before the
-adoption applies, nothing changes (CHANGE-002).
+old records the manifest records, exactly as the assessment read them: if
+any of them changed after it was read, planning refuses, and if one changes
+before the adoption applies, nothing changes (CHANGE-002).
 
 - Given a project with its own `AGENTS.md`, when it is adopted, then its
   `AGENTS.md` is unchanged, the manifest lists it as kept, and
@@ -439,7 +443,8 @@ exits 3 when the project cannot be adopted as it is (6 when it has no
 backend this release supports), 0 otherwise. `--out <file>` saves the plan
 and changes nothing; `--plan <file>` applies exactly that plan, planned
 again from the configuration it holds and refused unless it is the same
-plan, made by this release. Otherwise adopting shows the proposal and the
+plan, made by this release, resting on the same declarations: one edited
+since, even keeping its stack, refuses it. Otherwise adopting shows the proposal and the
 plan and asks; the default answer is no, and without a terminal it needs
 `--yes`. Files change as CHANGE-002 to CHANGE-004 say, with `liftoff.yaml`
 and the manifest last. An adoption that stops part way, even before

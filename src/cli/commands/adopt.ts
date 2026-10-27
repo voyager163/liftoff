@@ -364,7 +364,7 @@ export function makeAdoptCommand(
       const result = await applyApproved(
         io,
         ports,
-        { directory: adopt.directory, plan, contents: adopt.contents, unchanged: adopt.unchanged },
+        { directory: adopt.directory, plan, contents: adopt.contents },
         "adopt",
         { yes, report: reported(adopt) },
       );
