@@ -432,7 +432,9 @@ Verification: test
   and the others), with the release, oldest first;
 - for a project adopted from a Liftoff release before the rebuild, a legacy
   record: the old release, and each old record's path, kind and state, with
-  the sha256 of a file as it was kept.
+  the sha256 of a file as it was kept;
+- for an adopted project, each path where it kept its own file in place of
+  Liftoff's (ADOPT-003).
 
 Old records stay the project's own, kept byte for byte, and are never
 counted as current configuration or proof. A manifest from before these

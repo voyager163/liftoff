@@ -10,7 +10,10 @@ import {
   LIMITS,
 } from "../../domain/assess/tree.ts";
 import type { LegacyInventory } from "../../domain/legacy/inventory.ts";
+import { sha256Hex } from "../../domain/plan/plan.ts";
+import { pathKey } from "../../domain/project/paths.ts";
 import type { ProjectFsPort } from "../ports.ts";
+import { inventoryLegacy } from "./legacy-inventory.ts";
 import { validateProject } from "./validate-project.ts";
 
 export class AssessError extends Error {
@@ -26,6 +29,12 @@ export interface AssessOptions {
   readonly live?: () => Promise<GitHubState>;
   /** Bounds other than LIMITS, for tests. */
   readonly limits?: Limits;
+  /**
+   * Filled with the sha256 of the text of each declaration and record from
+   * before the rebuild that was read, by path, so a change can rest on
+   * exactly what was assessed.
+   */
+  readonly read?: Map<string, string>;
 }
 
 type Limits = { readonly [Key in keyof typeof LIMITS]: number };
@@ -75,6 +84,12 @@ export async function assessProject(
     );
   }
 
+  // What a Liftoff release before the rebuild kept that can hold copies of
+  // files, credentials or state is seen by name alone: never walked or read.
+  const legacy = await inventoryLegacy(fs, directory, options.read);
+  const sealed = new Set(
+    legacy.records.filter((record) => !record.opened).map((record) => pathKey(record.path)),
+  );
   const entries = new Map<string, EntryKind>();
   const listed = new Set<string>();
   const gaps: Gap[] = [];
@@ -121,7 +136,14 @@ export async function assessProject(
     for (const { name, kind } of listing.entries) {
       const file = at === "." ? name : `${at}/${name}`;
       entries.set(file, kind);
-      if (kind === "other") {
+      if (sealed.has(pathKey(file))) {
+        gaps.push({
+          kind: "not-read",
+          path: file,
+          detail:
+            "kept by a Liftoff release before the rebuild, and may hold copies of files, credentials or state, so only its name was seen",
+        });
+      } else if (kind === "other") {
         gaps.push({ kind: "link", path: file, detail: "a link or special file, never followed" });
       } else if (kind === "directory") {
         if (isSkippedDirectory(name)) {
@@ -157,6 +179,7 @@ export async function assessProject(
     const found = await fs.readWithin(directory, file, limits.bytes);
     if (found.kind === "file" && found.text !== undefined) {
       texts.set(file, { text: found.text });
+      options.read?.set(file, sha256Hex(found.text));
     } else if (found.kind === "file") {
       texts.set(file, {
         status: "unknown",
@@ -186,8 +209,9 @@ export async function assessProject(
 
   const validation = await validateProject(fs, directory);
   const findings = validation.findings;
+  // A project from before the rebuild, as the inventory the walk kept out of found it.
   const liftoff = validation.legacy?.project
-    ? { kind: "pre-rebuild" as const, inventory: validation.legacy, findings }
+    ? { kind: "pre-rebuild" as const, inventory: legacy, findings }
     : findings.some((finding) => finding.code === "not-a-liftoff-project")
       ? { kind: "none" as const, findings }
       : {
@@ -219,6 +243,6 @@ export async function assessProject(
       read: texts.size,
     },
     limits,
-    ...(validation.legacy?.project ? { legacy: validation.legacy } : {}),
+    ...(validation.legacy?.project ? { legacy } : {}),
   };
 }

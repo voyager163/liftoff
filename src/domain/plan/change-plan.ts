@@ -35,6 +35,13 @@ const fileChange = z.strictObject({
   executable: z.optional(z.boolean()),
 });
 
+const restsOn = z.strictObject({
+  /** Repository-relative POSIX path. */
+  path: z.string(),
+  /** sha256 the file must still have, or null when it must still not exist. */
+  sha256: z.nullable(sha256),
+});
+
 const changePlanSchema = z.strictObject({
   schema: z.literal(PLAN_SCHEMA),
   operation: z.enum(CHANGE_OPERATIONS),
@@ -45,13 +52,22 @@ const changePlanSchema = z.strictObject({
   config: z.record(z.string(), z.unknown()),
   effects: z.tuple([z.literal("modify-files")]),
   changes: z.array(fileChange),
+  /**
+   * Files the change rests on without changing them, such as liftoff.yaml
+   * for an update or a declaration an adoption was proposed from: each must
+   * still be as it was when the change applies, or nothing changes.
+   */
+  unchanged: z._default(z.array(restsOn), []),
   /** sha256 of every other field, so a plan cannot be edited and still apply. */
   hash: sha256,
 });
 
 export type ChangePlan = z.output<typeof changePlanSchema>;
 export type FileChange = ChangePlan["changes"][number];
-export type UnsignedChangePlan = Omit<ChangePlan, "hash">;
+export type RestsOn = ChangePlan["unchanged"][number];
+export type UnsignedChangePlan = Omit<ChangePlan, "hash" | "unchanged"> & {
+  readonly unchanged?: readonly RestsOn[];
+};
 
 /**
  * Why a list of changed paths cannot be changed, or undefined when it can:
@@ -78,10 +94,14 @@ export function pathsProblem(
 
 /**
  * Why a plan's changes cannot be planned, or undefined when they can: the
- * paths are sound, and a file that is kept says who owns it and whether it
- * is executable.
+ * paths are sound, a file that is kept says who owns it and whether it is
+ * executable, and each file the change rests on is a sound path, named
+ * once, that the change does not also change.
  */
-export function changesProblem(changes: readonly FileChange[]): string | undefined {
+export function changesProblem(
+  changes: readonly FileChange[],
+  unchanged: readonly RestsOn[] = [],
+): string | undefined {
   const problem = pathsProblem(changes);
   if (problem !== undefined) return problem;
   for (const change of changes) {
@@ -89,6 +109,14 @@ export function changesProblem(changes: readonly FileChange[]): string | undefin
     if (kept !== (change.ownership !== undefined) || kept !== (change.executable !== undefined)) {
       return `${change.path} must say who owns it and whether it is executable exactly when it is kept`;
     }
+  }
+  const named = new Set(changes.map((change) => pathKey(change.path)));
+  for (const file of unchanged) {
+    const problem = repositoryPathProblem(file.path);
+    if (problem !== undefined) return problem;
+    const key = pathKey(file.path);
+    if (named.has(key)) return `${file.path} is listed twice`;
+    named.add(key);
   }
   return undefined;
 }
@@ -106,9 +134,12 @@ export function orderChanges<T extends { readonly path: string }>(changes: reado
 }
 
 export function sealChangePlan(plan: UnsignedChangePlan): ChangePlan {
-  const problem = changesProblem(plan.changes);
+  const unchanged = [...(plan.unchanged ?? [])].sort((a, b) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
+  );
+  const problem = changesProblem(plan.changes, unchanged);
   if (problem !== undefined) throw new PlanError(`the plan cannot be made: ${problem}`);
-  const ordered = { ...plan, changes: orderChanges(plan.changes) };
+  const ordered = { ...plan, changes: orderChanges(plan.changes), unchanged };
   return { ...ordered, hash: sha256Hex(canonicalJson(ordered)) };
 }
 
@@ -134,7 +165,7 @@ export function parseChangePlan(text: string): ChangePlan {
   if (sha256Hex(canonicalJson(rest)) !== hash) {
     throw new PlanError("the plan was changed after it was made; create a new plan");
   }
-  const problem = changesProblem(rest.changes);
+  const problem = changesProblem(rest.changes, rest.unchanged);
   if (problem !== undefined) throw new PlanError(`the plan is invalid: ${problem}`);
   return parsed.data;
 }

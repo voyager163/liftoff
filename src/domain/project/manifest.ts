@@ -76,6 +76,13 @@ const manifestSchema = z.strictObject({
       plugin: z.string(),
     }),
   ),
+  /**
+   * For a project adopted with files of its own: each place Liftoff would
+   * have written a file where the project already had something. It stays
+   * the project's, and Liftoff never offers its own file there. A project
+   * Liftoff made has none.
+   */
+  kept: z._default(z.array(relativePath), []),
 });
 
 export type Manifest = z.output<typeof manifestSchema>;
@@ -107,7 +114,9 @@ export function parseManifest(text: string): Manifest {
  * every list sorted, so the same manifest is always the same bytes, however
  * the caller built it.
  */
-export function serializeManifest(manifest: Manifest): string {
+export function serializeManifest(
+  manifest: Omit<Manifest, "kept"> & { readonly kept?: readonly string[] },
+): string {
   const { legacy } = manifest;
   const ordered: Manifest = {
     schema: manifest.schema,
@@ -119,6 +128,8 @@ export function serializeManifest(manifest: Manifest): string {
     files: [...manifest.files]
       .sort((a, b) => a.path.localeCompare(b.path))
       .map(({ path, ownership, sha256, plugin }) => ({ path, ownership, sha256, plugin })),
+    // Written only when there are any, so a project Liftoff made has none.
+    kept: [...(manifest.kept ?? [])].sort((a, b) => a.localeCompare(b)),
     ...(legacy === undefined
       ? {}
       : {
@@ -136,5 +147,6 @@ export function serializeManifest(manifest: Manifest): string {
           },
         }),
   };
-  return `${JSON.stringify(ordered, null, 2)}\n`;
+  const { kept, ...rest } = ordered;
+  return `${JSON.stringify(kept.length === 0 ? rest : ordered, null, 2)}\n`;
 }

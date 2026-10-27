@@ -162,6 +162,45 @@ liftoff assess --dir ../service --json
 liftoff assess --live --use-gh
 ```
 
+## liftoff adopt
+
+Reads the project as liftoff assess does, running nothing, and proposes what it is: its backend's stack, a frontend and infrastructure, each where it lives, the coding-agent hosts it is set up for and, for a project from a Liftoff release before the rebuild, what its old configuration says. Options replace any part of the proposal. Adopting adds liftoff.yaml, .liftoff/manifest.json and Liftoff's own workflows, review policy, governance handoff, skills and instructions, made for where the parts live, and changes no file the project has: where one of Liftoff's files would go, the project's own is kept. It never replaces the application with a starter; a part it cannot place blocks adopting, with why. It lists the application changes the standard expects, which it does not make. It shows the plan and asks before changing anything; the default answer is no. In scripts, pass --yes. An adoption that stops part way can be finished or undone with --recover.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.adopt/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. Without it, the current directory must be the root of a Git repository. (default `.`) |
+| `--name <name>` | Project name: 2 to 50 lowercase letters, digits and single hyphens. Defaults to the old configuration's, or the directory's name. |
+| `--stack <stack>` | The backend's stack, when the project holds more than one kind. (one of `python-fastapi`, `node-fastify`, `go-huma`, `python-pydanticai`) |
+| `--pattern <pattern>` | GenAI pattern, for a PydanticAI backend. Defaults to generic. (one of `generic`, `prompt`, `chatbot`, `rag`, `agent`, `multi-agent`, `fine-tuned`, `streaming`, `workflow`) |
+| `--frontend <frontend>` | Web frontend, or none to leave one found as the project's own. (one of `none`, `vue`) |
+| `--infrastructure <provider>` | Infrastructure as code, or none to leave any found as the project's own. (one of `none`, `azure`) |
+| `--environments <list>` | Environments the infrastructure deploys to, comma-separated: dev, staging, prod. Defaults to all three. |
+| `--agents <list>` | Coding-agent hosts, comma-separated: copilot, codex, claude. Defaults to those the project is set up for. |
+| `--governance <profile>` | Governance profile. Defaults to single-maintainer-gitflow. (one of `single-maintainer-gitflow`, `team-gitflow`, `risk-tiered-gitflow`, `none`) |
+| `--ai-review <mode>` | Verified AI review in CI; auto turns it on when agents are selected. (one of `auto`, `on`, `off`) |
+| `--review-engine <host>` | Which selected agent host runs the verified AI review. |
+| `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. |
+| `--layout <bindings>` | Where each part lives, as part=directory pairs, comma-separated, such as backend=services/api,frontend=web; . is the repository root. |
+| `--check` | Change nothing; show what adopting would do, and exit 3 when the project cannot be adopted as it is. |
+| `--out <file>` | Save the plan to this file and change nothing in the project; apply it with --plan. |
+| `--plan <file>` | Apply exactly this saved plan, and refuse it if the project or Liftoff changed since. |
+| `--recover <mode>` | Finish or undo an adoption that stopped part way. (one of `finish`, `undo`) |
+| `--yes` | Change the files without asking. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff adopt --check
+liftoff adopt --dir ../service --layout backend=api,frontend=web --agents claude
+liftoff adopt --out adopt.plan.json
+liftoff adopt --plan adopt.plan.json --yes
+liftoff adopt --recover undo
+```
+
 ## liftoff update
 
 Updates the files .liftoff/manifest.json lists as managed by Liftoff to what this release makes for the project's liftoff.yaml, and removes those it no longer makes. A managed file changed since Liftoff wrote it is left as it is and named. Files the project or a framework owns, such as its source, lock files, environment files, infrastructure and README, and liftoff.yaml itself, are never changed. Update never switches the workflow, governance profile, stack, pattern or agents, and refuses if liftoff.yaml was changed. New files this release makes are offered separately and added only if you choose them, or name them with --add, never over an existing file. It shows the plan and asks before changing anything; the default answer is no. In scripts, pass --yes. Each file is changed only if it is still as planned, and an update that stops part way can be finished or undone with --recover.

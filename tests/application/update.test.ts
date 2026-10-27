@@ -408,7 +408,7 @@ describe("UPDATE-002 update never switches what the project is made of", () => {
     await expect(plan({}, closed)).rejects.toThrow("liftoff.yaml cannot be read by this user");
   });
 
-  it("cannot update a project from before the rebuild, or one in another layout", async () => {
+  it("cannot update a project from before the rebuild, or one it made in another layout", async () => {
     mkdirSync(root);
     writeFileSync(
       at("liftoff.manifest.json"),
@@ -419,7 +419,7 @@ describe("UPDATE-002 update never switches what the project is made of", () => {
       }),
     );
     await expect(plan()).rejects.toThrow(ProjectChangeUnsupportedError);
-    await expect(plan()).rejects.toThrow(/before the rebuild/);
+    await expect(plan()).rejects.toThrow(/before the rebuild; .* adopted with liftoff adopt/);
     rmSync(root, { recursive: true });
 
     await generated();
@@ -429,7 +429,9 @@ describe("UPDATE-002 update never switches what the project is made of", () => {
       entry(manifest, CONFIG_FILE).sha256 = sha(bound);
     });
     await expect(plan()).rejects.toThrow(ProjectChangeUnsupportedError);
-    await expect(plan()).rejects.toThrow(/only projects in the standard layout/);
+    await expect(plan()).rejects.toThrow(
+      "this release can update a project it made only in the standard layout, but liftoff.yaml binds parts to other directories",
+    );
   });
 });
 

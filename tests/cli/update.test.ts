@@ -264,7 +264,6 @@ describe("UPDATE-004 checking, previewing and approving an update", () => {
       files: [{ path: "x", step: "hold", reason: "r‮eason" }],
       plugins: [],
       contents: new Map(),
-      unchanged: [],
     };
     const text = renderUpdate(plan, "1.0.0").join("\n");
     expect(text).toContain("/work/a\\u001b[2Jb");

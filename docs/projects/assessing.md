@@ -59,8 +59,10 @@ read.
   - *project*: you change the project.
   - *liftoff*: a Liftoff command does it, and is named.
   - *access*: someone grants access.
-  - *unavailable*: this release cannot help yet. Adopting an existing
-    project, for example, comes in a later release.
+  - *unavailable*: this release cannot help yet. Adding a coding-agent
+    host to a Liftoff project, for example, comes in a later release. A
+    project that is not Liftoff's can be adopted with
+    [`liftoff adopt`](adopting.md).
 
 The checks cover:
 

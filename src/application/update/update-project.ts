@@ -56,12 +56,6 @@ export interface UpdatePlan {
   readonly plan?: ChangePlan;
   /** The new content of each file the plan writes. */
   readonly contents: ReadonlyMap<string, NewContent>;
-  /**
-   * Files the update rests on without changing them, which must still be as
-   * planned when it applies: liftoff.yaml, and each file only its manifest
-   * entry changes for, as it was seen or still absent.
-   */
-  readonly unchanged: readonly Unchanged[];
 }
 
 /**
@@ -179,8 +173,11 @@ export async function planUpdate(
     }
   }
 
-  // Compared as macOS and Windows compare names, ignoring case.
-  const listed = new Set(manifest.files.map((entry) => pathKey(entry.path)));
+  // Compared as macOS and Windows compare names, ignoring case. Where an
+  // adopted project kept a file of its own, Liftoff's is never offered.
+  const listed = new Set(
+    [...manifest.files.map((entry) => entry.path), ...manifest.kept].map(pathKey),
+  );
   for (const file of generated.values()) {
     if (listed.has(pathKey(file.path))) continue;
     const now = await fs.hashWithin(directory, file.path, MAX_CHANGED_BYTES);
@@ -210,7 +207,6 @@ export async function planUpdate(
   const result = {
     directory,
     name: config.name,
-    unchanged,
     files: steps.sort((a, b) => a.path.localeCompare(b.path)),
     plugins,
   };
@@ -221,11 +217,21 @@ export async function planUpdate(
     return { ...result, contents: new Map() };
   }
 
-  const sealed = sealProjectChange(project, "update", liftoffVersion, changes, contents, {
-    ...manifest,
-    plugins: selection.plugins.map(({ id, version }) => ({ id, version })),
-    files: [...entries.values()],
-  });
+  // The update rests on liftoff.yaml, and on each file only its manifest
+  // entry changes for, as it was seen or still absent.
+  const sealed = sealProjectChange(
+    project,
+    "update",
+    liftoffVersion,
+    changes,
+    contents,
+    {
+      ...manifest,
+      plugins: selection.plugins.map(({ id, version }) => ({ id, version })),
+      files: [...entries.values()],
+    },
+    unchanged,
+  );
   return { ...result, ...sealed };
 }
 

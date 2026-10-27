@@ -6,25 +6,29 @@ import {
   type LegacyObservation,
   MAX_LEGACY_BYTES,
 } from "../../domain/legacy/inventory.ts";
+import { sha256Hex } from "../../domain/plan/plan.ts";
 import type { ProjectFsPort } from "../ports.ts";
 
 /**
  * Looks for what Liftoff releases before the rebuild left in a directory. It
  * only reads: it checks the old releases' own paths, never follows a link,
  * reads only small records that cannot hold copies of files, credentials or
- * state, and runs nothing.
+ * state, and runs nothing. `read`, when given, is filled with the sha256 of
+ * each record's text as it was read, by path.
  */
 export async function inventoryLegacy(
   fs: ProjectFsPort,
   directory: string,
+  read?: Map<string, string>,
 ): Promise<LegacyInventory> {
   const observations = new Map<string, LegacyObservation>();
   const look = async (marker: boolean) => {
     for (const candidate of LEGACY_CANDIDATES.filter((found) => found.marker === marker)) {
-      observations.set(
-        candidate.path,
-        await observe(fs, directory, candidate.path, candidate.open),
-      );
+      const observed = await observe(fs, directory, candidate.path, candidate.open);
+      if (observed.kind === "file" && observed.text !== undefined) {
+        read?.set(candidate.path, sha256Hex(observed.text));
+      }
+      observations.set(candidate.path, observed);
     }
   };
   // Generic paths such as governance/ are looked at only in a project the

@@ -63,7 +63,8 @@ no more than 1 MiB of each: a larger file is not read, and one that grows
 while being read is read no further. It follows no link, at the record or on
 the way to it, and reads nothing if a directory on the way changed while
 the record was being opened. Opening a record never waits, even if it was
-swapped for a FIFO. These are noted by their presence alone:
+swapped for a FIFO. These are noted by their presence alone, and the walk of
+`liftoff assess` and `liftoff adopt` never goes into them:
 
 - journals of unfinished changes, which hold whole copies of files;
 - repair and activation history;
@@ -85,7 +86,9 @@ changes:
   as the manifest says, or `project` for a file the manifest does not list)
   and whether it is executable.
 
-Its only effect is `modify-files`. It is sealed like an init plan, so an
+It also lists each file the change rests on without changing it, with the
+sha256 it must still have or that it must still not exist (CHANGE-002), so
+a saved plan carries them too. Its only effect is `modify-files`. It is sealed like an init plan, so an
 edited plan is refused, and each kind of plan is refused where the other is
 expected. These make the plan invalid:
 
@@ -96,8 +99,9 @@ expected. These make the plan invalid:
 - a name Windows would read as another file: a trailing dot or space, a
   `:`, a device name such as `nul`, `nul .txt` or `conin$`, or an 8.3 short
   name such as `GIT~1`;
-- a path named twice, ignoring letter case and how an accented letter is
-  encoded, as macOS and Windows do;
+- a path named twice, among the files it changes and those it rests on,
+  ignoring letter case and how an accented letter is encoded, as macOS and
+  Windows do;
 - a change that changes nothing.
 
 Verification: test
@@ -160,6 +164,10 @@ finishes or undoes the change, deciding each file from what is there now:
 
 `liftoff.yaml` and the manifest change only once every other file has, so
 the manifest never describes files that are not there.
+
+Finishing also needs every file the change rests on (CHANGE-001) to be as
+it was: if one is not, nothing is finished, it is named, and the change can
+still be undone.
 
 Finishing and undoing can follow each other until one completes, because
 the kept copies are copied into place, never used up. Recovery refuses a
@@ -297,7 +305,9 @@ Verification: test
 Next actions are grouped by who takes them: **project** (the team changes
 the project), **liftoff** (a command this release has does it, and it is
 named), **access** (someone grants access) and **unavailable** (this release
-cannot help yet, such as adopting a project). Each lists the checks it
+cannot help yet, such as adding a coding-agent host to a Liftoff project).
+`liftoff adopt` is named for a project that is not Liftoff's only when a
+backend this release supports was found. Each lists the checks it
 answers. Only commands this release has are named. The command exits 0 when
 every finding is compliant and 3 otherwise.
 
@@ -314,6 +324,151 @@ checkpoint becomes a finding. A repository GitHub refuses to
 show is inaccessible, and any other failure is unknown; the local
 assessment is still reported. `--repo` and `--use-gh` are refused without
 `--live`.
+
+Verification: test
+
+## ADOPT-001 Adopting proposes what the project is, from what it holds
+
+`liftoff adopt` brings an existing project under Liftoff: the root of a Git
+repository, or another directory named with `--dir`. It refuses the root of
+the file system and the home directory, a project Liftoff already has (one
+with `liftoff.yaml` or `.liftoff/manifest.json`), and a project with a
+change that has not finished (CHANGE-003). It reads the project as
+`liftoff assess` does (ASSESS-001 and ASSESS-002), running nothing, and
+proposes:
+
+- each part this release supports that it finds, and the directory it is
+  in, bound in `liftoff.yaml` when it is not the standard one (PROJ-024):
+  the backend's stack, a Vue frontend and Azure infrastructure;
+- the coding-agent hosts the project is set up for;
+- for a project from a Liftoff release before the rebuild, the name, agents,
+  governance profile, GenAI pattern and environments its old configuration
+  names, each only when this release has exactly that value (and at least
+  one environment);
+- otherwise a name made from the directory's name, and the default
+  governance profile.
+
+The options `--name`, `--stack`, `--pattern`, `--frontend`,
+`--infrastructure`, `--environments`, `--agents`, `--governance`,
+`--ai-review`, `--review-engine`, `--owners` and `--layout`, which takes
+`part=directory` pairs, replace what it proposes, and the proposal says
+where each choice came from. The workflow is `manual`: adopting runs no
+framework's initializer, and OpenSpec or Spec Kit files the project has
+stay its own.
+
+- Given a repository with a FastAPI application at its root, when it is
+  adopted, then the backend is bound to `.` and its stack is
+  `python-fastapi`.
+
+Verification: test
+
+## ADOPT-002 A part it cannot place blocks adopting
+
+An option that names something this release does not have, or that other
+options given with it rule out, such as an unknown agent, `--review-engine`
+for a host `--agents` does not select, or `--environments` with
+`--infrastructure none`, is refused as a usage error (exit 2), checked
+before anything about the project. One that only the proposal rules out is
+refused as a usage error too, once the project's parts are placed. Otherwise adopting changes nothing, names
+each reason and exits 3 when:
+
+- more than one directory holds a part of one kind (name one with
+  `--layout`), one directory holds two backends of different stacks (name
+  one with `--stack`), or a part named with an option or `--layout` is not
+  where it is named;
+- it could not tell what a directory holds, because a declaration could not
+  be read or parsed, or part of the project was not walked, unless
+  `--layout` names every part (or `--frontend none` and
+  `--infrastructure none` leave them out);
+- the parts' directories cannot be bound (PROJ-024), such as one inside
+  another, which only moving a part resolves;
+- the backend's stack cannot have a frontend or infrastructure found beside
+  it, such as a Vue frontend beside a PydanticAI backend: it says to leave
+  that part out with `--frontend none` or `--infrastructure none`;
+- the directory's name makes no project name and `--name` gives none;
+- a declaration a part was found from is not UTF-8 text, so what was read
+  is not what is there;
+- a record from a Liftoff release before the rebuild is unsupported
+  (LEGACY-002), or is an update or repair that release did not finish
+  (LEGACY-001).
+
+When no backend this release supports is found, it exits 6. It never puts a
+starter application in place of a part it cannot place. Applications this
+release has no stack for, beside the parts it adopts, stay the project's
+and are named.
+
+Verification: test
+
+## ADOPT-003 Adopting adds Liftoff's own files, never over the project's
+
+The plan (CHANGE-001) adds `liftoff.yaml`, `.liftoff/manifest.json` and
+Liftoff's own files for the project (PROJ-026), and changes no file the
+project has. Where one of Liftoff's files would go and something already
+is, or may be (a file, a directory, a link, a name in other letter case, or
+a path through a directory closed to this user), it is not added and is
+named; the manifest lists that path as kept, so `liftoff update` never
+offers Liftoff's file there (UPDATE-003). A file the project had is never
+recorded as Liftoff's, even when it is the same as Liftoff's. The manifest
+lists only the files adopting added, and the adoption in its history.
+
+The plan also lists, separately, the application changes the standard
+expects of the parts it adopts, which adopting does not make: what
+`liftoff assess` finds missing in them, such as a lock file, tests or a
+coverage threshold, the lines Liftoff's `.gitignore` has for its own
+records when the project keeps its own `.gitignore` and it does not list
+them (with or without a leading `/`), or ignores all of `.liftoff` or the
+manifest, which every clone needs, and each
+infrastructure root module, with a lock file or without, outside the
+`bootstrap` directory and the directories under `environments`, the ones
+Liftoff's CI validates, or those directories missing. They are the person's to make, for example with a reviewed patch
+and `liftoff repair --patch` once the project is adopted.
+
+The change rests on the declarations the proposal was made from, and on the
+old records the manifest records, exactly as the assessment read them: if
+any of them changed after it was read, planning refuses, and if one changes
+before the adoption applies, nothing changes (CHANGE-002).
+
+- Given a project with its own `AGENTS.md`, when it is adopted, then its
+  `AGENTS.md` is unchanged, the manifest lists it as kept, and
+  `liftoff update` does not offer Liftoff's.
+
+Verification: test
+
+## ADOPT-004 Records from before the rebuild stay the project's, byte for byte
+
+Adopting a project from a Liftoff release before the rebuild changes none
+of the old records: they stay the project's own and are never counted as
+current configuration or proof. The manifest's legacy record (PROJ-025)
+lists the old release and each record's path, kind, state and format, with
+the sha256 of the old manifest, configuration and activation state as they
+were kept. Records that can hold copies of files, credentials or state are
+listed by name alone, never read or hashed (LEGACY-003).
+
+- Given a project from 0.12.3, when it is adopted, then its old manifest
+  and configuration are byte for byte as they were, and the manifest
+  records their sha256.
+
+Verification: test
+
+## ADOPT-005 Adopting previews, saves and applies exactly what was approved
+
+`liftoff adopt --check` writes nothing, shows the proposal and the plan, and
+exits 3 when the project cannot be adopted as it is (6 when it has no
+backend this release supports), 0 otherwise. `--out <file>` saves the plan
+and changes nothing; `--plan <file>` applies exactly that plan, planned
+again from the configuration it holds and refused unless it is the same
+plan, made by this release, resting on the same declarations: one edited
+since, even keeping its stack, refuses it. Otherwise adopting shows the proposal and the
+plan and asks; the default answer is no, and without a terminal it needs
+`--yes`. Files change as CHANGE-002 to CHANGE-004 say, with `liftoff.yaml`
+and the manifest last. An adoption that stops part way, even before
+`liftoff.yaml` is written, exits 5, `liftoff validate` reports it, and
+`liftoff adopt --recover finish` or `--recover undo` finishes or undoes it
+after asking. Ctrl+C before any file changes exits 4.
+
+Once adopted, `liftoff update` and `liftoff repair` change Liftoff's files
+where the project's parts live, and never offer or put back an
+application's files (UPDATE-002).
 
 Verification: test
 
@@ -368,9 +523,14 @@ with. It refuses, changing nothing, when:
 - `liftoff.yaml` or the manifest is missing, invalid, or not a regular file
   Liftoff can read, or the manifest would be over the 1 MiB Liftoff reads
   once updated;
-- the project was made by a release before the rebuild, or has parts bound
-  to other directories (PROJ-024), which this release cannot update yet
-  (exit 6).
+- the project was made by a release before the rebuild and not yet adopted
+  (ADOPT-004), or Liftoff made it but `liftoff.yaml` binds parts to other
+  directories (PROJ-024) (exit 6).
+
+For a project Liftoff adopted, whose manifest's history begins with the
+adoption, this release makes only its own files, where the project's parts
+live (PROJ-026), so an update never offers an application's files, and a
+repair never puts one back.
 
 Verification: test
 
@@ -382,7 +542,8 @@ when chosen at a question, where none is chosen by default, or named with
 `--add`; `--add` names only offered files. A new file is never added where
 something already is, or may be: a file, a directory, a link, or a path
 through a directory closed to this user. That path is named and left as it
-is.
+is. A path the manifest lists as kept, where an adopted project had its own
+file (ADOPT-003), is never offered.
 
 Verification: test
 

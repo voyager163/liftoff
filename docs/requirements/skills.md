@@ -92,3 +92,18 @@ never edits the project's files itself, and never confirms a change for the
 person.
 
 Verification: test
+
+## SKILL-009 A skill to adopt a project with the person's approval
+
+Generated projects get the `liftoff-adopt` skill. It runs
+`liftoff adopt --check` and explains what adopting would add, what it keeps
+as the project's, and what keeps a project from being adopted, and gives the
+person the `liftoff adopt` command with the options it needs. A part that
+has to move first, and each application change the standard expects once a
+project is adopted, it may prepare as a unified diff outside the project, in
+a temporary directory, for the person to review: a move the person applies
+before adopting, and a change applied with `liftoff repair --patch`. The
+skill never edits the project's files itself, and never confirms a change
+for the person.
+
+Verification: test

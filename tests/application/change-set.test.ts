@@ -349,13 +349,17 @@ describe("CHANGE-002 files a change rests on", () => {
     const { plan, contents } = project();
     write("rests-on.txt", "edited\n");
     write("was-absent.txt", "appeared\n");
-    const unchanged = [
-      { path: "rests-on.txt", sha256: sha256Hex("as planned\n") },
-      { path: "was-absent.txt", sha256: null },
-    ];
-    const refused = applyChanges(ports(fs), plan, contents, { unchanged });
+    const { hash: _, ...unsigned } = plan;
+    const resting = sealChangePlan({
+      ...unsigned,
+      unchanged: [
+        { path: "rests-on.txt", sha256: sha256Hex("as planned\n") },
+        { path: "was-absent.txt", sha256: null },
+      ],
+    });
+    const refused = applyChanges(ports(fs), resting, contents);
     await expect(refused).rejects.toThrow(ChangeConflictError);
-    await expect(applyChanges(ports(fs), plan, contents, { unchanged })).rejects.toThrow(
+    await expect(applyChanges(ports(fs), resting, contents)).rejects.toThrow(
       "rests-on.txt changed since the plan was made; was-absent.txt already exists",
     );
     expect(read("README.md").toString()).toBe("# Old\n");
