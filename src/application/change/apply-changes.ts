@@ -66,6 +66,14 @@ export class ChangeConflictError extends ChangeError {
   }
 }
 
+/**
+ * A change stopped part way: the files before the one named changed, and the
+ * journal stays so the change can be finished or undone.
+ */
+export class ChangeStoppedError extends ChangeError {
+  override readonly name = "ChangeStoppedError";
+}
+
 export interface NewContent {
   readonly content: string;
   readonly executable: boolean;
@@ -160,7 +168,7 @@ export async function applyChanges(
     for (const change of plan.changes) {
       const source = change.after === null ? "removed" : "after";
       if (!(await changeFile(fs, root, staging, change, change.before, source, true))) {
-        throw new ChangeError(
+        throw new ChangeStoppedError(
           `${change.path} changed while the change was being made, so it and the files after it were left alone; finish or undo the change with ${CHANGE_COMMANDS[plan.operation]} --recover`,
         );
       }

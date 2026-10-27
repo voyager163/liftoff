@@ -11,6 +11,7 @@ import {
 } from "./commands/governance.ts";
 import { makeInitCommand, makePlanCommand } from "./commands/plan-init.ts";
 import { makeReviewClassifyCommand } from "./commands/review-classify.ts";
+import { makeUpdateCommand } from "./commands/update.ts";
 import { makeDoctorCommand, makeValidateCommand } from "./commands/validate-doctor.ts";
 
 /**
@@ -25,6 +26,7 @@ export const REGISTRY: readonly CommandSpec[] = [
   makeValidateCommand(),
   makeDoctorCommand(),
   makeAssessCommand(),
+  makeUpdateCommand(),
   makeReviewClassifyCommand(),
   makeGovernanceStatusCommand(),
   makeGovernanceAssessCommand(),

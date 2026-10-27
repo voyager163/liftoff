@@ -302,3 +302,84 @@ assessment is still reported. `--repo` and `--use-gh` are refused without
 `--live`.
 
 Verification: test
+
+## UPDATE-001 Update changes only the files Liftoff manages
+
+`liftoff update` brings the files `.liftoff/manifest.json` lists as managed
+to what this release makes for the project's configuration. For each one
+this release changes:
+
+- if it is as Liftoff last wrote it, by its sha256 in the manifest, it is
+  replaced, or removed when this release no longer makes it;
+- if it is already as this release makes it, or already gone when this
+  release no longer makes it, only the manifest changes;
+- otherwise, changed by hand, missing, a directory, a link, closed to this
+  user or over 64 MiB, it is left as it is and named, with why, and its
+  entry in the manifest stays as it was.
+
+Files the project owns, such as its source, lock files, environment files,
+infrastructure and `README.md`, files a framework owns, and `liftoff.yaml`
+are never changed, whatever this release makes, and no file changes owner:
+a managed file this release makes as the project's is left as it is. The
+manifest changes last, with this release's plugin versions and an `update`
+in its history; who generated the project stays as it was.
+
+- Given a project made by an earlier release, when it is updated, then each
+  managed file still as Liftoff wrote it takes this release's version, and
+  a managed file changed by hand is left as it is and named.
+- Given a seeded file whose template changed, when the project is updated,
+  then it is not changed.
+
+Verification: test
+
+## UPDATE-002 Update never switches what the project is made of
+
+An update applies this release to the configuration the project was made
+with. It refuses, changing nothing, when:
+
+- `liftoff.yaml` changed since Liftoff last wrote it, by its sha256 in the
+  manifest, since that would also apply the change;
+- this release would make the project from other plugins than the manifest
+  lists, so it never switches the workflow, governance profile, stack,
+  pattern, agents or any other plugin;
+- a change to the project has not finished (CHANGE-003);
+- `liftoff.yaml` or the manifest is missing, invalid, or not a regular file
+  Liftoff can read;
+- the project was made by a release before the rebuild, or has parts bound
+  to other directories (PROJ-024), which this release cannot update yet
+  (exit 6).
+
+Verification: test
+
+## UPDATE-003 New files are added only when chosen
+
+A file this release makes that the manifest does not list, comparing names
+as macOS and Windows do, is offered, never added by itself. It is added only
+when chosen at a question, where none is chosen by default, or named with
+`--add`; `--add` names only offered files. A new file is never added where
+something already is, or may be: a file, a directory, a link, or a path
+through a directory closed to this user. That path is named and left as it
+is.
+
+Verification: test
+
+## UPDATE-004 Update checks, previews and applies exactly what was approved
+
+`liftoff update --check` changes nothing and exits 3 when this release has
+something for the project: a change, a file held back, or a new file
+offered; otherwise it exits 0. `--out <file>` saves the plan (CHANGE-001)
+and changes nothing. Otherwise update shows the plan and asks before
+changing anything; the default answer is no, and without a terminal it needs
+`--yes`. `--plan <file>` applies exactly a saved plan: the update is planned
+again, with the same new files, and refused unless it is the same plan, made
+by this release. The files change as CHANGE-002 to CHANGE-004 say; an update
+that stops part way exits 5, and `liftoff update --recover finish` or
+`--recover undo` finishes or undoes it after asking. An update exits 3 when
+files were held back, and 0 otherwise.
+
+- Given a saved plan, when a file it changes is edited before it is
+  applied, then it is refused and nothing changes.
+- Given an update that stopped part way, when it is recovered, then each
+  file is finished or undone and the journal is removed.
+
+Verification: test

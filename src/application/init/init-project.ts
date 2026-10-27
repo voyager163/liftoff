@@ -10,7 +10,7 @@ import {
 import { type ProjectConfig, validateConfig } from "../../domain/project/config.ts";
 import { MANIFEST_FILE, parseManifest, serializeManifest } from "../../domain/project/manifest.ts";
 import { pathKey, repositoryPathProblem } from "../../domain/project/paths.ts";
-import type { ProjectFile } from "../../generators/project.ts";
+import { isExecutable, type ProjectFile } from "../../generators/project.ts";
 import type { WorkflowInitializer } from "../../plugins/contracts/project-plugin.ts";
 import type { Selection } from "../../plugins/registry.ts";
 import type { AssetPort, InitializerPort, ProjectFsPort } from "../ports.ts";
@@ -24,9 +24,6 @@ export class InitTargetError extends Error {
 export class InitializerError extends Error {
   override readonly name = "InitializerError";
 }
-
-/** Files that need the executable bit. */
-const isExecutable = (file: ProjectFile) => file.path.endsWith(".sh");
 
 type PlannedInitializer = NonNullable<Plan["initializer"]>;
 
@@ -157,7 +154,7 @@ export async function applyInit(
       await ports.fs.writeFile(
         path.join(staging, ...file.path.split("/")),
         content,
-        isExecutable(file),
+        isExecutable(file.path),
       );
     }
     options.signal?.throwIfAborted();

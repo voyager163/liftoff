@@ -10,6 +10,7 @@ import type { GitHubState } from "../../domain/assess/standard.ts";
 import { GovernanceStateError } from "../../domain/governance/state.ts";
 import type { CommandSpec } from "../command.ts";
 import { UsageError } from "../outcome.ts";
+import { shown } from "../terminal.ts";
 import {
   defaultGovernancePorts,
   type GovernancePorts,
@@ -19,14 +20,6 @@ import { projectDirectory } from "./project-ports.ts";
 
 /** How many gaps the text lists; the JSON report has every one. */
 const SHOWN_GAPS = 20;
-
-/** Escapes characters that would change how a terminal shows the rest of a line. */
-const shown = (text: string) =>
-  text.replace(
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it escapes.
-    /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g,
-    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
-  );
 
 const LIFTOFF = {
   none: "not a Liftoff project",

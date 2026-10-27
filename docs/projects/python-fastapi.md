@@ -63,7 +63,8 @@ Every file is listed in `.liftoff/manifest.json` as one of:
 - **managed**: kept current by Liftoff. The bundled checks in
   `.github/liftoff/`, the review-policy and AI review workflows, and the
   skills and agents are managed. `liftoff validate` reports a managed file
-  that was changed by hand.
+  that was changed by hand, and [`liftoff update`](updating.md) brings the
+  others to a new release.
 
 The manifest also records each Liftoff operation that wrote the project, with
 its release, starting with `init`.
