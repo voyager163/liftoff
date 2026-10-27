@@ -74,6 +74,29 @@ export function parsePatch(text: string): FilePatch[] {
   const next = () => lines[at];
   const isFileStart = (line: string | undefined) =>
     line !== undefined && (line.startsWith("diff --git ") || line.startsWith("--- "));
+  // Blank lines to the end, as an editor may add.
+  const rest = () => lines.slice(at).every((line) => line === "");
+  /**
+   * Whether the changes end here: at blank lines to the end, or at git
+   * format-patch's signature line, after which another commit would go
+   * unapplied, so none may follow.
+   */
+  const ended = (): boolean => {
+    if (rest()) {
+      at = lines.length;
+      return true;
+    }
+    if (next() !== SIGNATURE) return false;
+    const more = lines
+      .slice(at)
+      .findIndex((line) => /^(diff --git |From [0-9a-f]{40} )/.test(line));
+    if (more !== -1) {
+      throw new PatchError(
+        `the patch holds more than one commit, from line ${at + more + 1}; make one diff of the whole change with git diff --no-renames`,
+      );
+    }
+    return true;
+  };
   while (at < lines.length && !isFileStart(next())) at++;
 
   while (at < lines.length) {
@@ -84,7 +107,13 @@ export function parsePatch(text: string): FilePatch[] {
     if (next()?.startsWith("diff --git ")) {
       gitHeader = next()?.slice("diff --git ".length);
       at++;
-      while (at < lines.length && !next()?.startsWith("--- ") && !isFileStart(next())) {
+      while (
+        at < lines.length &&
+        !next()?.startsWith("--- ") &&
+        !isFileStart(next()) &&
+        next() !== SIGNATURE &&
+        !rest()
+      ) {
         const line = next() ?? "";
         const refused = REFUSED_HEADERS.find(([pattern]) => pattern.test(line));
         if (refused) throw new PatchError(`line ${at + 1} ${refused[1]}, which repair does not do`);
@@ -106,6 +135,7 @@ export function parsePatch(text: string): FilePatch[] {
           throw new PatchError(`the changes at line ${startLine} name no file and no lines`);
         }
         patches.push({ path, kind: marked, executable, hunks: [] });
+        if (ended()) break;
         continue;
       }
     }
@@ -135,29 +165,14 @@ export function parsePatch(text: string): FilePatch[] {
       }
     }
     const hunks: Hunk[] = [];
-    // Blank lines after the last hunk, as an editor may add, end the patch.
-    const rest = () => lines.slice(at).every((line) => line === "");
     while (at < lines.length && !isFileStart(next()) && next() !== SIGNATURE && !rest()) {
       hunks.push(readHunk());
     }
-    if (rest()) at = lines.length;
     if (hunks.length === 0) {
       throw new PatchError(`the changes to ${path} at line ${startLine} have no hunks`);
     }
     patches.push({ path, kind, executable: kind === "add" && executable, hunks });
-    // What follows git format-patch's signature line is not part of the
-    // changes, unless it is another commit, which would go unapplied.
-    if (next() === SIGNATURE) {
-      const more = lines
-        .slice(at)
-        .findIndex((line) => /^(diff --git |From [0-9a-f]{40} )/.test(line));
-      if (more !== -1) {
-        throw new PatchError(
-          `the patch holds more than one commit, from line ${at + more + 1}; make one diff of the whole change with git diff --no-renames`,
-        );
-      }
-      break;
-    }
+    if (ended()) break;
   }
 
   if (patches.length === 0) throw new PatchError("the patch changes no file");
@@ -237,6 +252,7 @@ export function applyFilePatch(original: string, patch: FilePatch): string {
     const found = units.slice(start, start + hunk.oldLines);
     if (
       start < cursor ||
+      start > units.length ||
       found.length !== hunk.before.length ||
       found.some((unit, line) => unit !== hunk.before[line])
     ) {
@@ -244,9 +260,11 @@ export function applyFilePatch(original: string, patch: FilePatch): string {
         `hunk ${index + 1} for ${patch.path} does not match the file at line ${hunk.oldStart}; make the patch against the project as it is now`,
       );
     }
-    result.push(...units.slice(cursor, start), ...hunk.after);
+    // One at a time: a file of short lines may have more than a call takes.
+    for (const unit of units.slice(cursor, start)) result.push(unit);
+    for (const unit of hunk.after) result.push(unit);
     cursor = start + hunk.oldLines;
   }
-  result.push(...units.slice(cursor));
+  for (const unit of units.slice(cursor)) result.push(unit);
   return result.join("");
 }

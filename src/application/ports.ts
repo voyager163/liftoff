@@ -133,6 +133,12 @@ export interface ProjectFsPort {
   /** Copies a file byte for byte, with its mode; fails if `to` exists. */
   copyFile(from: string, to: string): Promise<void>;
   /**
+   * Gives `to` the read and write permissions of the regular file `from`,
+   * with execute permission wherever `from` may be read when `executable`,
+   * or none. Nothing on Windows, which has no such permissions.
+   */
+  matchPermissions(from: string, to: string, executable: boolean): Promise<void>;
+  /**
    * What identifies a directory, such as its inode, while it exists, even
    * across the disk being detached and attached again; undefined when it is
    * missing, a link or not a directory. A copy of a directory has a

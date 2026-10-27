@@ -100,7 +100,6 @@ export async function planRestore(
   const steps: RepairFile[] = [];
   const changes: FileChange[] = [];
   const contents = new Map<string, NewContent>();
-  const unchanged: Unchanged[] = [generated.config];
   const entries = new Map(project.manifest.files.map((entry) => [entry.path, entry]));
 
   for (const entry of project.manifest.files) {
@@ -110,12 +109,11 @@ export async function planRestore(
     // A file the project owns may change freely; only a missing one is a problem.
     if (entry.ownership === "seeded" && now.kind !== "missing") continue;
     const wanted = restorable(entry, now, generated.files.get(pathKey(entry.path)));
-    // Already as this release makes it: only the manifest needs to say so.
-    const current =
-      typeof wanted !== "string" && now.kind === "file" && now.sha256 === wanted.sha256;
-    const problem = current
-      ? "a file Liftoff manages is already as this release makes it, but the manifest records another version"
-      : problemWith(entry, now);
+    // Already as this release makes it: recording that is update's work.
+    const problem =
+      wanted === ALREADY_CURRENT
+        ? "a file Liftoff manages is already as this release makes it, but the manifest records another version"
+        : problemWith(entry, now);
     if (typeof wanted === "string") {
       steps.push({
         path: entry.path,
@@ -132,10 +130,6 @@ export async function planRestore(
     }
     entries.set(entry.path, { ...entry, sha256: wanted.sha256, plugin: wanted.plugin });
     steps.push({ path: entry.path, step: "restore", ownership: entry.ownership, problem });
-    if (current) {
-      unchanged.push({ path: entry.path, sha256: wanted.sha256 });
-      continue;
-    }
     const executable = isExecutable(entry.path);
     changes.push({
       path: entry.path,
@@ -147,8 +141,13 @@ export async function planRestore(
     contents.set(entry.path, { content: wanted.content, executable });
   }
 
-  const result = { directory, name: project.config.name, files: sorted(steps), unchanged };
-  if (!steps.some((step) => step.step === "restore")) return { ...result, contents: new Map() };
+  const result = {
+    directory,
+    name: project.config.name,
+    files: sorted(steps),
+    unchanged: [generated.config],
+  };
+  if (changes.length === 0) return { ...result, contents: new Map() };
   return {
     ...result,
     ...sealProjectChange(project, "repair", liftoffVersion, changes, contents, {
@@ -380,6 +379,10 @@ function problemWith(entry: ManifestFile, now: FileHash): string {
   }
 }
 
+/** Why a managed file already as this release makes it has nothing to put back. */
+const ALREADY_CURRENT =
+  "there is nothing to put back; liftoff update records this release's version in the manifest";
+
 /** This release's version of a file Liftoff wrote, to put back, or why it cannot be. */
 function restorable(
   entry: ManifestFile,
@@ -401,5 +404,6 @@ function restorable(
   if (entry.ownership === "seeded" && wanted.sha256 !== entry.sha256) {
     return "this release would write it differently from what Liftoff first wrote, so restore it from version control";
   }
+  if (now.kind === "file" && now.sha256 === wanted.sha256) return ALREADY_CURRENT;
   return wanted;
 }

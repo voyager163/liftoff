@@ -29,7 +29,9 @@ should be, and changes nothing:
   on purpose, it does not make `--check` exit 3.
 
 A file the project owns that you changed is yours, and is not listed.
-Neither are files a specification framework owns.
+Neither are files a specification framework owns. A managed file that is
+already as this release makes it, though the manifest records an older
+version, is listed with nothing to put back: `liftoff update` records it.
 
 Nothing is put back unless you choose it, at the question where nothing is
 chosen by default, or name it with `--restore`. Repair never replaces a
@@ -70,7 +72,8 @@ is no. Without a terminal it needs `--yes`. `--out` saves the plan, and
 `--plan` applies exactly that plan, given the same `--patch` and `--paths`
 for a patch, or refuses it if anything changed since.
 
-Each file is changed only if it is still exactly as planned. If a repair
+Each file is changed only if it is still exactly as planned, and keeps the
+permissions of the file it replaces, so a private file stays private. If a repair
 stops part way, it exits 5 and you can finish or undo it:
 
 ```bash

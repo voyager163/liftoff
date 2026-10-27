@@ -523,7 +523,11 @@ async function changeFile(
   fs: ProjectFsPort,
   root: string,
   staging: string,
-  change: { readonly path: string; readonly before: string | null },
+  change: {
+    readonly path: string;
+    readonly before: string | null;
+    readonly executable?: boolean | undefined;
+  },
   from: string | null,
   source: "after" | "before" | "removed" | "discarded",
   keepOriginal: boolean,
@@ -537,6 +541,15 @@ async function changeFile(
   if (replacing) {
     await fs.remove(placing);
     await fs.copyFile(path.join(staging, source, ...parts), placing);
+    // A file that replaces another takes its permissions, so a private file
+    // stays private; the kept original has them. Undoing copies it whole.
+    if (source === "after" && change.before !== null) {
+      await fs.matchPermissions(
+        path.join(staging, "before", ...parts),
+        placing,
+        change.executable === true,
+      );
+    }
   }
   const made = replacing
     ? await makeDirectories(fs, root, change.path)

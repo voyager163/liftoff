@@ -170,7 +170,9 @@ Verification: test
 
 ## CHANGE-004 Files change one at a time, the manifest last
 
-Each file is replaced in one step, keeping the executable bit planned. The
+Each file is replaced in one step, keeping the read and write permissions
+of the file it replaces, so a private file stays private, with the
+executable bit planned. The
 project's files change first, then `liftoff.yaml`, then
 `.liftoff/manifest.json`, so the manifest never lists files that were not
 written. Once every file has changed, the journal and the kept copies are
@@ -435,8 +437,8 @@ put back:
 
 - a managed file that is missing or was changed by hand is put back as this
   release makes it; one that already is, though the manifest records another
-  version, is put back by recording it in the manifest, provided it is
-  still so when the repair applies;
+  version, is listed with no recipe, since recording a release's version is
+  what `liftoff update` does;
 - a file Liftoff wrote for the project that is missing is put back only when
   this release makes it exactly as Liftoff first wrote it.
 

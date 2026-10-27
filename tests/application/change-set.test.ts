@@ -806,6 +806,44 @@ describe("CHANGE-004 files change one at a time, the manifest last", () => {
   });
 });
 
+describe("CHANGE-004 a file keeps the permissions of the file it replaces", () => {
+  const mode = (relative: string) => statSync(path.join(root, relative)).mode & 0o777;
+
+  /** Makes these files private, then stops the change after README.md and data.bin. */
+  async function stoppedWithPrivateFiles() {
+    const { plan, contents } = project();
+    const { chmodSync } = await import("node:fs");
+    for (const file of ["README.md", "liftoff.yaml", "data.bin"]) {
+      chmodSync(path.join(root, file), 0o600);
+    }
+    const { port } = recording({ failOnMove: 3 });
+    await expect(applyChanges(ports(port), plan, contents)).rejects.toThrow("the machine stopped");
+  }
+
+  it("keeps a private file private when it is changed, and when the change is finished", async () => {
+    if (process.platform === "win32") {
+      // Windows has no such permissions; the change still applies.
+      const { plan, contents } = project();
+      await applyChanges(ports(fs), plan, contents);
+      expect(read("README.md").toString()).toBe("# New\n");
+      return;
+    }
+    await stoppedWithPrivateFiles();
+    expect(mode("README.md")).toBe(0o600);
+    expect((await recoverChanges(ports(fs), root, "finish")).complete).toBe(true);
+    expect(mode("liftoff.yaml")).toBe(0o600);
+    expect(mode("run.sh") & 0o111).not.toBe(0);
+  });
+
+  it("puts back a private file private when the change is undone", async () => {
+    if (process.platform === "win32") return;
+    await stoppedWithPrivateFiles();
+    expect((await recoverChanges(ports(fs), root, "undo")).complete).toBe(true);
+    expect(mode("README.md")).toBe(0o600);
+    expect(mode("data.bin")).toBe(0o600);
+  });
+});
+
 describe("CHANGE-004 a change cancelled, or not tidied up, says where it stands", () => {
   it("changes nothing when cancelled before the first file, and stops recoverably after it", async () => {
     const { plan, contents } = project();

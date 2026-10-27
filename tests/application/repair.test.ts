@@ -285,7 +285,7 @@ describe("REPAIR-002 recipes put back files Liftoff wrote, only those chosen", (
     expect(repairNeeded(await restore())).toBe(true);
   });
 
-  it("records a managed file already as this release makes it, in the manifest only", async () => {
+  it("leaves a managed file already as this release makes it to update", async () => {
     await generated();
     age((manifest) => {
       entry(manifest, POLICY).sha256 = sha("as an earlier release wrote it\n");
@@ -294,18 +294,15 @@ describe("REPAIR-002 recipes put back files Liftoff wrote, only those chosen", (
     expect(listed.files).toEqual([
       {
         path: POLICY,
-        step: "offer",
+        step: "cannot",
         ownership: "managed",
         problem:
           "a file Liftoff manages is already as this release makes it, but the manifest records another version",
+        reason:
+          "there is nothing to put back; liftoff update records this release's version in the manifest",
       },
     ]);
-    const repair = await restore([POLICY]);
-    expect(repair.plan?.changes.map((change) => change.path)).toEqual([MANIFEST_FILE]);
-    expect(repair.unchanged).toContainEqual({ path: POLICY, sha256: sha(read(POLICY)) });
-    await apply(repair);
-    expect(entry(parseManifest(read(MANIFEST_FILE)), POLICY).sha256).toBe(sha(read(POLICY)));
-    expect((await restore()).files).toEqual([]);
+    expect(listed.plan).toBeUndefined();
   });
 
   it("refuses a changed liftoff.yaml, as update does", async () => {

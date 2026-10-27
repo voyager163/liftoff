@@ -133,6 +133,51 @@ describe("REPAIR-003 a patch applies exactly as git diff wrote it", () => {
     );
   });
 
+  it("ends an empty file's changes at a signature or blank lines, and still refuses a second commit", () => {
+    const empty = [
+      "diff --git a/empty.txt b/empty.txt",
+      "new file mode 100644",
+      "index 0000000..e69de29",
+    ];
+    expect(parsePatch([...empty, "-- ", "2.43.0", ""].join("\n"))).toEqual([
+      { path: "empty.txt", kind: "add", executable: false, hunks: [] },
+    ]);
+    expect(parsePatch([...empty, "", ""].join("\n"))).toHaveLength(1);
+    const second = [
+      ...empty,
+      "-- ",
+      "2.43.0",
+      "",
+      "From 2222222222222222222222222222222222222222 Mon Sep 17 00:00:00 2001",
+      "diff --git a/gone.txt b/gone.txt",
+      "deleted file mode 100644",
+      "index e69de29..0000000",
+    ];
+    expect(() => parsePatch(second.join("\n"))).toThrow("the patch holds more than one commit");
+  });
+
+  it("refuses an insertion after a line the file does not have", () => {
+    const [file] = parsePatch(["--- a/a", "+++ b/a", "@@ -10,0 +11 @@", "+inserted"].join("\n"));
+    if (file === undefined) throw new Error("no file");
+    expect(() => applyFilePatch("one\ntwo\n", file)).toThrow(
+      "hunk 1 for a does not match the file at line 10",
+    );
+    const [atEnd] = parsePatch(["--- a/a", "+++ b/a", "@@ -2,0 +3 @@", "+three"].join("\n"));
+    if (atEnd === undefined) throw new Error("no file");
+    expect(applyFilePatch("one\ntwo\n", atEnd)).toBe("one\ntwo\nthree\n");
+  });
+
+  it("applies to a file of a million short lines, and adds as many", () => {
+    const blank = "\n".repeat(1_000_000);
+    const [first] = parsePatch(["--- a/a", "+++ b/a", "@@ -1 +1 @@", "-", "+x"].join("\n"));
+    if (first === undefined) throw new Error("no file");
+    expect(applyFilePatch(blank, first)).toBe(`x${blank}`);
+    const many = Array.from({ length: 500_000 }, () => "+y");
+    const [added] = parsePatch(["--- a/a", "+++ b/a", "@@ -0,0 +1,500000 @@", ...many].join("\n"));
+    if (added === undefined) throw new Error("no file");
+    expect(applyFilePatch("", added)).toBe("y\n".repeat(500_000));
+  });
+
   it.each<[string, string[], RegExp]>([
     [
       "renames a file",

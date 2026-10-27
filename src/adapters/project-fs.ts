@@ -90,6 +90,13 @@ export class LocalProjectFs implements ProjectFsPort {
     await copyFile(from, to, constants.COPYFILE_EXCL);
   }
 
+  async matchPermissions(from: string, to: string, executable: boolean): Promise<void> {
+    if (process.platform === "win32") return;
+    const { mode } = await lstat(from);
+    // A private file stays private, whatever the umask would give a new one.
+    await chmod(to, (mode & 0o666) | (executable ? (mode & 0o444) >> 2 : 0));
+  }
+
   async directoryIdentity(target: string): Promise<string | undefined> {
     const seen = await inspect(NODE_CALLS, target);
     if (typeof seen === "string" || !seen.isDirectory()) return undefined;
