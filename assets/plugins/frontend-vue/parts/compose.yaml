@@ -1,6 +1,6 @@
 # The web frontend on http://127.0.0.1:8080. It forwards /api/ to the API.
 web:
-  build: ./frontend
+  build: ./{{liftoff.frontendDirectory}}
   environment:
     API_UPSTREAM: http://api:8000
   ports:

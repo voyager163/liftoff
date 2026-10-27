@@ -39,6 +39,14 @@ export const STANDARD_LAYOUT: Readonly<Record<Component, string>> = {
 /** Directories no part of a project may be bound to, or inside. */
 const RESERVED = [".git", ".github", ".liftoff"];
 
+/**
+ * The names a binding's directories may have. A binding is written into
+ * YAML and into review-policy globs as it is, so its names use only letters,
+ * digits, dots, hyphens, underscores and spaces between them: no character
+ * a glob or YAML reads specially, such as "(", "[", "{", "!", "@" or "#".
+ */
+const BOUND_NAME = /^[\p{L}\p{M}\p{N}._-]+(?: +[\p{L}\p{M}\p{N}._-]+)*$/u;
+
 const configSchema = z.strictObject({
   schema: z.literal(CONFIG_SCHEMA),
   name: z.string().check(z.regex(NAME, NAME_RULE)),
@@ -137,11 +145,39 @@ export function layoutOf(config: ProjectConfig): Partial<Record<Component, strin
 export const isStandardLayout = (config: ProjectConfig): boolean =>
   Object.keys(config.layout).length === 0;
 
+/** The directory of every part: its binding, or the standard directory. */
+export type Directories = Readonly<Record<Component, string>>;
+
+export const directoriesOf = (config: ProjectConfig): Directories => ({
+  backend: config.layout.backend ?? STANDARD_LAYOUT.backend,
+  frontend: config.layout.frontend ?? STANDARD_LAYOUT.frontend,
+  infrastructure: config.layout.infrastructure ?? STANDARD_LAYOUT.infrastructure,
+});
+
+/**
+ * Where a path named in the standard layout lies in a project: a path in a
+ * part's standard directory moves to the directory the part is bound to, so
+ * `backend/tests/**` is `api/tests/**` for a backend in `api`, and `tests/**`
+ * for one at the root. Any other path stays as it is.
+ */
+export function placedIn(directories: Directories, path: string): string {
+  for (const component of COMPONENTS) {
+    const standard = STANDARD_LAYOUT[component];
+    const bound = directories[component];
+    if (path === standard) return bound;
+    if (!path.startsWith(`${standard}/`)) continue;
+    const rest = path.slice(standard.length + 1);
+    if (bound === ".") return rest === "" ? "." : rest;
+    return `${bound}/${rest}`;
+  }
+  return path;
+}
+
 /**
  * Why the layout cannot be used, or undefined: each binding is for a part
- * the project has, is "." or a repository-relative path outside .git,
- * .github and .liftoff, and no part lies inside another part's directory,
- * except inside the repository root.
+ * the project has, is "." (never for the infrastructure) or a
+ * repository-relative path outside .git, .github and .liftoff, and no part
+ * lies inside another part's directory, except inside the repository root.
  */
 function layoutProblem(config: ProjectConfig): string | undefined {
   for (const component of COMPONENTS) {
@@ -150,11 +186,17 @@ function layoutProblem(config: ProjectConfig): string | undefined {
     if (!hasComponent(config, component)) {
       return `${component}: the project has no ${component}`;
     }
+    if (directory === "." && component === "infrastructure") {
+      return "infrastructure: it cannot be the repository root, since its checks and review rules cover all of its directory";
+    }
     if (directory === ".") continue;
     const problem = repositoryPathProblem(directory);
     if (problem !== undefined) return `${component}: ${problem}`;
     if (RESERVED.includes(pathKey(directory.split("/")[0] ?? ""))) {
       return `${component}: ${directory} is inside a directory Liftoff or Git keeps for itself`;
+    }
+    if (!directory.split("/").every((name) => BOUND_NAME.test(name)) || !readsBack(directory)) {
+      return `${component}: ${directory} has a character, or reads as a value, that YAML or a review-policy glob would take for something else; a bound directory's names use only letters, digits, dots, hyphens, underscores and spaces between them`;
     }
   }
   const placed = Object.entries(layoutOf(config)).map(([component, directory]) => ({
@@ -171,6 +213,15 @@ function layoutProblem(config: ProjectConfig): string | undefined {
     }
   }
   return undefined;
+}
+
+/** Whether YAML reads the text, written as it is, back as the same text, not a number, boolean or null. */
+function readsBack(text: string): boolean {
+  try {
+    return parseYaml(text) === text;
+  } catch {
+    return false;
+  }
 }
 
 export function parseConfig(text: string, source = CONFIG_FILE): ProjectConfig {

@@ -6,7 +6,7 @@ lint:
   timeout-minutes: 10
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -25,7 +25,7 @@ test:
   timeout-minutes: 15
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -43,7 +43,7 @@ image:
   timeout-minutes: 15
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:

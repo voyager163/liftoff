@@ -6,8 +6,13 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { PackageAssets } from "../../src/adapters/assets.ts";
 import { generate } from "../../src/application/init/generation.ts";
-import { type ProjectConfig, validateConfig } from "../../src/domain/project/config.ts";
+import {
+  type ProjectConfig,
+  STANDARD_LAYOUT,
+  validateConfig,
+} from "../../src/domain/project/config.ts";
 import { parseManifest } from "../../src/domain/project/manifest.ts";
+import { classify } from "../../src/domain/risk-policy/classify.ts";
 import { parsePolicy } from "../../src/domain/risk-policy/policy.ts";
 import { GenerationError, generateProject } from "../../src/generators/project.ts";
 import { renderTemplate } from "../../src/generators/template.ts";
@@ -131,6 +136,8 @@ describe("PROJ-004 deterministic, collision-free generation", () => {
       context: {
         config: config(),
         liftoffVersion: "0.0.0",
+        layout: STANDARD_LAYOUT,
+        application: true,
         hosts: [],
         profile: selection.profile,
         workflow: selection.workflow,
@@ -779,6 +786,8 @@ describe("PROJ-014 shared files are assembled from each component's parts", () =
     const context: GenerationContext = {
       config: config(),
       liftoffVersion: "0.0.0",
+      layout: STANDARD_LAYOUT,
+      application: true,
       hosts: [],
       profile: selection.profile,
       workflow: selection.workflow,
@@ -989,7 +998,9 @@ describe("PROJ-015 Azure infrastructure as OpenTofu code", () => {
       }),
     );
     const policy = parsePolicy(project.get(".github/review-policy.yml")?.content ?? "");
-    expect(policy.rules.find((rule) => rule.paths.includes("infrastructure/**"))).toMatchObject({
+    expect(
+      policy.rules.find((rule) => rule.paths.includes("infrastructure/opentofu/azure/**")),
+    ).toMatchObject({
       tier: "high",
       always_human: true,
     });
@@ -1823,5 +1834,175 @@ describe("FLOW-007 projects with infrastructure deploy by digest, and fail close
       expect(none.has(`.github/workflows/${file}`)).toBe(false);
     }
     expect(Object.keys(workflow(none, "10-build.yml").jobs)).toEqual(["image"]);
+  });
+});
+
+describe("PROJ-026 without the application, Liftoff makes only its own files, where the parts live", () => {
+  const FULL = {
+    stack: "go-huma",
+    frontend: "vue",
+    infrastructure: "azure",
+    environments: ["dev", "staging", "prod"],
+    agents: ["claude", "copilot"],
+    review: { ai: true },
+  };
+  const BOUND = { backend: "services/api", frontend: "web", infrastructure: "deploy/tofu" };
+  const own = async (overrides: Record<string, unknown>) =>
+    new Map(
+      (await generate(assets, config(overrides), "0.0.0", { application: false })).files.map(
+        (file) => [file.path, file],
+      ),
+    );
+  const APPLICATION = new Set(["README.md", "compose.yaml", ".env.example"]);
+  const isApplication = (file: string) =>
+    APPLICATION.has(file) || /^(backend|frontend|infrastructure)\//.test(file);
+
+  it("makes every file of Liftoff's a new project gets, and none of the application's", async () => {
+    const standard = await byPath(FULL);
+    const adopted = await own({ ...FULL, layout: BOUND });
+    expect([...adopted.keys()].sort()).toEqual(
+      [...standard.keys()].filter((file) => !isApplication(file)).sort(),
+    );
+    // In the standard layout, they are the very files a new project gets,
+    // except that AGENTS.md lists each part's directory, not the starter's
+    // layout, and nothing points to the README the application does not get.
+    const same = await own(FULL);
+    const differ = [".liftoff/manifest.json", "AGENTS.md", ".github/workflows/reusable-deploy.yml"];
+    for (const [file, generated] of same) {
+      if (differ.includes(file)) continue;
+      expect(generated.content, file).toBe(standard.get(file)?.content);
+    }
+    const deploy = ".github/workflows/reusable-deploy.yml";
+    expect(standard.get(deploy)?.content).toContain("See the infrastructure section of README.md.");
+    expect(same.get(deploy)?.content).not.toContain("README");
+    expect(same.get(deploy)?.content).toBe(
+      standard.get(deploy)?.content.replace(" See the infrastructure section of README.md.", ""),
+    );
+    const agents = same.get("AGENTS.md")?.content ?? "";
+    expect(agents).toContain("- `backend/` the backend (Go API with Huma, Chi, pgx and Goose).");
+    expect(agents).not.toContain("backend/internal/");
+    expect(agents.replace(/## Layout[^#]*/, "")).toBe(
+      standard.get("AGENTS.md")?.content.replace(/## Layout[^#]*/, ""),
+    );
+  });
+
+  it("refers to each part where it lives", async () => {
+    const project = await own({ ...FULL, layout: BOUND });
+    const text = (file: string) => project.get(file)?.content ?? "";
+    const ci = parse(text(".github/workflows/01-pr-ci.yml")) as {
+      jobs: Record<string, { defaults?: { run?: { "working-directory"?: string } } }>;
+    };
+    const directories = Object.values(ci.jobs).flatMap((job) => {
+      const directory = job.defaults?.run?.["working-directory"];
+      return directory === undefined ? [] : [directory];
+    });
+    expect(new Set(directories)).toEqual(new Set(["services/api", "web", "deploy/tofu"]));
+    expect(text(".github/workflows/01-pr-ci.yml")).toContain(
+      "node-version-file: web/.node-version",
+    );
+    expect(text(".github/workflows/01-pr-ci.yml")).toContain(
+      "go-version-file: services/api/go.mod",
+    );
+    const dependabot = parse(text(".github/dependabot.yml")) as {
+      updates: { directory?: string; directories?: string[] }[];
+    };
+    expect(
+      dependabot.updates.flatMap((update) => update.directories ?? [update.directory ?? ""]),
+    ).toEqual(
+      expect.arrayContaining([
+        "/services/api",
+        "/web",
+        "/deploy/tofu/bootstrap",
+        "/deploy/tofu/environments/*",
+      ]),
+    );
+    const policy = parsePolicy(text(".github/review-policy.yml"));
+    const paths = policy.rules.flatMap((rule) => rule.paths);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "services/api/internal/database/migrations/**",
+        "web/Dockerfile",
+        "deploy/tofu/**",
+      ]),
+    );
+    expect(paths.filter((rule) => /^(backend|frontend|infrastructure)\//.test(rule))).toEqual([]);
+    expect(text(".github/workflows/10-build.yml")).toContain("context: services/api");
+    expect(text(".github/workflows/10-build.yml")).toContain("context: web");
+    expect(text(".github/workflows/20-release.yml")).toContain("working-directory: web");
+    expect(text("AGENTS.md")).toContain("| `services/api` | `gofmt -l .` | Format |");
+    expect(text("AGENTS.md")).toContain("- `web/` the frontend (");
+    expect(text("AGENTS.md")).toContain("- `deploy/tofu/` the infrastructure (");
+    // No file but the skills' shared examples names a standard directory as a path.
+    const standardPaths = [
+      // A path in a standard directory, or the directory itself as a value.
+      /(?:^|[\s"'`(:])\/?(?:backend|frontend)\//m,
+      /infrastructure\/opentofu/,
+      /(?:directory|context): \/?(?:backend|frontend)$/m,
+    ];
+    const naming = [...project.values()]
+      .filter((file) => !file.path.endsWith("SKILL.md") && file.path !== ".liftoff/manifest.json")
+      .filter((file) => standardPaths.some((pattern) => pattern.test(file.content)))
+      .map((file) => file.path);
+    expect(naming).toEqual([]);
+  });
+
+  it("refers to a part at the repository root as the root", async () => {
+    const project = await own({ ...FULL, layout: { backend: ".", frontend: "web" } });
+    const text = (file: string) => project.get(file)?.content ?? "";
+    expect(text(".github/workflows/01-pr-ci.yml")).toContain("working-directory: .\n");
+    expect(text(".github/workflows/01-pr-ci.yml")).toContain("go-version-file: go.mod");
+    expect(text(".github/dependabot.yml")).toContain("directory: /\n");
+    const paths = parsePolicy(text(".github/review-policy.yml")).rules.flatMap(
+      (rule) => rule.paths,
+    );
+    expect(paths).toEqual(
+      expect.arrayContaining(["internal/database/migrations/**", "Dockerfile", "go.mod"]),
+    );
+    expect(text(".github/workflows/10-build.yml")).toContain("context: .\n");
+    expect(text("AGENTS.md")).toContain("| `.` | `gofmt -l .` | Format |");
+    expect(text("AGENTS.md")).toContain("- `.` the backend, at the repository root (");
+  });
+
+  it("refers to a frontend at the repository root as the root", async () => {
+    const project = await own({ ...FULL, layout: { backend: "api", frontend: "." } });
+    const text = (file: string) => project.get(file)?.content ?? "";
+    const ci = text(".github/workflows/01-pr-ci.yml");
+    expect(ci).toContain("node-version-file: .node-version\n");
+    expect(ci).toContain("cache-dependency-path: package-lock.json\n");
+    expect(ci).toContain("path: playwright-report/\n");
+    const dependabot = parse(text(".github/dependabot.yml")) as {
+      updates: { "package-ecosystem": string; directory?: string }[];
+    };
+    expect(
+      dependabot.updates
+        .filter((update) => update.directory === "/")
+        .map((update) => update["package-ecosystem"])
+        .sort(),
+    ).toEqual(["docker", "github-actions", "npm"]);
+    expect(text(".github/workflows/20-release.yml")).toContain("working-directory: .\n");
+    expect(text(".github/workflows/10-build.yml")).toContain("context: .\n");
+    expect(text("AGENTS.md")).toContain("- `.` the frontend, at the repository root (");
+  });
+
+  it("gives a part's sensitive files the same review where it lives", async () => {
+    const project = await own({ layout: { backend: "services/api v2" } });
+    const policy = parsePolicy(project.get(".github/review-policy.yml")?.content ?? "");
+    const change = (file: string) =>
+      classify({ policy, files: [{ path: file, additions: 1, deletions: 0 }], author: "alice" });
+    expect(change("services/api v2/migrations/versions/0002_items.py")).toMatchObject({
+      tier: "high",
+      alwaysHuman: true,
+    });
+    expect(change("services/api v2/tests/test_items.py").reasons).toContainEqual({
+      tier: "low",
+      reason: "tests; coverage gates still apply",
+      paths: ["services/api v2/tests/test_items.py"],
+    });
+  });
+
+  it("makes an application only in the standard layout", async () => {
+    await expect(
+      generate(assets, config({ ...FULL, layout: BOUND }), "0.0.0", { application: true }),
+    ).rejects.toThrow("this release generates an application's files only in the standard layout");
   });
 });

@@ -1,3 +1,4 @@
+import { COMPONENTS, type Directories } from "../../domain/project/config.ts";
 import type { Ownership } from "../../domain/project/manifest.ts";
 import { renderTemplate } from "../../generators/template.ts";
 import type { Artifact, TemplateSet } from "../contracts/project-plugin.ts";
@@ -18,4 +19,26 @@ export function filesFrom(
     ownership,
     content: renderTemplate(templates.read(asset), values, asset),
   }));
+}
+
+/**
+ * Template values for where each part lives, for files that refer to it:
+ * `{{liftoff.backendDirectory}}` is the backend's directory ("." for the
+ * repository root), `{{liftoff.backendPrefix}}` goes before a path in it
+ * ("" for the root), and `{{liftoff.backendFromRoot}}` is the directory as
+ * Dependabot names it ("/" for the root). The frontend and the
+ * infrastructure have the same three.
+ */
+export function layoutValues(layout: Directories): Record<string, string> {
+  return Object.fromEntries(
+    COMPONENTS.flatMap((component) => {
+      const directory = layout[component];
+      const root = directory === ".";
+      return [
+        [`${component}Directory`, directory],
+        [`${component}Prefix`, root ? "" : `${directory}/`],
+        [`${component}FromRoot`, root ? "/" : `/${directory}`],
+      ];
+    }),
+  );
 }

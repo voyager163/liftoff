@@ -6,15 +6,15 @@ lint:
   timeout-minutes: 10
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version-file: backend/go.mod
-        cache-dependency-path: backend/go.sum
+        go-version-file: {{liftoff.backendPrefix}}go.mod
+        cache-dependency-path: {{liftoff.backendPrefix}}go.sum
     - name: Check formatting
       run: |
         unformatted=$(gofmt -l .)
@@ -28,15 +28,15 @@ test:
   timeout-minutes: 15
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version-file: backend/go.mod
-        cache-dependency-path: backend/go.sum
+        go-version-file: {{liftoff.backendPrefix}}go.mod
+        cache-dependency-path: {{liftoff.backendPrefix}}go.sum
     - run: go test -coverpkg=./cmd/...,./internal/... -coverprofile=cover.out ./...
     - name: Require 80% statement coverage
       run: go run ./tools/coverage cover.out 80
@@ -47,7 +47,7 @@ integration:
   timeout-minutes: 15
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   services:
     postgres:
       image: postgres:18-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
@@ -71,8 +71,8 @@ integration:
         persist-credentials: false
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
-        go-version-file: backend/go.mod
-        cache-dependency-path: backend/go.sum
+        go-version-file: {{liftoff.backendPrefix}}go.mod
+        cache-dependency-path: {{liftoff.backendPrefix}}go.sum
     # -count=1: the database is not an input Go's test cache can see.
     - run: go test -count=1 -tags integration ./internal/integration
 
@@ -82,7 +82,7 @@ image:
   timeout-minutes: 15
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:

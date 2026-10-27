@@ -81,7 +81,7 @@ jobs:
             if [ -z "${!name:-}" ]; then missing+=("$name"); fi
           done
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Deploy target not configured for ${ENVIRONMENT}: set ${missing[*]} as variables of the ${ENVIRONMENT} environment. See the infrastructure section of README.md."
+            echo "::error::Deploy target not configured for ${ENVIRONMENT}: set ${missing[*]} as variables of the ${ENVIRONMENT} environment.{{liftoff.setupGuide}}"
             exit 1
           fi
       # Under the environment's lock, so deployments happen in commit order:

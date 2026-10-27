@@ -1,4 +1,4 @@
-import type { ProjectConfig } from "../../domain/project/config.ts";
+import type { Directories, ProjectConfig } from "../../domain/project/config.ts";
 import type { Ownership } from "../../domain/project/manifest.ts";
 import type { PolicyRule, ProfileId } from "../../domain/risk-policy/policy.ts";
 import type { AgentHostId, AgentSource, SkillSource } from "./agent-host.ts";
@@ -8,6 +8,13 @@ export interface Artifact {
   readonly path: string;
   readonly ownership: Ownership;
   readonly content: string;
+  /**
+   * Whether it belongs to the application rather than to Liftoff, as the
+   * README does, so an adopted project, whose application is its own, never
+   * gets it. Every file a stack, pattern, frontend or infrastructure writes
+   * belongs to the application.
+   */
+  readonly application?: boolean;
 }
 
 /** Template and asset text already loaded from the release, keyed by asset path. */
@@ -29,6 +36,17 @@ export interface ProjectCheck {
 export interface GenerationContext {
   readonly config: ProjectConfig;
   readonly liftoffVersion: string;
+  /**
+   * The directory each part lives in, "." for the repository root. Paths
+   * plugins name in the standard layout are placed in it with `placedIn`.
+   */
+  readonly layout: Directories;
+  /**
+   * Whether the application's files are generated too: true for a new
+   * project, false for one adopted with an application of its own, which
+   * gets only Liftoff's files.
+   */
+  readonly application: boolean;
   readonly hosts: readonly AgentHostId[];
   readonly profile: ProfileId;
   readonly workflow: WorkflowPlugin;

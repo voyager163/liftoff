@@ -1,4 +1,5 @@
 import { stringify } from "yaml";
+import { placedIn } from "../../../domain/project/config.ts";
 import { renderTemplate } from "../../../generators/template.ts";
 import type {
   Artifact,
@@ -73,7 +74,7 @@ merging, and who or what it would affect. -->
 needs more than a revert, such as a data migration. -->
 `;
 
-function reviewPolicy({ config, profile, components }: GenerationContext): string {
+function reviewPolicy({ config, profile, components, layout }: GenerationContext): string {
   const body = {
     version: 1,
     profile,
@@ -83,7 +84,7 @@ function reviewPolicy({ config, profile, components }: GenerationContext): strin
     rules: components
       .flatMap((component) => component.reviewRules)
       .map((rule) => ({
-        paths: [...rule.paths],
+        paths: rule.paths.map((path) => placedIn(layout, path)),
         tier: rule.tier,
         ...(rule.always_human ? { always_human: true } : {}),
         reason: rule.reason,

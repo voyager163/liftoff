@@ -1,6 +1,6 @@
 # The migrations, then the API on http://127.0.0.1:8000 (docs at /docs).
 migrate:
-  build: ./backend
+  build: ./{{liftoff.backendDirectory}}
   command: ["alembic", "upgrade", "head"]
   environment:
     APP_DATABASE_URL: postgresql+psycopg://app:${POSTGRES_PASSWORD}@database:5432/app
@@ -9,7 +9,7 @@ migrate:
       condition: service_healthy
 
 api:
-  build: ./backend
+  build: ./{{liftoff.backendDirectory}}
   environment:
     APP_ENVIRONMENT: local
     APP_DATABASE_URL: postgresql+psycopg://app:${POSTGRES_PASSWORD}@database:5432/app

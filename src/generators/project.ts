@@ -6,7 +6,7 @@ import {
   type Ownership,
   serializeManifest,
 } from "../domain/project/manifest.ts";
-import type { GenerationContext } from "../plugins/contracts/project-plugin.ts";
+import type { GenerationContext, PluginKind } from "../plugins/contracts/project-plugin.ts";
 import type { Selection } from "../plugins/registry.ts";
 
 export interface ProjectFile {
@@ -30,6 +30,9 @@ export class GenerationError extends Error {
 
 const RESERVED = new Set([CONFIG_FILE, MANIFEST_FILE]);
 
+/** Plugins whose every file belongs to the application. */
+const PARTS: ReadonlySet<PluginKind> = new Set(["stack", "pattern", "frontend", "infrastructure"]);
+
 function checkPath(path: string, plugin: string): void {
   const parts = path.split("/");
   if (
@@ -47,7 +50,8 @@ function checkPath(path: string, plugin: string): void {
 /**
  * Every file a new project gets, sorted by path: each plugin's files, the
  * project configuration and the manifest that inventories them. Two plugins
- * writing the same path is an error, never a silent overwrite.
+ * writing the same path is an error, never a silent overwrite. Without the
+ * application (`context.application`), only Liftoff's own files are made.
  */
 export function generateProject(selection: Selection, context: GenerationContext): ProjectFile[] {
   const byPath = new Map<string, ProjectFile>();
@@ -61,7 +65,10 @@ export function generateProject(selection: Selection, context: GenerationContext
   };
 
   for (const plugin of selection.plugins) {
-    for (const artifact of plugin.artifacts(context)) add({ ...artifact, plugin: plugin.id });
+    if (!context.application && PARTS.has(plugin.kind)) continue;
+    for (const { application, ...artifact } of plugin.artifacts(context)) {
+      if (context.application || application !== true) add({ ...artifact, plugin: plugin.id });
+    }
   }
 
   const configText = serializeConfig(context.config);

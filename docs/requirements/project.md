@@ -378,8 +378,9 @@ Verification: live
 `liftoff.yaml` may bind each part of the project (`backend`, `frontend`,
 `infrastructure`) to the directory it lives in, for a project laid out
 differently from Liftoff's standard (`backend/`, `frontend/`,
-`infrastructure/opentofu/azure/`). The repository root, `.`, may hold one
-part. A binding must:
+`infrastructure/opentofu/azure/`). The repository root, `.`, may hold the
+backend or the frontend, never the infrastructure, whose checks and review
+rules cover all of its directory. A binding must:
 
 - be for a part the project has;
 - be a repository-relative path every system and Git can hold (no control
@@ -387,6 +388,10 @@ part. A binding must:
   leaves out of a name, no name Windows reads as another file, no name over
   255 bytes), outside `.github` and `.liftoff` and outside `.git` at any
   depth;
+- name its directories with letters, digits, dots, hyphens, underscores and
+  spaces between them, and read as itself in YAML, since it is written into
+  workflows and review-policy globs as it is: so not `api #2`, `svc (v2)`,
+  `1.10` or `true`;
 - not put one part's directory inside another's, except inside the root,
   comparing names as macOS and Windows do: ignoring letter case and how an
   accented letter is encoded.
@@ -394,10 +399,28 @@ part. A binding must:
 A binding to the standard directory is the same as none and is not written,
 so a project in the standard layout has no `layout`. `liftoff validate`
 warns about a part bound to a directory that is not there, or that is
-reached through a link. Until adopting a
-project, which honors bindings, is available, Liftoff refuses to generate
-files for a project in another layout rather than use the standard
-directories.
+reached through a link. Liftoff makes an application's files, such as a
+new project's starter code, only in the standard layout, never in the
+standard directories in place of the bound ones; for a project in another
+layout it makes only its own files (PROJ-026).
+
+Verification: test
+
+## PROJ-026 Without the application, Liftoff makes only its own files, where the parts live
+
+For a project whose application is its own, Liftoff makes only its own
+files: the workflows, review policy and skills, governance handoff,
+coding-agent instructions and repository settings a new project gets. It
+makes none of the application's: no part's code, build or configuration
+files, and no Compose file, `.env.example` or README. Each of its files
+that refers to a part refers to it where it lives (PROJ-024): CI jobs run
+in the part's directory, Dependabot looks there, the review policy's rules
+for the part's files name them there, images are built from there, and
+`AGENTS.md` names each part's directory instead of the starter's layout.
+A part at the repository root is referred to as the root. Nothing points to
+the README, which the application has its own of. In the standard layout
+these files are the ones a new project gets, apart from that list in
+`AGENTS.md` and that pointer.
 
 Verification: test
 

@@ -6,16 +6,16 @@ lint:
   timeout-minutes: 10
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
-        node-version-file: backend/.node-version
+        node-version-file: {{liftoff.backendPrefix}}.node-version
         cache: npm
-        cache-dependency-path: backend/package-lock.json
+        cache-dependency-path: {{liftoff.backendPrefix}}package-lock.json
     - run: npm ci --no-audit --no-fund
     - run: npm run lint
     - run: npm run typecheck
@@ -26,16 +26,16 @@ test:
   timeout-minutes: 15
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
-        node-version-file: backend/.node-version
+        node-version-file: {{liftoff.backendPrefix}}.node-version
         cache: npm
-        cache-dependency-path: backend/package-lock.json
+        cache-dependency-path: {{liftoff.backendPrefix}}package-lock.json
     - run: npm ci --no-audit --no-fund
     - run: npm test
 
@@ -45,7 +45,7 @@ integration:
   timeout-minutes: 15
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   services:
     postgres:
       image: postgres:18-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
@@ -69,9 +69,9 @@ integration:
         persist-credentials: false
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
-        node-version-file: backend/.node-version
+        node-version-file: {{liftoff.backendPrefix}}.node-version
         cache: npm
-        cache-dependency-path: backend/package-lock.json
+        cache-dependency-path: {{liftoff.backendPrefix}}package-lock.json
     - run: npm ci --no-audit --no-fund
     - run: npm run test:integration
 
@@ -81,7 +81,7 @@ image:
   timeout-minutes: 15
   defaults:
     run:
-      working-directory: backend
+      working-directory: {{liftoff.backendDirectory}}
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:

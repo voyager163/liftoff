@@ -1,5 +1,5 @@
 - package-ecosystem: npm
-  directory: /backend
+  directory: {{liftoff.backendFromRoot}}
   schedule:
     interval: weekly
   cooldown:
@@ -9,7 +9,7 @@
       patterns: ["*"]
 
 - package-ecosystem: docker
-  directory: /backend
+  directory: {{liftoff.backendFromRoot}}
   schedule:
     interval: weekly
   cooldown:

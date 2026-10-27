@@ -1,7 +1,7 @@
 # The API on http://127.0.0.1:8000 (docs at /docs). It answers with the
 # offline test model unless .env names a real model and the provider's key.
 api:
-  build: ./backend
+  build: ./{{liftoff.backendDirectory}}
   environment:
     APP_ENVIRONMENT: local
     APP_MODEL: ${APP_MODEL:-test}
