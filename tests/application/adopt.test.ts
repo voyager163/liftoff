@@ -168,7 +168,10 @@ describe("ADOPT-001 adopting proposes what the project is, from what it holds", 
     ]);
     // What only an option chose is the option's problem, not the project's.
     for (const [choices, message] of [
-      [{ infrastructure: "none", environments: ["dev"] }, "environments need infrastructure"],
+      [{ infrastructure: "none", environments: ["dev"] }, "--environments are for infrastructure"],
+      [{ infrastructure: "azure", environments: [] }, "needs at least one of --environments"],
+      [{ agents: [], aiReview: "on" }, "--ai-review on needs a coding agent"],
+      [{ stack: "python-pydanticai", pattern: "none" }, "need a pattern, not --pattern none"],
       [{ agents: ["gemini"] }, "gemini"],
       [{ environments: ["qa"] }, "qa"],
       [{ owners: ["bad!login"] }, '--owners: "bad!login" is not a GitHub login'],

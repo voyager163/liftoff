@@ -624,8 +624,39 @@ function optionProblem(choices: AdoptChoices): string | undefined {
     twice(choices.environments ?? []) ||
     twice(owners, (owner) => owner.toLowerCase())
       ? "--agents, --environments and --owners each name a value once"
-      : undefined)
+      : undefined) ??
+    conflict(choices)
   );
+}
+
+/** Why options given together rule each other out, whatever the project holds. */
+function conflict(choices: AdoptChoices): string | undefined {
+  const { agents, environments, stack, pattern, infrastructure, reviewEngine } = choices;
+  if (reviewEngine !== undefined && agents !== undefined && !agents.includes(reviewEngine)) {
+    return `--review-engine ${reviewEngine} must be one of the agents --agents selects`;
+  }
+  if (choices.aiReview === "on" && agents !== undefined && agents.length === 0) {
+    return "--ai-review on needs a coding agent, and --agents selects none";
+  }
+  if (environments !== undefined && infrastructure !== undefined) {
+    if (infrastructure === NO_INFRASTRUCTURE && environments.length > 0) {
+      return "--environments are for infrastructure, which --infrastructure none leaves out";
+    }
+    if (infrastructure !== NO_INFRASTRUCTURE && environments.length === 0) {
+      return `--infrastructure ${infrastructure} needs at least one of --environments`;
+    }
+  }
+  const workload = stack === undefined ? undefined : STACKS[stack]?.workload;
+  if (
+    workload !== undefined &&
+    pattern !== undefined &&
+    (pattern !== NO_PATTERN) !== (workload === "genai")
+  ) {
+    return workload === "genai"
+      ? `--stack ${stack} is for GenAI projects, which need a pattern, not --pattern none`
+      : `--pattern is for GenAI projects, not a ${stack} backend`;
+  }
+  return undefined;
 }
 
 /** The choices that make exactly this configuration. */

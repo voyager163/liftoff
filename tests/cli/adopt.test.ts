@@ -137,6 +137,34 @@ describe("ADOPT-005 adopting from the command line", () => {
     expect((await adopt(["--check", "--owners", "bad!login"])).code).toBe(2);
   });
 
+  it("refuses options that rule each other out, whatever the project holds", async () => {
+    write("orders/pyproject.toml", '[project]\nname = "orders"\ndependencies = ["fastapi"]\n');
+    const combinations = [
+      [
+        ["--agents", "copilot", "--review-engine", "claude"],
+        "--review-engine claude must be one of the agents --agents selects",
+      ],
+      [
+        ["--infrastructure", "none", "--environments", "dev"],
+        "--environments are for infrastructure",
+      ],
+      [["--stack", "python-fastapi", "--pattern", "rag"], "--pattern is for GenAI projects"],
+    ] as const;
+    // Two backends, which alone would exit 3, and then none supported, which would exit 6.
+    for (const project of ["ambiguous", "unsupported"]) {
+      if (project === "unsupported") {
+        rmSync(at("pyproject.toml"));
+        rmSync(at("orders"), { recursive: true });
+        write("package.json", '{"dependencies":{"express":"^5.0.0"}}\n');
+      }
+      for (const [argv, message] of combinations) {
+        const run = await adopt(["--check", ...argv]);
+        expect(run.code, `${project}: ${argv.join(" ")}`).toBe(2);
+        expect(run.err).toContain(message);
+      }
+    }
+  });
+
   it("finishes an adoption only while what it rests on is as it was", async () => {
     let moves = 0;
     const failing = Object.assign(Object.create(fs) as ProjectFsPort, {

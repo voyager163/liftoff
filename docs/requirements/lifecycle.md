@@ -363,10 +363,12 @@ Verification: test
 
 ## ADOPT-002 A part it cannot place blocks adopting
 
-An option that names something this release does not have, or that the
-other choices rule out, such as an unknown agent or `--review-engine` for
-a host not selected, is refused as a usage error (exit 2), checked before
-anything else about the project. Otherwise adopting changes nothing, names
+An option that names something this release does not have, or that other
+options given with it rule out, such as an unknown agent, `--review-engine`
+for a host `--agents` does not select, or `--environments` with
+`--infrastructure none`, is refused as a usage error (exit 2), checked
+before anything about the project. One that only the proposal rules out is
+refused as a usage error too, once the project's parts are placed. Otherwise adopting changes nothing, names
 each reason and exits 3 when:
 
 - more than one directory holds a part of one kind (name one with
