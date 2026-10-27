@@ -1933,11 +1933,15 @@ describe("PROJ-026 without the application, Liftoff makes only its own files, wh
     expect(text("AGENTS.md")).toContain("- `web/` the frontend (");
     expect(text("AGENTS.md")).toContain("- `deploy/tofu/` the infrastructure (");
     // No file but the skills' shared examples names a standard directory as a path.
-    const standardPath =
-      /(^|[\s"'`(:])\/?(backend|frontend)\/|infrastructure\/opentofu|(directory|context): \/?(backend|frontend)$/m;
+    const standardPaths = [
+      // A path in a standard directory, or the directory itself as a value.
+      /(?:^|[\s"'`(:])\/?(?:backend|frontend)\//m,
+      /infrastructure\/opentofu/,
+      /(?:directory|context): \/?(?:backend|frontend)$/m,
+    ];
     const naming = [...project.values()]
       .filter((file) => !file.path.endsWith("SKILL.md") && file.path !== ".liftoff/manifest.json")
-      .filter((file) => standardPath.test(file.content))
+      .filter((file) => standardPaths.some((pattern) => pattern.test(file.content)))
       .map((file) => file.path);
     expect(naming).toEqual([]);
   });
