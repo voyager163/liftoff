@@ -67,13 +67,16 @@ with exit 2.
 ## What the copy holds
 
 `legacy/` holds every regular file of the old project, at the same path and
-with its permissions, except:
+with its permissions. Only you can open `legacy/` itself, since the old
+project's folders may have been closed to others. It holds every file
+except:
 
 - Git's data, installed dependencies, caches and build output, such as
   `.git`, `node_modules`, `.venv` and `dist`;
 - files that may hold secrets or state, such as `.env`, `.envrc`,
   `*.tfstate`, `*.tfvars`, private keys, `.npmrc`, `credentials.json`,
-  `secrets.toml` and SQLite databases (`.env.example` is copied);
+  `secrets.toml` and SQLite databases with their journals and write-ahead
+  logs (`.env.example` is copied);
 - the records a Liftoff release before the rebuild left, which stay with the
   old project as its history;
 - links, which are never followed;
@@ -113,7 +116,8 @@ anything; the default answer is no. Without a terminal it needs `--yes`.
 that plan, or refuses it if the project or Liftoff changed since.
 
 The new project is written beside its directory and moved into place in
-one step, so it is there whole or not at all; Ctrl+C before then leaves
-nothing. Once it is in place, each file is read back and compared with the
+one step, so it is there whole or not at all. Just before that, the old
+project is planned again: a file that changed after it was copied, or one
+that appeared, means nothing is created. Ctrl+C before then leaves nothing. Once it is in place, each file is read back and compared with the
 plan, and the project is validated as `liftoff validate` does. Anything
 different is named, and the command exits 3.

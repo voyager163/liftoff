@@ -1,5 +1,6 @@
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -170,6 +171,12 @@ describe("MIGRATE-003 migrating from the command line", () => {
     const plan = await migrate(["--out", "..plan.json"]);
     expect(plan.code).toBe(2);
     expect(plan.err).toContain("which migrating does not write to");
+    expect(snapshot()).toEqual(before);
+    // A plan saved where another name for one of the old project's files is
+    // replaces that name, and leaves the file as it was.
+    linkSync(at("app/main.py"), path.join(work, "hard.json"));
+    const hard = await migrate(["--out", "../hard.json"]);
+    expect(hard.code).toBe(0);
     expect(snapshot()).toEqual(before);
     // A link to a file is a privilege on Windows, so this part runs elsewhere.
     if (process.platform === "win32") return;

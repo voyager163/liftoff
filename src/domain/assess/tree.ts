@@ -89,7 +89,8 @@ export function holdsSecretsOrState(file: string): boolean {
     /\.tfvars(\.json)?$/.test(name) ||
     /\.(pem|key|p8|p12|pfx|ppk|jks|keystore|kdbx)$/.test(name) ||
     /^id_(rsa|dsa|ecdsa|ed25519)$/.test(name) ||
-    /\.(sqlite3?|db)$/.test(name)
+    // A database, and the journal, write-ahead log or shared memory beside it.
+    /\.(sqlite3?|db)(-wal|-shm|-journal)?$/.test(name)
   );
 }
 

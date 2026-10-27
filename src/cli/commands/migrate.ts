@@ -1,5 +1,4 @@
-import { constants } from "node:fs";
-import { lstat, open, readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { CHECKLIST_FILE, COPY_DIRECTORY } from "../../application/migrate/checklist.ts";
@@ -17,6 +16,7 @@ import { type Plan, parsePlan } from "../../domain/plan/plan.ts";
 import { STACKS } from "../../plugins/registry.ts";
 import type { CommandResult, CommandSpec } from "../command.ts";
 import { UsageError } from "../outcome.ts";
+import { writePlanFile } from "../plan-file.ts";
 import { shown } from "../terminal.ts";
 import { checkPreview, toCli } from "./changing.ts";
 import { CHOICE_OPTIONS, choicesFrom, proposalLines } from "./choosing.ts";
@@ -106,20 +106,6 @@ async function refuseLink(cwd: string, out: string): Promise<void> {
   const entry = await lstat(path.resolve(cwd, out)).catch(() => undefined);
   if (entry?.isSymbolicLink()) {
     throw new UsageError(`--out ${out} is a link, which Liftoff does not write through`);
-  }
-}
-
-/** Writes the plan, following no link at the file where the system allows. */
-async function writePlan(file: string, text: string): Promise<void> {
-  const handle = await open(
-    file,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0),
-    0o644,
-  );
-  try {
-    await handle.writeFile(text);
-  } finally {
-    await handle.close();
   }
 }
 
@@ -258,7 +244,7 @@ export function makeMigrateCommand(
         if (out !== undefined) {
           const file = path.resolve(io.cwd, out);
           io.signal.throwIfAborted();
-          await writePlan(file, `${JSON.stringify(plan, null, 2)}\n`);
+          await writePlanFile(file, `${JSON.stringify(plan, null, 2)}\n`);
           lines.push(
             "",
             `Saved the plan to ${shown(file)}.`,
@@ -288,7 +274,10 @@ export function makeMigrateCommand(
         }
       }
       // A file of the old project that changed since the plan stops it, with nothing created.
-      const result = await applyMigrate(ports.fs, migration, { cwd: io.cwd, signal: io.signal });
+      const result = await applyMigrate(ports, migration, version, {
+        cwd: io.cwd,
+        signal: io.signal,
+      });
       const relative = path.relative(io.cwd, result.target) || ".";
       const text = [
         `Created ${result.files} files in ${result.target}, ${migration.copies.length} of them copied from ${migration.source}, which is unchanged.`,

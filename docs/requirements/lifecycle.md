@@ -737,13 +737,16 @@ Verification: test
 ## MIGRATE-002 The copy leaves out secrets, dependencies, caches, state and build output
 
 The new project holds a copy of the old project's files in `legacy/`, each
-at the same path within it and with its permissions. It copies every
-regular file the walk reaches, except:
+at the same path within it and with its permissions. `legacy/` itself is
+open only to the person, since the old project's own directories may have
+been closed to others. It copies every regular file the walk reaches,
+except:
 
 - Git's data, installed dependencies, caches and build output, in the
   directories the walk does not enter (ASSESS-002);
 - files that may hold secrets or state, which `liftoff assess` lists as not
-  read (ASSESS-001);
+  read (ASSESS-001), including a SQLite database's journal, write-ahead log
+  and shared memory;
 - the records a Liftoff release before the rebuild left (LEGACY-001), which
   stay with the old project as its history;
 - links and special files, which are never followed;
@@ -793,8 +796,10 @@ as they were. Otherwise migrating shows the proposal and the plan, and asks;
 the default answer is no, and without a terminal it needs `--yes`.
 
 The new project is written beside its directory and moved into place in one
-step, so it is there whole or not at all. Ctrl+C before then leaves nothing
-and exits 4. Once it is in place, each of its files is read back and
+step, so it is there whole or not at all. Just before that, the old project
+is planned again and must give the same plan, so a file that changed after
+it was copied, or one that appeared, means nothing is created. Ctrl+C
+before then leaves nothing and exits 4. Once it is in place, each of its files is read back and
 compared with the plan, and it is validated as `liftoff validate` does.
 Anything different is named, and the command exits 3.
 

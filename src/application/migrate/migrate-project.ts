@@ -443,12 +443,16 @@ export interface MigrateResult {
  * validated. The old project is only read.
  */
 export async function applyMigrate(
-  fs: ProjectFsPort,
+  ports: { readonly assets: AssetPort; readonly fs: ProjectFsPort },
   migration: MigratePlan,
+  liftoffVersion: string,
   options: { readonly cwd?: string; readonly signal?: AbortSignal } = {},
 ): Promise<MigrateResult> {
-  const { plan } = migration;
-  if (plan === undefined) throw new Error("a migration that is blocked has no plan to apply");
+  const { fs } = ports;
+  const { plan, config } = migration;
+  if (plan === undefined || config === undefined) {
+    throw new Error("a migration that is blocked has no plan to apply");
+  }
   await checkMigrationTarget(fs, migration.source, plan.target, options.cwd);
   options.signal?.throwIfAborted();
   const staging = await fs.createStaging(plan.target);
@@ -457,6 +461,9 @@ export async function applyMigrate(
       options.signal?.throwIfAborted();
       await fs.writeFile(path.join(staging, ...file.split("/")), content, executable);
     }
+    // Only the person may open the copy: the old project's own directories
+    // may have been closed to others, and a copy keeps only files' modes.
+    await fs.makeDirectory(path.join(staging, COPY_DIRECTORY), "private");
     for (const copy of migration.copies) {
       options.signal?.throwIfAborted();
       const copied = await fs.copyWithin(
@@ -471,6 +478,20 @@ export async function applyMigrate(
         );
       }
     }
+    // The old project must still be what the plan says, every file copied
+    // included, so a file changed after it was copied is never published.
+    const { layout: _, ...choices } = choicesOf(config);
+    const again = await planMigrate(ports, migration.source, plan.target, liftoffVersion, choices, {
+      named: true,
+      refused: [],
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    });
+    if (again.plan?.hash !== plan.hash) {
+      throw new MigrateChangedError(
+        `${changedFiles(migration.copies, again.copies)} changed since the migration was planned, so nothing was created; plan it again`,
+      );
+    }
     options.signal?.throwIfAborted();
     await fs.publish(staging, plan.target);
   } catch (error) {
@@ -482,6 +503,18 @@ export async function applyMigrate(
     files: migration.contents.size + migration.copies.length,
     differences: await verifyMigration(fs, migration),
   };
+}
+
+/** What differs between two lists of copies, as a short list of paths, or "the project". */
+function changedFiles(before: readonly CopiedFile[], after: readonly CopiedFile[]): string {
+  const was = new Map(before.map((copy) => [copy.path, copy.sha256]));
+  const now = new Map(after.map((copy) => [copy.path, copy.sha256]));
+  const changed = [...new Set([...was.keys(), ...now.keys()])]
+    .filter((file) => was.get(file) !== now.get(file))
+    .sort();
+  if (changed.length === 0) return "the project";
+  const shown = changed.slice(0, 5).join(", ");
+  return changed.length > 5 ? `${shown} and ${changed.length - 5} more` : shown;
 }
 
 /**
@@ -749,12 +782,15 @@ function chooseParts(
  * standard directory.
  */
 function describeParts(found: readonly Part[], config: ProjectConfig | undefined): MigratedPart[] {
-  const order = (part: Part) => COMPONENTS.indexOf(part.component as Component);
+  const kinds: readonly string[] = COMPONENTS;
+  // Applications of no kind the new project has come last.
+  const order = (part: Part) =>
+    kinds.includes(part.component) ? kinds.indexOf(part.component) : kinds.length;
   const parts = [...found].sort((a, b) => order(a) - order(b));
   if (config === undefined) {
     return parts.map((part) => ({
       path: part.path,
-      component: part.component as Component,
+      component: part.component,
       stack: part.stack,
       note: "",
     }));
@@ -765,7 +801,15 @@ function describeParts(found: readonly Part[], config: ProjectConfig | undefined
     infrastructure: config.infrastructure,
   };
   return parts.map((part): MigratedPart => {
-    const component = part.component as Component;
+    const component = COMPONENTS.find((known) => known === part.component);
+    if (component === undefined) {
+      return {
+        path: part.path,
+        component: part.component,
+        stack: part.stack,
+        note: `This release has no standard for ${part.stack}: rewrite what the new project needs of it on ${config.stack} in ${STANDARD_LAYOUT.backend}/, or keep it apart as its own project.`,
+      };
+    }
     const kind = parts.filter((other) => other.component === component);
     const stack = stackOf[component];
     if (stack === NO_FRONTEND || stack === NO_INFRASTRUCTURE) {

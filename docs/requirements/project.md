@@ -444,7 +444,10 @@ Verification: test
 
 ## INIT-001 Plans are read-only and tamper-evident
 
-`liftoff plan` changes nothing except the plan file named with `--out`. A
+`liftoff plan` changes nothing except the plan file named with `--out`,
+which, as for every command's `--out`, is written as a new file and moved
+into place, so a link or another name for a file already there is replaced,
+never written through. A
 plan lists the target, configuration, every file with its ownership, hash and
 size, and the permitted effects: writing files and, for a workflow with its
 own initializer, running exactly the commands it lists. Because the manifest

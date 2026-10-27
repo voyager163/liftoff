@@ -145,7 +145,7 @@ describe("MIGRATE-001 migrating makes a new project beside the old one, and neve
       effects: ["write-files", "copy-files"],
     });
 
-    const result = await applyMigrate(fs, plan, { cwd: work });
+    const result = await applyMigrate({ assets, fs }, plan, VERSION, { cwd: work });
     expect(result.differences).toEqual([]);
     expect(snapshot()).toEqual(before);
     expect(readdirSync(work).sort()).toEqual(["shop", "shop-liftoff"]);
@@ -227,7 +227,9 @@ describe("MIGRATE-001 migrating makes a new project beside the old one, and neve
     await expect(
       planMigrateFromSaved({ assets, fs }, saved, VERSION, { refused: [], cwd: work }),
     ).rejects.toThrow(`${path.join(out, "sub")} leads to ${path.join(root, "sub")} through a link`);
-    await expect(applyMigrate(fs, plan, { cwd: work })).rejects.toThrow(InitTargetError);
+    await expect(applyMigrate({ assets, fs }, plan, VERSION, { cwd: work })).rejects.toThrow(
+      InitTargetError,
+    );
     expect(snapshot()).toEqual(before);
   });
 
@@ -293,6 +295,23 @@ describe("MIGRATE-001 migrating makes a new project beside the old one, and neve
     expect((await migrate()).blocked).toEqual([
       "no backend this release supports was found; name the stack the new project has with --stack",
     ]);
+  });
+
+  it("says to rewrite or keep apart an application of no kind the new project has", async () => {
+    write("tools/Cargo.toml", '[package]\nname = "tool"\n');
+    write("scripts/pyproject.toml", '[project]\nname = "scripts"\ndependencies = ["click"]\n');
+    const plan = await migrate({ stack: "node-fastify" });
+    expect(plan.blocked).toEqual([]);
+    expect(plan.parts.map((part) => `${part.component} ${part.stack} in ${part.path}`)).toEqual([
+      "application Python without FastAPI in scripts",
+      "application Rust in tools",
+    ]);
+    await applyMigrate({ assets, fs }, plan, VERSION, { cwd: work });
+    const checklist = made.read("MIGRATION.md");
+    expect(checklist).toContain(
+      "- [ ] The application on Rust in `legacy/tools`: This release has no standard for Rust: rewrite what the new project needs of it on node-fastify in backend/, or keep it apart as its own project.",
+    );
+    expect(checklist).not.toContain("undefined");
   });
 
   it("blocks backends on several stacks until --stack picks one, and names the others", async () => {
@@ -477,7 +496,7 @@ describe("MIGRATE-001 migrating makes a new project beside the old one, and neve
       "liftoff.config.json",
       "liftoff.manifest.json",
     ]);
-    await applyMigrate(fs, plan, { cwd: work });
+    await applyMigrate({ assets, fs }, plan, VERSION, { cwd: work });
     expect(made.read("MIGRATION.md")).toContain(
       "- Records from a Liftoff release before the rebuild (0.12.3): `governance/activation-state.json`, `governance/credentials`, `liftoff.config.json`, `liftoff.manifest.json`. They stay with `shop` as its history, and are not proof of anything about this project.",
     );
@@ -519,13 +538,15 @@ describe("MIGRATE-002 the copy leaves out secrets, dependencies, caches, state a
         "dependencies node_modules",
       ]);
       expect(plan.plan?.copies).toEqual(plan.copies);
-      await applyMigrate(fs, plan, { cwd: work });
+      await applyMigrate({ assets, fs }, plan, VERSION, { cwd: work });
       const copied = readdirSync(made.at("legacy"), { recursive: true }).map(String).sort();
       expect(copied).not.toContain(".env");
       expect(copied).not.toContain("linked");
       expect(copied).not.toContain("node_modules");
       if (process.platform !== "win32") {
         expect(statSync(made.at("legacy/app/main.py")).mode & 0o777).toBe(0o750);
+        // Open only to the person, whatever the old project's directories allowed.
+        expect(statSync(made.at("legacy")).mode & 0o777).toBe(0o700);
       }
       const checklist = made.read("MIGRATION.md");
       expect(checklist).toContain(
@@ -649,9 +670,32 @@ describe("MIGRATE-002 the copy leaves out secrets, dependencies, caches, state a
     await expect(
       planMigrateFromSaved({ assets, fs }, saved, VERSION, { refused: [], cwd: work }),
     ).rejects.toThrow("the project changed since the plan was made");
-    await expect(applyMigrate(fs, plan, { cwd: work })).rejects.toThrow(MigrateChangedError);
-    await expect(applyMigrate(fs, plan, { cwd: work })).rejects.toThrow(
+    await expect(applyMigrate({ assets, fs }, plan, VERSION, { cwd: work })).rejects.toThrow(
+      MigrateChangedError,
+    );
+    await expect(applyMigrate({ assets, fs }, plan, VERSION, { cwd: work })).rejects.toThrow(
       "app/main.py changed since the migration was planned, so nothing was created; plan it again",
+    );
+    expect(readdirSync(work)).toEqual(["shop"]);
+  });
+
+  it("creates nothing when a file changes after it was copied, or one appears, before the project is in place", async () => {
+    service();
+    const plan = await migrate();
+    let copies = 0;
+    const editing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      copyWithin: async (directory: string, relative: string, maxBytes: number, to: string) => {
+        const copied = await fs.copyWithin(directory, relative, maxBytes, to);
+        // The first file is copied, then changed while the others are.
+        if (++copies === 2) write(".env.example", "SECRET=changed\n");
+        if (copies === 3) write("added.md", "new\n");
+        return copied;
+      },
+    });
+    await expect(
+      applyMigrate({ assets, fs: editing }, plan, VERSION, { cwd: work }),
+    ).rejects.toThrow(
+      ".env.example, added.md changed since the migration was planned, so nothing was created; plan it again",
     );
     expect(readdirSync(work)).toEqual(["shop"]);
   });
@@ -678,7 +722,7 @@ describe("MIGRATE-003 a checklist says what to move, and the new project is chec
     write("AGENTS.md", "# ours\n");
     write(".claude/settings.json", "{}\n");
     const plan = await migrate();
-    await applyMigrate(fs, plan, { cwd: work });
+    await applyMigrate({ assets, fs }, plan, VERSION, { cwd: work });
     const checklist = made.read("MIGRATION.md");
     for (const line of [
       "# Migrating shop",
@@ -721,7 +765,7 @@ describe("MIGRATE-003 a checklist says what to move, and the new project is chec
       "web -> frontend",
       "infra/azure/environments/dev -> infrastructure/opentofu/azure",
     ]);
-    await applyMigrate(fs, plan, { cwd: work });
+    await applyMigrate({ assets, fs }, plan, VERSION, { cwd: work });
     const checklist = made.read("MIGRATION.md");
     expect(checklist).toContain(
       "- [ ] The frontend on vue in `legacy/web`: move it into `frontend/`.",
@@ -741,7 +785,7 @@ describe("MIGRATE-003 a checklist says what to move, and the new project is chec
     write("`odd.pem", "key\n");
     const plan = await migrate({ stack: "python-fastapi" });
     expect(plan.parts).toEqual([]);
-    await applyMigrate(fs, plan, { cwd: work });
+    await applyMigrate({ assets, fs }, plan, VERSION, { cwd: work });
     const checklist = made.read("MIGRATION.md");
     expect(checklist).toContain(
       "- [ ] Nothing in `shop` was found to move into the new project's parts. Build the application from its starter, using what `legacy/` holds.",
@@ -803,7 +847,10 @@ describe("MIGRATE-003 a checklist says what to move, and the new project is chec
       },
     });
     await expect(
-      applyMigrate(cancelling, plan, { cwd: work, signal: controller.signal }),
+      applyMigrate({ assets, fs: cancelling }, plan, VERSION, {
+        cwd: work,
+        signal: controller.signal,
+      }),
     ).rejects.toThrow();
     expect(readdirSync(work)).toEqual(["shop"]);
   });
@@ -818,7 +865,7 @@ describe("MIGRATE-003 a checklist says what to move, and the new project is chec
         writeFileSync(path.join(to, "REVIEW.md"), "edited\n");
       },
     });
-    const result = await applyMigrate(tampering, plan, { cwd: work });
+    const result = await applyMigrate({ assets, fs: tampering }, plan, VERSION, { cwd: work });
     expect(result.differences).toEqual(
       expect.arrayContaining([
         "REVIEW.md is not as planned",

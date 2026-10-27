@@ -35,7 +35,8 @@ export interface LeftOut {
 export interface MigratedPart {
   /** Its directory in the old project; "." is the project itself. */
   readonly path: string;
-  readonly component: Component;
+  /** A kind of part the new project may have, or "application" for one of no such kind. */
+  readonly component: Component | "application";
   readonly stack: string;
   /** The new project's directory for its kind of part, when it has one. */
   readonly to?: string;
@@ -82,8 +83,13 @@ const INSTRUCTION_DIRECTORIES = [
 ];
 
 /** The new project's plugins for each kind of part, whose layouts say what goes where. */
-function pluginsFor(selection: Selection, component: Component): readonly ComponentPlugin[] {
+function pluginsFor(
+  selection: Selection,
+  component: MigratedPart["component"],
+): readonly ComponentPlugin[] {
   switch (component) {
+    case "application":
+      return [];
     case "backend":
       return selection.pattern === undefined
         ? [selection.stack]
