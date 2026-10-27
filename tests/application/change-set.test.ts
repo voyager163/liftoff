@@ -23,6 +23,7 @@ import {
   applyChanges,
   ChangeConflictError,
   ChangeError,
+  ChangeStoppedError,
   MAX_CHANGED_BYTES,
   type NewContent,
   recoverChanges,
@@ -343,6 +344,26 @@ describe("CHANGE-002 a file changed since the plan is never overwritten", () => 
   });
 });
 
+describe("CHANGE-002 files a change rests on", () => {
+  it("must still have the content seen, or still be absent, or nothing changes", async () => {
+    const { plan, contents } = project();
+    write("rests-on.txt", "edited\n");
+    write("was-absent.txt", "appeared\n");
+    const unchanged = [
+      { path: "rests-on.txt", sha256: sha256Hex("as planned\n") },
+      { path: "was-absent.txt", sha256: null },
+    ];
+    const refused = applyChanges(ports(fs), plan, contents, { unchanged });
+    await expect(refused).rejects.toThrow(ChangeConflictError);
+    await expect(applyChanges(ports(fs), plan, contents, { unchanged })).rejects.toThrow(
+      "rests-on.txt changed since the plan was made; was-absent.txt already exists",
+    );
+    expect(read("README.md").toString()).toBe("# Old\n");
+    expect(existsSync(path.join(root, ".liftoff", "change-journal.json"))).toBe(false);
+    expect(leftovers()).toEqual([]);
+  });
+});
+
 describe("CHANGE-003 a change that stops part way can be finished or undone", () => {
   /** Stops the change after README.md and data.bin have changed. */
   async function interrupted() {
@@ -564,6 +585,43 @@ describe("CHANGE-003 a change that stops part way can be finished or undone", ()
   });
 });
 
+describe("CHANGE-003 recovery acts only on the change approved, and stops when cancelled", () => {
+  async function interrupted() {
+    const { plan, contents } = project();
+    const { port } = recording({ failOnMove: 3 });
+    await expect(applyChanges(ports(port), plan, contents)).rejects.toThrow("the machine stopped");
+    return plan;
+  }
+
+  it("refuses a journal for another plan than the one approved", async () => {
+    await interrupted();
+    await expect(recoverChanges(ports(fs), root, "undo", { plan: "b".repeat(64) })).rejects.toThrow(
+      /no longer the one shown.*nothing was changed/,
+    );
+    expect(read("README.md").toString()).toBe("# New\n");
+    expect(existsSync(path.join(root, ".liftoff", "change-journal.json"))).toBe(true);
+  });
+
+  it("changes nothing when cancelled before a file, and stops recoverably after one", async () => {
+    const plan = await interrupted();
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await expect(
+      recoverChanges(ports(fs), root, "finish", { plan: plan.hash, signal: cancelled.signal }),
+    ).rejects.toThrow(cancelled.signal.reason);
+    expect(existsSync(path.join(root, "run.sh"))).toBe(false);
+
+    const later = new AbortController();
+    const { port } = recording({ afterMove: () => later.abort() });
+    await expect(
+      recoverChanges(ports(port), root, "finish", { signal: later.signal }),
+    ).rejects.toThrow(ChangeStoppedError);
+    expect(read("run.sh").toString()).toBe("#!/bin/sh\necho hi\n");
+    expect(existsSync(path.join(root, ".liftoff", "change-journal.json"))).toBe(true);
+    expect((await recoverChanges(ports(fs), root, "finish")).complete).toBe(true);
+  });
+});
+
 describe("CHANGE-003 only one change runs at a time", () => {
   it("sees a change that finished while this one was being staged", async () => {
     const { plan, contents } = project();
@@ -745,5 +803,48 @@ describe("CHANGE-004 files change one at a time, the manifest last", () => {
       "liftoff.yaml",
       ".liftoff/manifest.json",
     ]);
+  });
+});
+
+describe("CHANGE-004 a change cancelled, or not tidied up, says where it stands", () => {
+  it("changes nothing when cancelled before the first file, and stops recoverably after it", async () => {
+    const { plan, contents } = project();
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await expect(
+      applyChanges(ports(fs), plan, contents, { signal: cancelled.signal }),
+    ).rejects.toThrow(cancelled.signal.reason);
+    expect(read("README.md").toString()).toBe("# Old\n");
+    expect(leftovers()).toEqual([]);
+
+    const later = new AbortController();
+    const { port } = recording({ afterMove: () => later.abort() });
+    await expect(
+      applyChanges(ports(port), plan, contents, { signal: later.signal }),
+    ).rejects.toThrow("the change was cancelled after 1 of 5 files");
+    expect(read("README.md").toString()).toBe("# New\n");
+    expect(existsSync(path.join(root, ".liftoff", "change-journal.json"))).toBe(true);
+  });
+
+  it("completes, naming the kept copies and lock it could not remove", async () => {
+    const { plan, contents } = project();
+    const port = Object.assign(Object.create(fs) as ProjectFsPort, {
+      remove: async (target: string) => {
+        if (/\.liftoff-staging-[^/\\]+$/.test(target) || target.endsWith("change.lock")) {
+          throw new Error("EPERM: operation not permitted");
+        }
+        return fs.remove(target);
+      },
+    });
+    const result = await applyChanges(ports(port), plan, contents);
+    expect(result.changed).toBe(5);
+    expect(result.leftovers).toEqual([
+      expect.stringMatching(
+        /^the kept copies in \.demo\.liftoff-staging-\S+ beside the project could not be removed \(EPERM/,
+      ),
+      ".liftoff/change.lock could not be removed (EPERM: operation not permitted); delete it",
+    ]);
+    expect(read(".liftoff/manifest.json").toString()).toBe('{"files":[]}\n');
+    expect(existsSync(path.join(root, ".liftoff", "change-journal.json"))).toBe(false);
   });
 });

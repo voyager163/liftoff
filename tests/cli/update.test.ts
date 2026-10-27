@@ -546,6 +546,24 @@ describe("UPDATE-004 an update that stops part way is finished or undone", () =>
     expect((await update(["--recover", "finish", "--yes"])).code).toBe(0);
   });
 
+  it("names a lock it could not remove without saying an unfinished recovery finished", async () => {
+    olderTwo();
+    expect((await update(["--yes"], { port: stopping(1, "fail") })).code).toBe(5);
+    write(VERIFY, "edited meanwhile\n");
+    const port = Object.assign(Object.create(fs) as ProjectFsPort, {
+      remove: async (target: string) => {
+        if (target.endsWith("change.lock")) throw new Error("EBUSY: resource busy or locked");
+        return fs.remove(target);
+      },
+    });
+    const { code, out } = await update(["--recover", "finish", "--yes"], { port });
+    expect(code).toBe(5);
+    expect(out).toContain(
+      "Could not be removed:\n  .liftoff/change.lock could not be removed (EBUSY",
+    );
+    expect(out).not.toContain("once every file had changed");
+  });
+
   it("names what it could not remove once every file had changed", async () => {
     older();
     const port = Object.assign(Object.create(fs) as ProjectFsPort, {

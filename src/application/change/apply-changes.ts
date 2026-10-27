@@ -242,7 +242,10 @@ export interface RecoveryResult {
   readonly waiting: readonly string[];
   /** Whether the change is now finished or undone, and its journal removed. */
   readonly complete: boolean;
-  /** What could not be removed once it was complete, for the person to delete. */
+  /**
+   * What could not be removed, for the person to delete: the kept copies
+   * once it is complete, and the lock either way.
+   */
   readonly leftovers: readonly string[];
 }
 

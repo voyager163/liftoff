@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -199,28 +207,52 @@ describe("UPDATE-001 update changes only the files Liftoff manages", () => {
     ]);
   });
 
-  it("never changes liftoff.yaml, a file it now makes as the project's, or one listed in other letter case", async () => {
+  it("never changes liftoff.yaml, or a file it now makes as the project's", async () => {
     await generated();
-    const lower = (relative: string) => relative.replace("SKILL.md", "skill.md");
     age((manifest) => {
       entry(manifest, CONFIG_FILE).ownership = "managed";
-      // Listed in other letter case: as this release makes it, and older.
-      entry(manifest, VERIFY).path = lower(VERIFY);
-      entry(manifest, PR).path = lower(PR);
-      entry(manifest, lower(PR)).sha256 = sha("older pr\n");
       Object.assign(entry(manifest, "README.md"), { path: "Readme.md", ownership: "managed" });
     });
     const before = snapshot();
     const update = await plan();
-    expect(update.files).toEqual([
+    expect(update.files).toEqual([]);
+    expect(update.plan).toBeUndefined();
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("holds a file this release names in other letter case until it is renamed, then updates it", async () => {
+    await generated();
+    const current = read(PR);
+    const lower = (relative: string) => relative.replace("SKILL.md", "skill.md");
+    // An earlier release named both skills skill.md; one is as this release makes it.
+    age((manifest) => {
+      entry(manifest, VERIFY).path = lower(VERIFY);
+      Object.assign(entry(manifest, PR), { path: lower(PR), sha256: sha("older pr\n") });
+    });
+    renameSync(at(VERIFY), at(lower(VERIFY)));
+    renameSync(at(PR), at(lower(PR)));
+    write(lower(PR), "older pr\n");
+    const before = snapshot();
+    const held = await plan();
+    expect(held.files).toEqual([
       {
         path: lower(PR),
         step: "hold",
-        reason: `this release names it ${PR}, in other letter case; rename it to take this release's version`,
+        reason: `this release names it ${PR}, in other letter case; rename it to that to take this release's version`,
       },
     ]);
-    expect(update.plan).toBeUndefined();
+    expect(held.plan).toBeUndefined();
     expect(snapshot()).toEqual(before);
+
+    renameSync(at(lower(PR)), at(PR));
+    const update = await plan();
+    expect(steps(update)).toEqual([`update ${PR}`]);
+    await apply(update);
+    expect(read(PR)).toBe(current);
+    const manifest = parseManifest(read(MANIFEST_FILE));
+    expect(entry(manifest, PR).sha256).toBe(sha(current));
+    expect(manifest.files.map((file) => file.path)).not.toContain(lower(PR));
+    expect((await plan()).files).toEqual([]);
   });
 
   it("has nothing to change in a project this release made", async () => {

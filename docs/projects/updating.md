@@ -31,7 +31,8 @@ infrastructure, rulesets, workflows Liftoff seeded for you to change, and
 `README.md`. Neither are files a specification framework owns, nor
 `liftoff.yaml`. No file changes owner in an update. A managed file this
 release names in other letter case is held back for you to rename, since
-macOS and Windows treat the two names as one file.
+macOS and Windows treat the two names as one file; once renamed, the next
+update takes it under its new name.
 
 The manifest changes last, with the new hashes, this release's plugin
 versions and an `update` entry in its history.

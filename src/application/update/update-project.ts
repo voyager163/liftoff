@@ -31,6 +31,9 @@ import { generate } from "../init/generation.ts";
 import type { AssetPort, FileHash, ProjectFsPort } from "../ports.ts";
 import { inventoryLegacy } from "../project/legacy-inventory.ts";
 
+/** The most entries read from one directory when finding a file's name on disk. */
+const MAX_LISTED = 10_000;
+
 /** The most of liftoff.yaml or the manifest read; neither comes near it. */
 const MAX_RECORD_BYTES = 1024 * 1024;
 
@@ -221,38 +224,42 @@ export async function planUpdate(
     ) {
       continue;
     }
+    // A file this release names in other letter case is held back until it
+    // is renamed on disk, then followed under its new name.
+    let at = entry.path;
     if (wanted !== undefined && wanted.path !== entry.path) {
-      steps.push({
-        path: entry.path,
-        step: "hold",
-        reason: `this release names it ${wanted.path}, in other letter case; rename it to take this release's version`,
-      });
-      continue;
+      if ((await nameOnDisk(fs, directory, entry.path)) !== wanted.path) {
+        steps.push({
+          path: entry.path,
+          step: "hold",
+          reason: `this release names it ${wanted.path}, in other letter case; rename it to that to take this release's version`,
+        });
+        continue;
+      }
+      at = wanted.path;
     }
-    const now = await fs.hashWithin(directory, entry.path, MAX_CHANGED_BYTES);
+    const now = await fs.hashWithin(directory, at, MAX_CHANGED_BYTES);
     const sha256 = now.kind === "file" ? now.sha256 : undefined;
     if (wanted === undefined && now.kind === "missing") {
       entries.delete(entry.path);
-      unchanged.push({ path: entry.path, sha256: null });
-      steps.push({ path: entry.path, step: "record" });
+      unchanged.push({ path: at, sha256: null });
+      steps.push({ path: at, step: "record" });
     } else if (wanted !== undefined && sha256 === wanted.sha256) {
-      entries.set(entry.path, entryFor(wanted, "managed"));
-      unchanged.push({ path: entry.path, sha256: wanted.sha256 });
-      steps.push({ path: entry.path, step: "record" });
+      entries.delete(entry.path);
+      entries.set(at, entryFor(wanted, "managed"));
+      unchanged.push({ path: at, sha256: wanted.sha256 });
+      steps.push({ path: at, step: "record" });
     } else if (sha256 !== entry.sha256) {
-      steps.push({
-        path: entry.path,
-        step: "hold",
-        reason: heldBecause(now, wanted === undefined),
-      });
+      steps.push({ path: at, step: "hold", reason: heldBecause(now, wanted === undefined) });
     } else if (wanted === undefined) {
       entries.delete(entry.path);
-      changes.push({ path: entry.path, before: entry.sha256, after: null });
-      steps.push({ path: entry.path, step: "remove" });
+      changes.push({ path: at, before: entry.sha256, after: null });
+      steps.push({ path: at, step: "remove" });
     } else {
-      entries.set(entry.path, entryFor(wanted, "managed"));
+      entries.delete(entry.path);
+      entries.set(at, entryFor(wanted, "managed"));
       replace(wanted, entry.sha256);
-      steps.push({ path: entry.path, step: "update" });
+      steps.push({ path: at, step: "update" });
     }
   }
 
@@ -396,6 +403,27 @@ async function readRecord(
       ? `${relative} cannot be read by this user`
       : `${relative} is not a regular file of at most 1 MiB that Liftoff can read: it is a directory, a link or another kind of file, or it changed as it was read`,
   );
+}
+
+/**
+ * A file's path as its directories name it, in the letter case they use, or
+ * undefined when it is not there, cannot be listed, or more than one name
+ * matches it.
+ */
+async function nameOnDisk(
+  fs: ProjectFsPort,
+  directory: string,
+  relative: string,
+): Promise<string | undefined> {
+  const named: string[] = [];
+  for (const part of relative.split("/")) {
+    const listing = await fs.listWithin(directory, named.join("/") || ".", MAX_LISTED);
+    if (listing.kind !== "directory") return undefined;
+    const matching = listing.entries.filter((entry) => pathKey(entry.name) === pathKey(part));
+    if (matching.length !== 1) return undefined;
+    named.push(matching[0]?.name ?? part);
+  }
+  return named.join("/");
 }
 
 /** Why a managed file this release changes or removes is left as it is. */

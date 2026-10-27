@@ -329,6 +329,8 @@ this release changes:
 Names are compared as macOS and Windows compare them, ignoring letter case
 and how an accented letter is encoded, so a managed file this release names
 in other letter case is held back for the person to rename, never removed.
+Once its name on disk is the one this release uses, it is updated, and
+recorded, under that name.
 
 Files the project owns, such as its source, lock files, environment files,
 infrastructure and `README.md`, files a framework owns, and `liftoff.yaml`

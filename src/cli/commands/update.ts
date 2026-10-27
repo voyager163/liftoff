@@ -321,11 +321,14 @@ export function makeUpdateCommand(
   };
 }
 
-/** What a complete change could not remove, for the person to delete. */
-const leftBehind = (leftovers: readonly string[]) =>
+/** What a change or recovery could not remove, for the person to delete. */
+const leftBehind = (leftovers: readonly string[], complete = true) =>
   leftovers.length === 0
     ? []
-    : ["Left behind once every file had changed:", ...leftovers.map((left) => `  ${left}`)];
+    : [
+        complete ? "Left behind once every file had changed:" : "Could not be removed:",
+        ...leftovers.map((left) => `  ${left}`),
+      ];
 
 /**
  * An update that stopped after its journal was written stopped part way,
@@ -428,7 +431,7 @@ The update is still not ${mode === "finish" ? "finished" : "undone"}, and ${CHAN
       result.conflicts,
     ),
     ...list("Waiting until those are resolved:", result.waiting),
-    ...leftBehind(result.leftovers),
+    ...leftBehind(result.leftovers, result.complete),
   ];
   return {
     outcome: !result.complete ? "partial" : result.leftovers.length > 0 ? "attention" : "success",
