@@ -842,6 +842,12 @@ describe("ASSESS-003 what is found is only what the declarations say", () => {
     expect(python({ "tox.ini": "[pytest]\naddopts = --cov --cov-fail-under 90\n" })).toContain(
       gate,
     );
+    expect(
+      python({ "pytest.ini": "[pytest]\naddopts = --cov  # --cov-fail-under=90\n" }),
+    ).toContain("noncompliant tests.coverage-gate backend at .");
+    expect(
+      python({ "setup.cfg": "[tool:pytest]\naddopts =\n  --cov\n  ; --cov-fail-under=90\n" }),
+    ).toContain("noncompliant tests.coverage-gate backend at .");
   });
 });
 

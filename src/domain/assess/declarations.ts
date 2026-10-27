@@ -108,13 +108,15 @@ export const hasPython = (project: PythonProject, ...names: readonly string[]): 
 
 /**
  * The sections of an INI file, such as setup.cfg, each with its keys. An
- * indented line continues the value before it.
+ * indented line continues the value before it. A comment, whole-line or
+ * after a space, is left out, so what it mentions never counts.
  */
 export function readIni(text: string): ReadonlyMap<string, ReadonlyMap<string, string>> {
   const sections = new Map<string, Map<string, string>>();
   let section: Map<string, string> | undefined;
   let key: string | undefined;
-  for (const line of text.split(/\r?\n/)) {
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/\s[#;].*$/, "");
     if (/^\s*([#;]|$)/.test(line)) continue;
     const header = /^\s*\[([^\]]+)\]\s*$/.exec(line);
     if (header) {
