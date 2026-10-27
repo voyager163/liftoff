@@ -9,7 +9,7 @@ approve. It has two ways in:
   project's own files, and only within the paths you name.
 
 ```bash
-liftoff repair --check                                  # what needs attention? exits 3 if anything
+liftoff repair --check                                  # what needs attention? exits 3 if a managed file does
 liftoff repair                                          # choose what to put back, then approve
 liftoff repair --restore .github/liftoff/review-policy.mjs --yes
 liftoff repair --patch fix.diff --paths backend/app     # apply a reviewed diff

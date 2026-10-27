@@ -202,7 +202,7 @@ JSON report: `liftoff.repair/v1`.
 | Option | Description |
 | --- | --- |
 | `--dir <path>` | Project directory. (default `.`) |
-| `--check` | Change nothing; list the files Liftoff wrote that need attention, and exit 3 when there are any. |
+| `--check` | Change nothing; list the files Liftoff wrote that are not as it left them, and exit 3 when one Liftoff manages needs attention. |
 | `--restore <paths>` | Put back these files, comma-separated, from those repair lists. |
 | `--patch <file>` | Apply this reviewed unified diff (git diff --no-renames) to the project's own files. |
 | `--paths <paths>` | With --patch, the files and directories it may change, comma-separated; it is refused if it changes anything else. |

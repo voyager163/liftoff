@@ -159,7 +159,7 @@ export function makeRepairCommand(
       check: {
         type: "boolean",
         description:
-          "Change nothing; list the files Liftoff wrote that need attention, and exit 3 when there are any.",
+          "Change nothing; list the files Liftoff wrote that are not as it left them, and exit 3 when one Liftoff manages needs attention.",
       },
       restore: {
         type: "string",

@@ -167,6 +167,28 @@ describe("REPAIR-003 a patch applies exactly as git diff wrote it", () => {
     expect(performance.now() - started).toBeLessThan(2_000);
   });
 
+  it("refuses changes after the signature line, and a second commit without one", () => {
+    const hunk = ["--- a/a.txt", "+++ b/a.txt", "@@ -1 +1 @@", "-one", "+1"];
+    expect(() =>
+      parsePatch([...hunk, "-- ", "2.43.0", "@@ -3 +3 @@", "-three", "+3"].join("\n")),
+    ).toThrow("line 8 changes more after the signature line, which ends the changes");
+    const empty = ["diff --git a/e.txt b/e.txt", "new file mode 100644", "index 0000000..e69de29"];
+    expect(() =>
+      parsePatch(
+        [...empty, "-- ", "2.43.0", "--- a/b.txt", "+++ b/b.txt", "@@ -1 +1 @@", "-b", "+B"].join(
+          "\n",
+        ),
+      ),
+    ).toThrow("line 6 changes more after the signature line");
+    const next = "From 2222222222222222222222222222222222222222 Mon Sep 17 00:00:00 2001";
+    expect(() => parsePatch([...hunk, "", next, "diff --git a/b.txt b/b.txt"].join("\n"))).toThrow(
+      "the patch holds more than one commit, from line 7",
+    );
+    expect(() => parsePatch([...empty, "", next, "diff --git a/b.txt b/b.txt"].join("\n"))).toThrow(
+      "the patch holds more than one commit, from line 5",
+    );
+  });
+
   it("refuses an insertion after a line the file does not have", () => {
     const [file] = parsePatch(["--- a/a", "+++ b/a", "@@ -10,0 +11 @@", "+inserted"].join("\n"));
     if (file === undefined) throw new Error("no file");

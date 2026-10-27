@@ -30,6 +30,16 @@ export class PatchError extends Error {
 const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 /** The line git format-patch puts before its signature. */
 const SIGNATURE = "-- ";
+/** The line that starts each commit in git format-patch's output. */
+const COMMIT = /^From [0-9a-f]{40} /;
+/** Lines that would be more changes, which may not follow the signature. */
+const AFTER_SIGNATURE = /^(diff --git |--- |\+\+\+ |@@ |From [0-9a-f]{40} )/;
+
+/** Refuses a patch with more than one commit, from the line the next one starts. */
+const moreCommits = (index: number) =>
+  new PatchError(
+    `the patch holds more than one commit, from line ${index + 1}; make one diff of the whole change with git diff --no-renames`,
+  );
 /** Extended header lines git writes that change only what the patch already says. */
 const KEPT_HEADERS = [/^index [0-9a-f]+\.\.[0-9a-f]+( [0-7]{6})?$/];
 const REFUSED_HEADERS: readonly [RegExp, string][] = [
@@ -89,15 +99,22 @@ export function parsePatch(text: string): FilePatch[] {
       return true;
     }
     if (next() !== SIGNATURE) return false;
-    const more = lines
-      .slice(at)
-      .findIndex((line) => /^(diff --git |From [0-9a-f]{40} )/.test(line));
+    // Only the signature may follow: never another commit, file or hunk.
+    const more = lines.slice(at).findIndex((line) => AFTER_SIGNATURE.test(line));
     if (more !== -1) {
+      const line = lines[at + more] ?? "";
+      if (COMMIT.test(line) || line.startsWith("diff --git ")) throw moreCommits(at + more);
       throw new PatchError(
-        `the patch holds more than one commit, from line ${at + more + 1}; make one diff of the whole change with git diff --no-renames`,
+        `line ${at + more + 1} changes more after the signature line, which ends the changes; make one diff of the whole change with git diff --no-renames`,
       );
     }
     return true;
+  };
+  /** Where the next commit of a git format-patch starts, after any blank lines here, if one does. */
+  const commitHere = (): number | undefined => {
+    let index = at;
+    while (index < blankFrom && lines[index] === "") index++;
+    return COMMIT.test(lines[index] ?? "") ? index : undefined;
   };
   while (at < lines.length && !isFileStart(next())) at++;
 
@@ -116,6 +133,8 @@ export function parsePatch(text: string): FilePatch[] {
         next() !== SIGNATURE &&
         !rest()
       ) {
+        const commit = commitHere();
+        if (commit !== undefined) throw moreCommits(commit);
         const line = next() ?? "";
         const refused = REFUSED_HEADERS.find(([pattern]) => pattern.test(line));
         if (refused) throw new PatchError(`line ${at + 1} ${refused[1]}, which repair does not do`);
@@ -168,6 +187,8 @@ export function parsePatch(text: string): FilePatch[] {
     }
     const hunks: Hunk[] = [];
     while (at < lines.length && !isFileStart(next()) && next() !== SIGNATURE && !rest()) {
+      const commit = commitHere();
+      if (commit !== undefined) throw moreCommits(commit);
       hunks.push(readHunk());
     }
     if (hunks.length === 0) {
