@@ -737,10 +737,11 @@ Verification: test
 ## MIGRATE-002 The copy leaves out secrets, dependencies, caches, state and build output
 
 The new project holds a copy of the old project's files in `legacy/`, each
-at the same path within it and with its permissions. `legacy/` itself is
-open only to the person, since the old project's own directories may have
-been closed to others. It copies every regular file the walk reaches,
-except:
+at the same path within it and with its permissions. On macOS, `legacy/`
+itself is open only to the person, since the old project's own directories
+may have been closed to others; on Windows it has the access the directory
+it is in gives new directories. It copies every regular file the walk
+reaches, except:
 
 - Git's data, installed dependencies, caches and build output, in the
   directories the walk does not enter (ASSESS-002);

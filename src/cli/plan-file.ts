@@ -1,5 +1,7 @@
+import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { open, rename, rm } from "node:fs/promises";
+import path from "node:path";
 
 /**
  * Writes a plan file as a new file and moves it into place, so whatever is
@@ -8,7 +10,11 @@ import { open, rename, rm } from "node:fs/promises";
  * perhaps one of a project's, stays as it was.
  */
 export async function writePlanFile(file: string, text: string): Promise<void> {
-  const temporary = `${file}.${process.pid}.tmp`;
+  // A short name of its own, so any name the file may have is one it can.
+  const temporary = path.join(
+    path.dirname(file),
+    `.liftoff-plan-${randomBytes(6).toString("hex")}.tmp`,
+  );
   // Created only where nothing is, so not through a link left there either.
   const handle = await open(
     temporary,

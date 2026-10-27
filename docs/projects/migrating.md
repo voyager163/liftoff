@@ -67,8 +67,10 @@ with exit 2.
 ## What the copy holds
 
 `legacy/` holds every regular file of the old project, at the same path and
-with its permissions. Only you can open `legacy/` itself, since the old
-project's folders may have been closed to others. It holds every file
+with its permissions. On macOS, only you can open `legacy/` itself, since
+the old project's folders may have been closed to others. On Windows it has
+the access of the folder it is in, so put the new project in a folder only
+you can open if the old one held anything private. It holds every file
 except:
 
 - Git's data, installed dependencies, caches and build output, such as

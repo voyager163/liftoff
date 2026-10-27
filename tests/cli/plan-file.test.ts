@@ -34,6 +34,17 @@ describe("INIT-001 a plan file is written as a new file", () => {
     expect(readdirSync(work).sort()).toEqual(["hard.json", "main.py", "plan.json"]);
   });
 
+  it("writes and replaces a file whose name is as long as a name can be", async () => {
+    // Windows also limits a whole path, which a temporary directory's name
+    // already takes much of, so the longest name is checked elsewhere.
+    if (process.platform === "win32") return;
+    const longest = `${"p".repeat(250)}.json`;
+    await writePlanFile(at(longest), "{}\n");
+    await writePlanFile(at(longest), "[]\n");
+    expect(readFileSync(at(longest), "utf8")).toBe("[]\n");
+    expect(readdirSync(work)).toEqual([longest]);
+  });
+
   it("replaces a link instead of writing where it points, and leaves nothing when it fails", async () => {
     await expect(writePlanFile(at("missing/plan.json"), "{}\n")).rejects.toThrow();
     expect(readdirSync(work)).toEqual([]);
