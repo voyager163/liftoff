@@ -1,19 +1,14 @@
 import path from "node:path";
 import type { AssessmentFinding, Part, Status } from "../../domain/assess/standard.ts";
 import type { LegacyRecord } from "../../domain/legacy/inventory.ts";
-import { MAX_LEGACY_BYTES } from "../../domain/legacy/inventory.ts";
 import { type ChangePlan, type FileChange, sealChangePlan } from "../../domain/plan/change-plan.ts";
 import { PLAN_SCHEMA, PlanError, sha256Hex } from "../../domain/plan/plan.ts";
 import {
   COMPONENTS,
-  CONFIG_FILE,
   CONFIG_SCHEMA,
   type Component,
   ConfigError,
-  isGithubLogin,
-  layoutOf,
   type ProjectConfig,
-  projectNameProblem,
   validateConfig,
 } from "../../domain/project/config.ts";
 import {
@@ -25,16 +20,13 @@ import {
 } from "../../domain/project/manifest.ts";
 import { pathKey } from "../../domain/project/paths.ts";
 import { isExecutable, type ProjectFile } from "../../generators/project.ts";
-import { AGENT_HOSTS } from "../../plugins/builtin/agents/hosts.ts";
 import { ENVIRONMENTS } from "../../plugins/contracts/project-plugin.ts";
 import {
   DEFAULT_GOVERNANCE,
   DEFAULT_PATTERN,
-  GOVERNANCE,
   NO_FRONTEND,
   NO_INFRASTRUCTURE,
   NO_PATTERN,
-  PATTERNS,
   resolveSelection,
   SelectionError,
   STACKS,
@@ -58,48 +50,24 @@ import {
   assessProject,
   type ProjectAssessment,
 } from "../project/assess-project.ts";
+import {
+  choicesOf,
+  legacyBlocks,
+  noName,
+  type OtherPart,
+  oldChoices,
+  optionProblem,
+  type ProjectChoices,
+  type Proposal,
+  proposeName,
+  proposeSettings,
+  refuseLiftoffProject,
+} from "../project/proposal.ts";
 
 /** What the person named on the command line; anything not named is proposed. */
-export interface AdoptChoices {
-  readonly name?: string;
-  readonly stack?: string;
-  readonly pattern?: string;
-  readonly frontend?: string;
-  readonly infrastructure?: string;
-  readonly environments?: readonly string[];
-  readonly agents?: readonly string[];
-  readonly governance?: string;
-  readonly aiReview?: "auto" | "on" | "off";
-  readonly reviewEngine?: string;
-  readonly owners?: readonly string[];
-  /** The directory each part lives in, "." for the repository root. */
-  readonly layout?: Readonly<Partial<Record<Component, string>>>;
-}
+export type AdoptChoices = ProjectChoices;
 
-/** Where a proposed choice came from. */
-export type ProposalSource =
-  | "option"
-  | "found"
-  | "old configuration"
-  | "directory name"
-  | "default";
-
-export interface Proposal {
-  /** Which choice, such as "backend" or "agents". */
-  readonly choice: string;
-  readonly value: string;
-  readonly from: ProposalSource;
-  /** The files a choice that was found rests on. */
-  readonly evidence?: readonly string[];
-}
-
-/** A part of the project adopting leaves as it is, the project's own, and why. */
-export interface OtherPart {
-  readonly path: string;
-  readonly component: string;
-  readonly stack: string;
-  readonly reason: string;
-}
+export type { OtherPart, Proposal, ProposalSource } from "../project/proposal.ts";
 
 /**
  * What adopting does with one of Liftoff's files:
@@ -197,29 +165,14 @@ export async function planAdopt(
     throw new ProjectChangeError(`${directory} is not a directory Liftoff can change`);
   }
   await refuseUnfinishedChange(fs, directory);
-  for (const record of [CONFIG_FILE, MANIFEST_FILE]) {
-    const found = await fs.hashWithin(directory, record, MAX_RECORD_BYTES);
-    if (found.kind === "file" || found.kind === "directory") {
-      throw new ProjectChangeError(
-        `${record} is already here, so this is a Liftoff project, which liftoff update and liftoff repair change; liftoff validate checks it`,
-      );
-    }
-  }
+  await refuseLiftoffProject(fs, directory);
 
   // The hash of each declaration and old record, as the assessment read it.
   const read = new Map<string, string>();
   const assessment = await assessProject(fs, directory, { ...where, read });
-  const blocked: string[] = [];
   const legacy = assessment.legacy?.records ?? [];
-  for (const record of legacy) {
-    if (record.blocks !== undefined) blocked.push(`${record.path}: ${record.blocks}`);
-    else if (record.state === "unsupported") {
-      blocked.push(
-        `${record.path}, from a Liftoff release before the rebuild, is not a record adopting can rely on (${record.reason}); adopting does not guess past it`,
-      );
-    }
-  }
-  const old = await oldChoices(fs, directory, legacy, read);
+  const blocked = legacyBlocks(legacy, "adopting");
+  const old = await oldChoices(fs, directory, legacy, read, changedWhilePlanned);
   const parts = resolveParts(assessment, choices);
   blocked.push(...parts.blocked);
 
@@ -237,31 +190,9 @@ export async function planAdopt(
   const proposal: Proposal[] = [];
   if (backend === undefined || stack === undefined) return { ...base, proposal, blocked };
 
-  // Each choice is the first of: the option, what was found or the old
-  // configuration said, and the default.
-  const pick = <T>(
-    choice: string,
-    shown: (value: T) => string,
-    sources: readonly (readonly [ProposalSource, T | undefined])[],
-  ): T | undefined => {
-    for (const [from, value] of sources) {
-      if (value === undefined) continue;
-      proposal.push({ choice, value: shown(value), from });
-      return value;
-    }
-    return undefined;
-  };
-  const text = (value: string) => value;
-  const list = (value: readonly string[]) => (value.length === 0 ? "none" : value.join(", "));
-  const name = pick("name", text, [
-    ["option", choices.name],
-    ["old configuration", old.name],
-    ["directory name", nameFrom(directory)],
-  ]);
+  const name = proposeName(proposal, choices, old, directory);
   if (name === undefined) {
-    blocked.push(
-      `the directory's name, ${path.basename(directory)}, does not make a project name; give one with --name`,
-    );
+    blocked.push(noName(directory));
     return { ...base, proposal, blocked };
   }
   for (const component of COMPONENTS) {
@@ -278,49 +209,15 @@ export async function planAdopt(
           },
     );
   }
-  const pattern =
-    stack.workload === "genai"
-      ? (pick("pattern", text, [
-          ["option", choices.pattern],
-          ["old configuration", old.pattern],
-          ["default", DEFAULT_PATTERN],
-        ]) ?? DEFAULT_PATTERN)
-      : (choices.pattern ?? NO_PATTERN);
   const infrastructure = parts.chosen.infrastructure?.stack ?? NO_INFRASTRUCTURE;
-  const environments =
-    infrastructure === NO_INFRASTRUCTURE
-      ? (choices.environments ?? [])
-      : (pick("environments", list, [
-          ["option", choices.environments],
-          ["old configuration", old.environments],
-          ["default", ENVIRONMENTS],
-        ]) ?? ENVIRONMENTS);
   // Adopting never switches the workflow: a framework's files stay the
   // project's, and no initializer runs.
-  proposal.push({ choice: "workflow", value: "manual", from: "default" });
-  const agents =
-    pick("agents", list, [
-      ["option", choices.agents],
-      ["old configuration", old.agents],
-      ["found", assessment.agents.length === 0 ? undefined : assessment.agents],
-      ["default", []],
-    ]) ?? [];
-  const governance =
-    pick("governance", text, [
-      ["option", choices.governance],
-      ["old configuration", old.governance],
-      ["default", DEFAULT_GOVERNANCE],
-    ]) ?? DEFAULT_GOVERNANCE;
-  const mode = choices.aiReview ?? "auto";
-  const review = {
-    ai: mode === "on" || (mode === "auto" && agents.length > 0),
-    ...(choices.reviewEngine === undefined ? {} : { engine: choices.reviewEngine }),
-  };
-  proposal.push({
-    choice: "AI review",
-    value: review.ai ? `on${review.engine === undefined ? "" : ` (${review.engine})`}` : "off",
-    from: choices.aiReview === undefined || choices.aiReview === "auto" ? "default" : "option",
-  });
+  const { pattern, environments, agents, governance, review } = proposeSettings(
+    proposal,
+    choices,
+    old,
+    { workload: stack.workload, infrastructure, agents: assessment.agents },
+  );
 
   const layout = Object.fromEntries(
     COMPONENTS.flatMap((component) => {
@@ -569,127 +466,6 @@ export async function planAdoptFromSaved(
   return adopt;
 }
 
-/**
- * Why an option names something this release does not have, or undefined.
- * Checked before the project is looked at, so an option's mistake is never
- * hidden behind what keeps the project from being adopted.
- */
-function optionProblem(choices: AdoptChoices): string | undefined {
-  const unknown = (
-    option: string,
-    values: readonly string[] | undefined,
-    known: (value: string) => boolean,
-    available: readonly string[],
-  ) => {
-    const value = values?.find((candidate) => !known(candidate));
-    return value === undefined
-      ? undefined
-      : `--${option}: unknown ${option === "agents" ? "agent" : option.replace(/s$/, "")} "${value}"; available: ${available.join(", ")}`;
-  };
-  const has = (registry: object) => (key: string) => Object.hasOwn(registry, key);
-  const hosts = Object.keys(AGENT_HOSTS);
-  const owners = choices.owners ?? [];
-  const twice = (values: readonly string[], fold = (value: string) => value) =>
-    new Set(values.map(fold)).size !== values.length;
-  const name = choices.name === undefined ? undefined : projectNameProblem(choices.name);
-  if (name !== undefined) return `--name: ${name}`;
-  return (
-    unknown("agents", choices.agents, has(AGENT_HOSTS), hosts) ??
-    unknown(
-      "environments",
-      choices.environments,
-      (value) => (ENVIRONMENTS as readonly string[]).includes(value),
-      ENVIRONMENTS,
-    ) ??
-    unknown(
-      "review-engine",
-      choices.reviewEngine === undefined ? undefined : [choices.reviewEngine],
-      has(AGENT_HOSTS),
-      hosts,
-    ) ??
-    unknown(
-      "stack",
-      choices.stack === undefined ? undefined : [choices.stack],
-      has(STACKS),
-      Object.keys(STACKS),
-    ) ??
-    unknown(
-      "pattern",
-      choices.pattern === undefined ? undefined : [choices.pattern],
-      (value) => value === NO_PATTERN || has(PATTERNS)(value),
-      Object.keys(PATTERNS),
-    ) ??
-    unknown(
-      "governance",
-      choices.governance === undefined ? undefined : [choices.governance],
-      has(GOVERNANCE),
-      Object.keys(GOVERNANCE),
-    ) ??
-    (owners.find((owner) => !isGithubLogin(owner)) !== undefined
-      ? `--owners: "${owners.find((owner) => !isGithubLogin(owner))}" is not a GitHub login`
-      : undefined) ??
-    (twice(choices.agents ?? []) ||
-    twice(choices.environments ?? []) ||
-    twice(owners, (owner) => owner.toLowerCase())
-      ? "--agents, --environments and --owners each name a value once"
-      : undefined) ??
-    conflict(choices)
-  );
-}
-
-/** Why options given together rule each other out, whatever the project holds. */
-function conflict(choices: AdoptChoices): string | undefined {
-  const { agents, environments, stack, pattern, infrastructure, reviewEngine } = choices;
-  for (const component of ["frontend", "infrastructure"] as const) {
-    if (choices.layout?.[component] !== undefined && choices[component] === "none") {
-      return `--layout binds the ${component}, but --${component} none leaves it out`;
-    }
-  }
-  if (reviewEngine !== undefined && agents !== undefined && !agents.includes(reviewEngine)) {
-    return `--review-engine ${reviewEngine} must be one of the agents --agents selects`;
-  }
-  if (choices.aiReview === "on" && agents !== undefined && agents.length === 0) {
-    return "--ai-review on needs a coding agent, and --agents selects none";
-  }
-  if (environments !== undefined && infrastructure !== undefined) {
-    if (infrastructure === NO_INFRASTRUCTURE && environments.length > 0) {
-      return "--environments are for infrastructure, which --infrastructure none leaves out";
-    }
-    if (infrastructure !== NO_INFRASTRUCTURE && environments.length === 0) {
-      return `--infrastructure ${infrastructure} needs at least one of --environments`;
-    }
-  }
-  const workload = stack === undefined ? undefined : STACKS[stack]?.workload;
-  if (
-    workload !== undefined &&
-    pattern !== undefined &&
-    (pattern !== NO_PATTERN) !== (workload === "genai")
-  ) {
-    return workload === "genai"
-      ? `--stack ${stack} is for GenAI projects, which need a pattern, not --pattern none`
-      : `--pattern is for GenAI projects, not a ${stack} backend`;
-  }
-  return undefined;
-}
-
-/** The choices that make exactly this configuration. */
-function choicesOf(config: ProjectConfig): AdoptChoices {
-  return {
-    name: config.name,
-    stack: config.stack,
-    pattern: config.pattern,
-    frontend: config.frontend,
-    infrastructure: config.infrastructure,
-    environments: config.environments,
-    agents: config.agents,
-    governance: config.governance,
-    aiReview: config.review.ai ? "on" : "off",
-    ...(config.review.engine === undefined ? {} : { reviewEngine: config.review.engine }),
-    owners: config.owners,
-    layout: layoutOf(config),
-  };
-}
-
 interface Resolved {
   readonly chosen: Partial<Record<Component, Part>>;
   readonly others: OtherPart[];
@@ -773,8 +549,8 @@ function resolveParts(assessment: ProjectAssessment, choices: AdoptChoices): Res
       const others = assessment.parts.filter((part) => !part.supported);
       blocked.push(
         others.length > 0
-          ? `no backend this release supports was found: the project holds ${others.map(described).join(", ")}, which this release has no stack for`
-          : "no backend this release supports was found: no pyproject.toml that depends on FastAPI, package.json that depends on Fastify, or go.mod that requires Huma",
+          ? `no backend this release supports was found: the project holds ${others.map(described).join(", ")}, which this release has no stack for; liftoff migrate --stack makes a new project beside it on a stack this release has`
+          : "no backend this release supports was found: no pyproject.toml that depends on FastAPI, package.json that depends on Fastify, or go.mod that requires Huma; liftoff migrate --stack makes a new project beside it on a stack this release has",
       );
     }
   }
@@ -927,85 +703,6 @@ function isApplicationChange(finding: AssessmentFinding, adopted: readonly Part[
     finding.subject === undefined ||
     adopted.some((part) => finding.subject === `${part.component} at ${part.path}`)
   );
-}
-
-/** A project name made from the directory's name, if one can be. */
-function nameFrom(directory: string): string | undefined {
-  const name = path
-    .basename(directory)
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^[^a-z]+/, "")
-    .slice(0, 50)
-    .replace(/-+$/, "");
-  return projectNameProblem(name) === undefined ? name : undefined;
-}
-
-/** What an old configuration says that this release accepts as it is. */
-interface OldChoices {
-  readonly name?: string;
-  readonly agents?: readonly string[];
-  readonly governance?: string;
-  readonly pattern?: string;
-  readonly environments?: readonly string[];
-}
-
-/**
- * The choices a Liftoff release before the rebuild recorded in its
- * configuration, when it can be carried over (LEGACY-001): only values
- * this release has, exactly as they are. Anything else is left for the
- * proposal to make.
- */
-async function oldChoices(
-  fs: ProjectFsPort,
-  directory: string,
-  records: readonly LegacyRecord[],
-  read: ReadonlyMap<string, string>,
-): Promise<OldChoices> {
-  const config = records.find((record) => record.record === "config");
-  if (config?.state !== "migratable") return {};
-  // Only the configuration that was found migratable is carried over.
-  const now = await fs.readWithin(directory, config.path, MAX_LEGACY_BYTES);
-  if (
-    now.kind !== "file" ||
-    now.text === undefined ||
-    sha256Hex(now.text) !== read.get(config.path)
-  ) {
-    throw new ProjectChangeError(changedWhilePlanned(config.path));
-  }
-  let fields: Record<string, unknown>;
-  try {
-    fields = JSON.parse(now.text) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-  const one = (value: unknown, known: (text: string) => boolean) =>
-    typeof value === "string" && known(value) ? value : undefined;
-  const some = (value: unknown, known: (text: string) => boolean) =>
-    Array.isArray(value) &&
-    value.every((item) => typeof item === "string" && known(item)) &&
-    new Set(value).size === value.length
-      ? (value as string[])
-      : undefined;
-  const has = (registry: object) => (key: string) => Object.hasOwn(registry, key);
-  const name = one(fields.projectName, (text) => projectNameProblem(text) === undefined);
-  const agents = some(fields.agents, has(AGENT_HOSTS));
-  const governance = one(fields.governanceProfile, has(GOVERNANCE));
-  const pattern = one(fields.pattern, has(PATTERNS));
-  // Infrastructure needs at least one environment, so none says nothing.
-  const listed = some(fields.environments, (text) =>
-    (ENVIRONMENTS as readonly string[]).includes(text),
-  );
-  const environments = listed?.length === 0 ? undefined : listed;
-  return {
-    ...(name === undefined ? {} : { name }),
-    ...(agents === undefined ? {} : { agents }),
-    ...(governance === undefined ? {} : { governance }),
-    ...(pattern === undefined ? {} : { pattern }),
-    ...(environments === undefined ? {} : { environments }),
-  };
 }
 
 /**

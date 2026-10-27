@@ -286,7 +286,7 @@ function withFrameworkFiles(
  * the caller's working directory: publishing replaces the target directory,
  * which would leave the caller's shell in a deleted one.
  */
-async function checkTarget(fs: ProjectFsPort, target: string, cwd?: string): Promise<void> {
+export async function checkTarget(fs: ProjectFsPort, target: string, cwd?: string): Promise<void> {
   if (cwd !== undefined) {
     const inside = path.relative(target, path.resolve(cwd));
     if (inside === "" || !(inside.startsWith("..") || path.isAbsolute(inside))) {

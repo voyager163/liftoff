@@ -307,8 +307,8 @@ the project), **liftoff** (a command this release has does it, and it is
 named), **access** (someone grants access) and **unavailable** (this release
 cannot help yet, such as adding a coding-agent host to a Liftoff project).
 `liftoff adopt` is named for a project that is not Liftoff's only when a
-backend this release supports was found. Each lists the checks it
-answers. Only commands this release has are named. The command exits 0 when
+backend this release supports was found, and `liftoff migrate` otherwise.
+Each lists the checks it answers. Only commands this release has are named. The command exits 0 when
 every finding is compliant and 3 otherwise.
 
 Verification: test
@@ -665,5 +665,123 @@ any file changes exits 4. A repair exits 3 when files Liftoff manages still
 need attention or something could not be removed afterwards, and 0
 otherwise; after a patch, which looks at no other file, it does not say
 whether any still need attention.
+
+Verification: test
+
+## MIGRATE-001 Migrating makes a new project beside the old one, and never changes the old one
+
+`liftoff migrate` makes a new Liftoff project from an existing one: the
+root of a Git repository, or another directory named with `--dir`. It
+refuses the root of the file system and the home directory, a project
+Liftoff already has (one with `liftoff.yaml` or `.liftoff/manifest.json`),
+and a project with a change that has not finished (CHANGE-003). The new
+project goes in a new or empty directory named with `--to`, by default the
+old project's directory name followed by `-liftoff`, beside it. That
+directory may not be the old project, be inside it or hold it, and may not
+be the current directory or hold it.
+
+Migrating writes nothing into the old project: no file, lock or record. It
+reads the project as `liftoff assess` does (ASSESS-001 and ASSESS-002),
+plus each file it copies (MIGRATE-002), and runs nothing.
+
+It proposes the new project's configuration as `liftoff adopt` does
+(ADOPT-001), from the parts it finds wherever they are. The same options
+replace any choice, except `--layout`, since the new project has the
+standard layout. Its workflow is `manual`. `--stack` may name a stack the
+old project has no backend on, to move the application to it. The new
+project is the one `liftoff init` makes with that configuration, starter
+application included, with `migrate` first in its manifest's history. It
+also holds the copy and `MIGRATION.md`.
+
+An option mistake is refused before anything about the project, as for
+adopting (ADOPT-002), and exits 2. Otherwise migrating creates nothing,
+names each reason and exits 3 when:
+
+- no backend this release supports is found and `--stack` names none, or
+  backends on more than one stack are found and `--stack` picks none of
+  them;
+- it could not tell what a directory holds, because a declaration could
+  not be read or parsed, unless `--stack`, `--frontend` and
+  `--infrastructure` are all given;
+- part of the project was not walked, because it is closed to this user,
+  changed while it was listed or is past a limit, so the copy would miss
+  it;
+- the stack cannot have a frontend or infrastructure found in the project:
+  it says to leave that part out with `--frontend none` or
+  `--infrastructure none`;
+- the directory's name makes no project name and `--name` gives none;
+- a record from a Liftoff release before the rebuild is unsupported
+  (LEGACY-002), or is an update or repair that release did not finish
+  (LEGACY-001);
+- what it would copy is over 1 GiB together.
+
+- Given a FastAPI project, when it is migrated, then the new project has a
+  `python-fastapi` backend in `backend/`, and no file in the old project
+  changed.
+
+Verification: test
+
+## MIGRATE-002 The copy leaves out secrets, dependencies, caches, state and build output
+
+The new project holds a copy of the old project's files in `legacy/`, each
+at the same path within it and with its permissions. It copies every
+regular file the walk reaches, except:
+
+- Git's data, installed dependencies, caches and build output, in the
+  directories the walk does not enter (ASSESS-002);
+- files that may hold secrets or state, which `liftoff assess` lists as not
+  read (ASSESS-001);
+- the records a Liftoff release before the rebuild left (LEGACY-001), which
+  stay with the old project as its history;
+- links and special files, which are never followed;
+- a file over 64 MiB;
+- a path not every system can hold (CHANGE-001), or a second path that
+  macOS and Windows take for the same file.
+
+Each file or directory left out is named, with why, in the plan and in
+`MIGRATION.md`. The plan lists each copied file with its sha256 and size. A
+file changed since the plan was made makes the plan stale, and it is
+refused; a file that changes while it is being copied stops the migration
+before anything is created.
+
+- Given a project with `.env`, `node_modules` and `dist`, when it is
+  migrated, then none of them is in `legacy/`, and `MIGRATION.md` names
+  each.
+
+Verification: test
+
+## MIGRATE-003 A checklist says what to move, and the new project is checked
+
+The new project's `MIGRATION.md` is the project's own: the manifest does
+not list it. It lists, as steps to tick off:
+
+- each part found, where it is in `legacy/`, and where the new project
+  keeps that part, with what each of its directories is for;
+- the parts the new project has no place for: applications this release
+  has no stack for, and a second part of a kind the new project has one of;
+- what the copy left out, and what to do about it: recreate secrets and
+  state outside Git, install dependencies again, and leave the records from
+  before the rebuild with the old project;
+- the old project's workflows and coding-agent instructions, to compare
+  with Liftoff's;
+- how to check the result, with `liftoff validate` and the project's own
+  tests;
+- deleting `legacy/` and `MIGRATION.md` once done.
+
+The old project and its Git history stay where they are.
+
+`liftoff migrate --check` writes nothing, shows the proposal and the plan,
+and exits 3 when the project cannot be migrated as it is, and 0 otherwise.
+`--out <file>` saves the plan and creates nothing. `--plan <file>` applies
+exactly that plan. It is planned again from what the plan holds, and
+refused unless it is the same plan, made by this release, for files still
+as they were. Otherwise migrating shows the proposal and the plan, and asks;
+the default answer is no, and without a terminal it needs `--yes`.
+
+The new project is written beside its directory and moved into place in one
+step, so it is there whole or not at all. Ctrl+C before then leaves nothing
+and exits 4. Once it is in place, each of its files is read back and
+compared with the plan, and it is validated as `liftoff validate` does.
+Anything different is named, and the command exits 3.
 
 Verification: test

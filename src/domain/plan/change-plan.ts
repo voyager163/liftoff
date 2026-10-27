@@ -2,9 +2,9 @@ import { en } from "zod/locales";
 import * as z from "zod/mini";
 import { CONFIG_FILE } from "../project/config.ts";
 import { MANIFEST_FILE, OWNERSHIP } from "../project/manifest.ts";
-import { CHANGE_OPERATIONS } from "../project/operations.ts";
+import { CHANGE_OPERATIONS, CREATE_OPERATIONS } from "../project/operations.ts";
 import { pathKey, repositoryPathProblem } from "../project/paths.ts";
-import { canonicalJson, PLAN_SCHEMA, PlanError, sha256Hex } from "./plan.ts";
+import { CREATE_COMMANDS, canonicalJson, PLAN_SCHEMA, PlanError, sha256Hex } from "./plan.ts";
 
 z.config(en());
 
@@ -152,8 +152,11 @@ export function parseChangePlan(text: string): ChangePlan {
     throw new PlanError(`the plan is not valid JSON: ${(error as Error).message}`);
   }
   const operation = (raw as { operation?: unknown } | null)?.operation;
-  if (operation === "init") {
-    throw new PlanError("this plan creates a project; apply it with liftoff init --plan");
+  const creating = CREATE_OPERATIONS.find((create) => create === operation);
+  if (creating !== undefined) {
+    throw new PlanError(
+      `this plan creates a project; apply it with ${CREATE_COMMANDS[creating]} --plan`,
+    );
   }
   const parsed = z.safeParse(changePlanSchema, raw);
   if (!parsed.success) {

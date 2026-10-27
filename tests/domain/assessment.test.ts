@@ -1238,7 +1238,7 @@ describe("ASSESS-003 Liftoff projects and projects from before the rebuild", () 
         (action) => action.command === "liftoff adopt",
       )?.text,
     ).toBe("Adopt the project into this release, which keeps the old records as they are.");
-    // Without a backend this release supports, adopting cannot help.
+    // Without a backend this release supports, adopting cannot help, and migrating can.
     const express = run(
       tree({ "package.json": '{"dependencies":{"express":"^5.0.0"}}', "CLAUDE.md": "" }),
       NOT_LIVE,
@@ -1246,7 +1246,9 @@ describe("ASSESS-003 Liftoff projects and projects from before the rebuild", () 
     );
     expect(express.next.filter((action) => action.command === "liftoff adopt")).toEqual([]);
     expect(express.next.find((action) => action.checks.includes("liftoff.project"))).toMatchObject({
-      category: "unavailable",
+      category: "liftoff",
+      command: "liftoff migrate",
+      text: expect.stringContaining("naming the stack the new project has with --stack"),
     });
     // In a Liftoff project, adding a host is not something this release does.
     const project: LiftoffState = { kind: "project", findings: [] };

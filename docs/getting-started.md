@@ -148,6 +148,8 @@ rulesets on GitHub with `liftoff governance`.
 Liftoff's or not, against the standard with `liftoff assess`.
 [Adopting a project](projects/adopting.md) covers bringing an existing
 project under Liftoff with `liftoff adopt`.
+[Migrating a project](projects/migrating.md) covers making a new Liftoff
+project beside an existing one with `liftoff migrate`.
 [Updating a project](projects/updating.md) covers bringing the files Liftoff
 manages to a new release with `liftoff update`.
 [Repairing a project](projects/repairing.md) covers putting back Liftoff's

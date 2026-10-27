@@ -9,6 +9,10 @@ export const CHANGE_OPERATIONS = [
 ] as const;
 export type ChangeOperation = (typeof CHANGE_OPERATIONS)[number];
 
+/** Operations that create a new project, in a new or empty directory. */
+export const CREATE_OPERATIONS = ["init", "migrate"] as const;
+export type CreateOperation = (typeof CREATE_OPERATIONS)[number];
+
 /** Every operation that writes a project's files: creating it, or changing it. */
-export const OPERATIONS = ["init", ...CHANGE_OPERATIONS] as const;
+export const OPERATIONS = [...CREATE_OPERATIONS, ...CHANGE_OPERATIONS] as const;
 export type Operation = (typeof OPERATIONS)[number];

@@ -428,8 +428,8 @@ Verification: test
 
 `.liftoff/manifest.json` records:
 
-- each Liftoff operation that wrote the project (`init`, `update`, `adopt`
-  and the others), with the release, oldest first;
+- each Liftoff operation that wrote the project (`init`, `migrate`,
+  `update`, `adopt` and the others), with the release, oldest first;
 - for a project adopted from a Liftoff release before the rebuild, a legacy
   record: the old release, and each old record's path, kind and state, with
   the sha256 of a file as it was kept;

@@ -424,11 +424,11 @@ describe("ADOPT-002 a part it cannot place blocks adopting", () => {
     const plan = await adopt();
     expect(plan.unsupported).toBe(true);
     expect(plan.blocked).toEqual([
-      "no backend this release supports was found: the project holds express in ., which this release has no stack for",
+      "no backend this release supports was found: the project holds express in ., which this release has no stack for; liftoff migrate --stack makes a new project beside it on a stack this release has",
     ]);
     rmSync(at("package.json"));
     expect((await adopt()).blocked).toEqual([
-      "no backend this release supports was found: no pyproject.toml that depends on FastAPI, package.json that depends on Fastify, or go.mod that requires Huma",
+      "no backend this release supports was found: no pyproject.toml that depends on FastAPI, package.json that depends on Fastify, or go.mod that requires Huma; liftoff migrate --stack makes a new project beside it on a stack this release has",
     ]);
   });
 
