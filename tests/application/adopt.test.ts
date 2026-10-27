@@ -198,6 +198,42 @@ describe("ADOPT-001 adopting proposes what the project is, from what it holds", 
     });
   });
 
+  it("carries over an old configuration's environments and pattern, but never an empty list", async () => {
+    write("api/pyproject.toml", PYPROJECT);
+    const lock = 'provider "registry.opentofu.org/hashicorp/azurerm" {\n  version = "4.0.0"\n}\n';
+    for (const root of ["bootstrap", "environments/dev"]) {
+      write(`infra/${root}/main.tf`, "terraform {}\n");
+      write(`infra/${root}/.terraform.lock.hcl`, lock);
+    }
+    write(
+      "liftoff.manifest.json",
+      JSON.stringify({
+        artifactVersion: 7,
+        generatedBy: "Mission Control Liftoff",
+        liftoffVersion: "0.12.3",
+      }),
+    );
+    const old = (fields: Record<string, unknown>) =>
+      write(
+        "liftoff.config.json",
+        JSON.stringify({ projectName: "assistant", projectType: "api", ...fields }),
+      );
+    old({ environments: ["dev"] });
+    expect(chosen(await adopt())).toMatchObject({ environments: "dev (old configuration)" });
+    old({ environments: [] });
+    const fallback = await adopt();
+    expect(isBlocked(fallback)).toBe(false);
+    expect(chosen(fallback)).toMatchObject({ environments: "dev, staging, prod (default)" });
+
+    // A GenAI backend takes the old pattern.
+    rmSync(at("infra"), { recursive: true });
+    write("api/pyproject.toml", PYPROJECT.replace('"fastapi>=0.115"', '"fastapi", "pydantic-ai"'));
+    old({ pattern: "rag" });
+    const genai = await adopt();
+    expect(chosen(genai)).toMatchObject({ pattern: "rag (old configuration)" });
+    expect(genai.config).toMatchObject({ stack: "python-pydanticai", pattern: "rag" });
+  });
+
   it("carries over only what an old configuration says this release has", async () => {
     write("backend/pyproject.toml", PYPROJECT);
     write(
@@ -244,6 +280,8 @@ describe("ADOPT-001 adopting proposes what the project is, from what it holds", 
     await expect(adopt()).rejects.toThrow(
       "liftoff.yaml is already here, so this is a Liftoff project",
     );
+    // An option's mistake comes first, even in a project Liftoff already has.
+    await expect(adopt({ agents: ["gemini"] })).rejects.toThrow(AdoptOptionError);
     rmSync(at(CONFIG_FILE));
     write(".liftoff/change-journal.json", "");
     await expect(adopt()).rejects.toThrow(ProjectChangeError);
@@ -306,9 +344,9 @@ describe("ADOPT-002 a part it cannot place blocks adopting", () => {
     expect((await adopt({ layout: { backend: "tools" } })).blocked).toEqual([
       "tools holds an application on express, not a backend this release supports",
     ]);
-    expect((await adopt({ frontend: "none", layout: { frontend: "web" } })).blocked).toEqual([
-      "--layout binds the frontend, but --frontend none leaves it out",
-    ]);
+    await expect(adopt({ frontend: "none", layout: { frontend: "web" } })).rejects.toThrow(
+      new AdoptOptionError("--layout binds the frontend, but --frontend none leaves it out"),
+    );
   });
 
   it("blocks when it cannot tell what a directory holds, unless every part is named", async () => {
@@ -493,8 +531,33 @@ describe("ADOPT-003 adopting adds Liftoff's own files, never over the project's"
       "/.liftoff/change.lock\n.liftoff/change-journal.json\n.liftoff/governance.lock\n",
     );
     expect(await listed()).toEqual([]);
-    write(".gitignore", ".liftoff/\n");
-    expect(await listed()).toEqual([]);
+    // Ignoring all of .liftoff would ignore the manifest every clone needs.
+    for (const line of [".liftoff/", "/.liftoff", ".liftoff/*", ".liftoff/manifest.json"]) {
+      write(".gitignore", `${line}\n`);
+      expect(await listed(), line).toEqual([
+        {
+          check: "liftoff.ignored",
+          status: "noncompliant",
+          message:
+            ".gitignore ignores .liftoff/manifest.json, which every clone of the project needs",
+          next: "Ignore only .liftoff/governance.lock, .liftoff/change-journal.json, .liftoff/change.lock, which Liftoff writes only while one of its commands runs.",
+        },
+      ]);
+    }
+  });
+
+  it("blocks a declaration that is not UTF-8 text, which planning again cannot help", async () => {
+    service();
+    writeFileSync(
+      at("pyproject.toml"),
+      // A Latin-1 "é" in a comment, which is not UTF-8.
+      Buffer.concat([Buffer.from("# d"), Buffer.from([0xe9]), Buffer.from(`j\n${PYPROJECT}`)]),
+    );
+    const plan = await adopt();
+    expect(plan.plan).toBeUndefined();
+    expect(plan.blocked).toEqual([
+      "pyproject.toml is not UTF-8 text; save it as UTF-8 to adopt the project",
+    ]);
   });
 
   it("keeps whatever is, or may be, where a file of Liftoff's would go", async () => {
@@ -767,9 +830,7 @@ describe("ADOPT-003 the adoption rests on exactly what was assessed", () => {
     });
     await expect(
       planAdopt({ assets, fs: port }, root, VERSION, {}, { named: true, refused: [] }),
-    ).rejects.toThrow(
-      "pyproject.toml changed while adopting was being planned, or is not UTF-8 text; plan it again",
-    );
+    ).rejects.toThrow("pyproject.toml changed while adopting was being planned; plan it again");
   });
 
   it("refuses an old configuration that changed after it was found migratable", async () => {

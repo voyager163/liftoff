@@ -152,7 +152,7 @@ export class AdoptOptionError extends ProjectChangeError {
 }
 
 const changedWhilePlanned = (file: string) =>
-  `${file} changed while adopting was being planned, or is not UTF-8 text; plan it again`;
+  `${file} changed while adopting was being planned; plan it again`;
 
 /** Whether a plan says the project cannot be adopted as it is. */
 export const isBlocked = (adopt: AdoptPlan): boolean => adopt.blocked.length > 0;
@@ -190,6 +190,9 @@ export async function planAdopt(
   where: AdoptWhere,
 ): Promise<AdoptPlan> {
   const { fs } = ports;
+  // An option's mistake is never hidden behind anything about the project.
+  const problem = optionProblem(choices);
+  if (problem !== undefined) throw new AdoptOptionError(problem);
   if ((await fs.directoryIdentity(directory)) === undefined) {
     throw new ProjectChangeError(`${directory} is not a directory Liftoff can change`);
   }
@@ -205,8 +208,6 @@ export async function planAdopt(
 
   // The hash of each declaration and old record, as the assessment read it.
   const read = new Map<string, string>();
-  const problem = optionProblem(choices);
-  if (problem !== undefined) throw new AdoptOptionError(problem);
   const assessment = await assessProject(fs, directory, { ...where, read });
   const blocked: string[] = [];
   const legacy = assessment.legacy?.records ?? [];
@@ -426,14 +427,21 @@ export async function planAdopt(
   // manifest records, must still be exactly as the assessment read them
   // when it applies; so must they be now.
   const unchanged: Unchanged[] = [];
-  const rest = async (file: string): Promise<string> => {
+  const rest = async (file: string): Promise<string | undefined> => {
     const seen = read.get(file);
     const now = await fs.hashWithin(directory, file, MAX_CHANGED_BYTES);
-    if (seen === undefined || now.kind !== "file" || now.sha256 !== seen) {
-      throw new ProjectChangeError(changedWhilePlanned(file));
+    if (seen !== undefined && now.kind === "file" && now.sha256 === seen) {
+      unchanged.push({ path: file, sha256: seen });
+      return seen;
     }
-    unchanged.push({ path: file, sha256: seen });
-    return seen;
+    // Read as text the same as before, but other bytes: not UTF-8, so its
+    // text is not its content, and planning again cannot help.
+    const again = await fs.readWithin(directory, file, MAX_CHANGED_BYTES);
+    if (again.kind === "file" && again.text !== undefined && sha256Hex(again.text) === seen) {
+      blocked.push(`${file} is not UTF-8 text; save it as UTF-8 to adopt the project`);
+      return undefined;
+    }
+    throw new ProjectChangeError(changedWhilePlanned(file));
   };
   const declarations = new Set(
     Object.values(parts.chosen).flatMap((part) =>
@@ -632,6 +640,11 @@ function optionProblem(choices: AdoptChoices): string | undefined {
 /** Why options given together rule each other out, whatever the project holds. */
 function conflict(choices: AdoptChoices): string | undefined {
   const { agents, environments, stack, pattern, infrastructure, reviewEngine } = choices;
+  for (const component of ["frontend", "infrastructure"] as const) {
+    if (choices.layout?.[component] !== undefined && choices[component] === "none") {
+      return `--layout binds the ${component}, but --${component} none leaves it out`;
+    }
+  }
   if (reviewEngine !== undefined && agents !== undefined && !agents.includes(reviewEngine)) {
     return `--review-engine ${reviewEngine} must be one of the agents --agents selects`;
   }
@@ -716,12 +729,8 @@ function resolveParts(assessment: ProjectAssessment, choices: AdoptChoices): Res
     const option = optionFor(choices, component);
     const flag = component === "backend" ? "--stack" : `--${component}`;
     const bound = choices.layout?.[component];
-    if (component !== "backend" && option === "none") {
-      if (bound !== undefined) {
-        blocked.push(`--layout binds the ${component}, but ${flag} none leaves it out`);
-      }
-      continue;
-    }
+    // --layout with none for the same part is refused with the options.
+    if (component !== "backend" && option === "none") continue;
     const found = assessment.parts.filter((part) => part.component === component && part.supported);
     if (bound !== undefined) {
       const at = found.filter((part) => pathKey(part.path) === pathKey(bound));
@@ -836,15 +845,25 @@ async function unignored(
   const liftoff = generated.find((file) => file.path === ignore);
   if (liftoff === undefined || !kept.includes(ignore)) return [];
   const own = await fs.readWithin(directory, ignore, MAX_RECORD_BYTES);
-  // A line counts with or without a leading "/", as does ignoring all of .liftoff.
+  // A line counts with or without a leading "/" or a trailing one.
   const has = new Set(
     own.kind === "file" && own.text !== undefined
       ? own.text.split(/\r?\n/).map((line) => line.trim().replace(/^\//, "").replace(/\/$/, ""))
       : [],
   );
-  const missing = has.has(".liftoff")
-    ? []
-    : liftoff.content.split("\n").filter((line) => line.startsWith(".liftoff/") && !has.has(line));
+  const transient = liftoff.content.split("\n").filter((line) => line.startsWith(".liftoff/"));
+  // Ignoring all of .liftoff ignores the manifest too, which every clone needs.
+  if ([".liftoff", ".liftoff/*", MANIFEST_FILE].some((line) => has.has(line))) {
+    return [
+      {
+        check: "liftoff.ignored",
+        status: "noncompliant",
+        message: `${ignore} ignores ${MANIFEST_FILE}, which every clone of the project needs`,
+        next: `Ignore only ${transient.join(", ")}, which Liftoff writes only while one of its commands runs.`,
+      },
+    ];
+  }
+  const missing = transient.filter((line) => !has.has(line));
   return missing.length === 0
     ? []
     : [
@@ -975,9 +994,11 @@ async function oldChoices(
   const agents = some(fields.agents, has(AGENT_HOSTS));
   const governance = one(fields.governanceProfile, has(GOVERNANCE));
   const pattern = one(fields.pattern, has(PATTERNS));
-  const environments = some(fields.environments, (text) =>
+  // Infrastructure needs at least one environment, so none says nothing.
+  const listed = some(fields.environments, (text) =>
     (ENVIRONMENTS as readonly string[]).includes(text),
   );
+  const environments = listed?.length === 0 ? undefined : listed;
   return {
     ...(name === undefined ? {} : { name }),
     ...(agents === undefined ? {} : { agents }),

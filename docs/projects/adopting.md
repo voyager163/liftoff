@@ -60,6 +60,7 @@ It changes nothing, says why and exits 3 when:
 - one part's directory is inside another's, or the infrastructure is the
   repository root: move the part first;
 - the directory's name does not make a project name: give one with `--name`;
+- a declaration such as `pyproject.toml` is not UTF-8 text: save it as UTF-8;
 - a Liftoff release before the rebuild left a record it does not
   recognize, or an update or repair it did not finish.
 
@@ -91,7 +92,8 @@ there.
 The plan also lists the application changes Liftoff's standard expects of
 the parts it adopts, which adopting does not make, such as a missing lock
 file, tests, a coverage threshold or a Dockerfile, the `.liftoff/` lines
-Liftoff's `.gitignore` has, and infrastructure roots outside the
+Liftoff's `.gitignore` has (and never all of `.liftoff`, whose manifest
+every clone needs), and infrastructure roots outside the
 `bootstrap` directory and the directories under `environments`, which are
 the ones Liftoff's CI validates. Once the
 project is adopted, make each with a reviewed patch:

@@ -343,7 +343,8 @@ proposes:
 - the coding-agent hosts the project is set up for;
 - for a project from a Liftoff release before the rebuild, the name, agents,
   governance profile, GenAI pattern and environments its old configuration
-  names, each only when this release has exactly that value;
+  names, each only when this release has exactly that value (and at least
+  one environment);
 - otherwise a name made from the directory's name, and the default
   governance profile.
 
@@ -385,6 +386,8 @@ each reason and exits 3 when:
   it, such as a Vue frontend beside a PydanticAI backend: it says to leave
   that part out with `--frontend none` or `--infrastructure none`;
 - the directory's name makes no project name and `--name` gives none;
+- a declaration a part was found from is not UTF-8 text, so what was read
+  is not what is there;
 - a record from a Liftoff release before the rebuild is unsupported
   (LEGACY-002), or is an update or repair that release did not finish
   (LEGACY-001).
@@ -413,7 +416,8 @@ expects of the parts it adopts, which adopting does not make: what
 `liftoff assess` finds missing in them, such as a lock file, tests or a
 coverage threshold, the lines Liftoff's `.gitignore` has for its own
 records when the project keeps its own `.gitignore` and it does not list
-them (with or without a leading `/`, or all of `.liftoff`), and each
+them (with or without a leading `/`), or ignores all of `.liftoff` or the
+manifest, which every clone needs, and each
 infrastructure root module, with a lock file or without, outside the
 `bootstrap` directory and the directories under `environments`, the ones
 Liftoff's CI validates, or those directories missing. They are the person's to make, for example with a reviewed patch

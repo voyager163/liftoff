@@ -149,6 +149,11 @@ describe("ADOPT-005 adopting from the command line", () => {
         "--environments are for infrastructure",
       ],
       [["--stack", "python-fastapi", "--pattern", "rag"], "--pattern is for GenAI projects"],
+      [["--frontend", "none", "--layout", "frontend=web"], "--layout binds the frontend"],
+      [
+        ["--infrastructure", "none", "--layout", "infrastructure=infra"],
+        "--layout binds the infrastructure",
+      ],
     ] as const;
     // Two backends, which alone would exit 3, and then none supported, which would exit 6.
     for (const project of ["ambiguous", "unsupported"]) {
