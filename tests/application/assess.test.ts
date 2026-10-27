@@ -1,10 +1,12 @@
 import {
+  closeSync,
+  fstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -136,9 +138,15 @@ describe("ASSESS-001 assessing a project changes nothing and runs nothing", () =
       const files = readdirSync(work, { recursive: true, withFileTypes: true })
         .filter((entry) => entry.isFile())
         .map((entry) => path.join(entry.parentPath, entry.name));
-      return files
-        .sort()
-        .map((file) => `${file} ${statSync(file).mtimeMs} ${readFileSync(file, "utf8").length}`);
+      // Each file's time and contents through one handle, so both are the same file's.
+      return files.sort().map((file) => {
+        const handle = openSync(file, "r");
+        try {
+          return `${file} ${fstatSync(handle).mtimeMs} ${readFileSync(handle, "utf8")}`;
+        } finally {
+          closeSync(handle);
+        }
+      });
     };
     const before = snapshot();
     const calls: { method: string; file: string }[] = [];
