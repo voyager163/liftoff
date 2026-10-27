@@ -58,27 +58,46 @@ function isRuleset(value: unknown): value is DesiredRuleset {
  * without following a link and within limits.
  */
 export async function readDesired(fs: ProjectFsPort, directory: string): Promise<Desired> {
-  const files = async (relative: string, extensions: readonly string[]) => {
-    const listing = await fs.listWithin(directory, relative, MAX_GOVERNANCE_FILES);
-    if (listing.kind === "missing") return [];
-    if (listing.kind !== "directory") {
-      throw new GovernanceError(
-        listing.kind === "inaccessible"
-          ? `${relative} cannot be read by this user`
-          : `${relative} is not a directory Liftoff can read: it is a file or a link, or it changed as it was read`,
-      );
+  /**
+   * Files with one of `extensions` in a directory, and with `nested` in the
+   * directories under it too; a link, or a directory that cannot be read in
+   * full, is an error rather than left out.
+   */
+  const files = async (relative: string, extensions: readonly string[], nested: boolean) => {
+    const found: string[] = [];
+    const queue = [relative];
+    let seen = 0;
+    for (let at = queue.shift(); at !== undefined; at = queue.shift()) {
+      const listing = await fs.listWithin(directory, at, MAX_GOVERNANCE_FILES - seen);
+      if (listing.kind === "missing" && at === relative) return [];
+      if (listing.kind !== "directory") {
+        throw new GovernanceError(
+          listing.kind === "inaccessible"
+            ? `${at} cannot be read by this user`
+            : `${at} is not a directory Liftoff can read: it is a file or a link, or it changed as it was read`,
+        );
+      }
+      seen += listing.entries.length;
+      if (!listing.complete) {
+        throw new GovernanceError(`${relative} has more than ${MAX_GOVERNANCE_FILES} entries`);
+      }
+      for (const entry of listing.entries) {
+        const file = `${at}/${entry.name}`;
+        if (entry.kind === "file" && extensions.some((end) => entry.name.endsWith(end))) {
+          found.push(file);
+        } else if (entry.kind === "directory" && nested) {
+          queue.push(file);
+        } else if (entry.kind === "other") {
+          throw new GovernanceError(
+            `${file} is a link or special file, which Liftoff does not follow`,
+          );
+        }
+      }
     }
-    if (!listing.complete) {
-      throw new GovernanceError(`${relative} has more than ${MAX_GOVERNANCE_FILES} entries`);
-    }
-    return listing.entries
-      .filter(
-        (entry) => entry.kind === "file" && extensions.some((end) => entry.name.endsWith(end)),
-      )
-      .map((entry) => `${relative}/${entry.name}`);
+    return found.sort();
   };
   const rulesets: DesiredRuleset[] = [];
-  for (const file of await files(".github/rulesets", [".json"])) {
+  for (const file of await files(".github/rulesets", [".json"], true)) {
     const found = await fs.readWithin(directory, file, MAX_RULESET_BYTES);
     if (found.kind !== "file" || found.text === undefined) {
       throw new GovernanceError(
@@ -118,7 +137,8 @@ export async function readDesired(fs: ProjectFsPort, directory: string): Promise
       }
     }
   }
-  const workflows = [...(await files(".github/workflows", [".yml"]))].sort();
+  // GitHub runs only the workflows directly in .github/workflows.
+  const workflows = await files(".github/workflows", [".yml"], false);
   return {
     rulesets,
     workflows,

@@ -1257,6 +1257,11 @@ function infrastructureChecks(tree: Tree, part: Part): AssessmentFinding[] {
     const lock = fileAt(tree, within(root, ".terraform.lock.hcl"));
     if (lock.found === false) unlocked.push(root);
     else if (lock.found === "unknown") unseen ??= lock;
+    else {
+      // A lock that was not read says nothing about which providers it locks.
+      const text = parsed(tree, lock.path, (value) => value, "text");
+      if ("status" in text) unseen ??= { found: "unknown", status: text.status, why: text.reason };
+    }
   }
   const check = "infrastructure.provider-lock";
   const subject = `infrastructure at ${part.path}`;

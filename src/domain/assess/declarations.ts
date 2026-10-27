@@ -29,11 +29,15 @@ const strings = (value: unknown): string[] =>
 /** A positive threshold, as a number or as text. */
 const positive = (value: unknown) => Number(value) > 0;
 
-/** Whether pytest options, as text or a list, set a coverage threshold above 0. */
-const failsUnderCoverage = (options: unknown) =>
-  /--cov-fail-under[= ]\s*0*[1-9]/.test(
-    Array.isArray(options) ? options.join(" ") : String(options ?? ""),
-  );
+/**
+ * Whether pytest options, as text or a list, set a coverage threshold above
+ * 0; pytest takes the last one given.
+ */
+function failsUnderCoverage(options: unknown): boolean {
+  const text = Array.isArray(options) ? options.join(" ") : String(options ?? "");
+  const given = [...text.matchAll(/--cov-fail-under(?:=|\s+)(\S+)/g)].at(-1)?.[1];
+  return given !== undefined && positive(given);
+}
 
 /** Member and excluded directories of a workspace, as globs relative to its root. */
 export interface Workspace {
@@ -107,29 +111,31 @@ export const hasPython = (project: PythonProject, ...names: readonly string[]): 
   names.some((name) => project.dependencies.has(pythonName(name)));
 
 /**
- * The sections of an INI file, such as setup.cfg, each with its keys. An
- * indented line continues the value before it. A comment, whole-line or
+ * The sections of an INI file, such as setup.cfg, each with its keys. A
+ * line indented deeper than its option continues the value before it. A comment, whole-line or
  * after a space, is left out, so what it mentions never counts.
  */
 export function readIni(text: string): ReadonlyMap<string, ReadonlyMap<string, string>> {
   const sections = new Map<string, Map<string, string>>();
   let section: Map<string, string> | undefined;
-  let key: string | undefined;
+  let key: { readonly name: string; readonly indent: number } | undefined;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/\s[#;].*$/, "");
+    const indent = /^\s*/.exec(line)?.[0].length ?? 0;
     if (/^\s*([#;]|$)/.test(line)) continue;
     const header = /^\s*\[([^\]]+)\]\s*$/.exec(line);
     if (header) {
       section = new Map();
       sections.set((header[1] ?? "").trim(), section);
       key = undefined;
-    } else if (/^\s/.test(line) && section !== undefined && key !== undefined) {
-      section.set(key, `${section.get(key) ?? ""} ${line.trim()}`);
+    } else if (section !== undefined && key !== undefined && indent > key.indent) {
+      // Only a line indented deeper than its option continues the value.
+      section.set(key.name, `${section.get(key.name) ?? ""} ${line.trim()}`);
     } else {
-      const pair = /^([^=:]+?)\s*[=:]\s*(.*)$/.exec(line);
+      const pair = /^\s*([^=:]+?)\s*[=:]\s*(.*)$/.exec(line);
       if (pair && section !== undefined) {
-        key = (pair[1] ?? "").trim();
-        section.set(key, (pair[2] ?? "").trim());
+        key = { name: (pair[1] ?? "").trim(), indent };
+        section.set(key.name, (pair[2] ?? "").trim());
       }
     }
   }

@@ -175,6 +175,19 @@ fail_under = 80
         ?.workspace,
     ).toEqual({ members: ["packages/*"], exclude: ["packages/old"] });
     expect(readPyproject("[tool.coverage.report]\nfail_under = 0\n")?.coverageGate).toBe(false);
+    for (const [threshold, gate] of [
+      ["0.5", true],
+      ["0", false],
+      ["-5", false],
+      ["0.0", false],
+    ] as const) {
+      expect(
+        readPyproject(
+          `[tool.pytest.ini_options]\naddopts = "--cov --cov-fail-under=${threshold}"\n`,
+        )?.coverageGate,
+        threshold,
+      ).toBe(gate);
+    }
     expect(
       readPyproject('[tool.pytest.ini_options]\naddopts = ["--cov", "--cov-fail-under=80"]\n')
         ?.coverageGate,
@@ -763,6 +776,32 @@ describe("ASSESS-003 what is found is only what the declarations say", () => {
     expect(lines(run(unread))).toContain("compliant structure.part infra");
   });
 
+  it("is unknown about an Azure part with a lock it could not read", () => {
+    const azure = 'provider "registry.opentofu.org/hashicorp/azurerm" {\n}\n';
+    const project = lines(
+      run(
+        tree(
+          {
+            "infra/dev/main.tf": "",
+            "infra/dev/.terraform.lock.hcl": azure,
+            "infra/prod/main.tf": "",
+            "infra/prod/.terraform.lock.hcl": azure,
+            "infra/staging/main.tf": "",
+          },
+          {
+            unread: {
+              "infra/staging/.terraform.lock.hcl": {
+                status: "inaccessible",
+                reason: "closed to this user",
+              },
+            },
+          },
+        ),
+      ),
+    );
+    expect(project).toContain("inaccessible infrastructure.provider-lock infrastructure at infra");
+  });
+
   it("keeps independent infrastructure apart by the providers each locks", () => {
     const lock = (provider: string) =>
       `provider "registry.opentofu.org/hashicorp/${provider}" {\n}\n`;
@@ -842,6 +881,13 @@ describe("ASSESS-003 what is found is only what the declarations say", () => {
     expect(python({ "tox.ini": "[pytest]\naddopts = --cov --cov-fail-under 90\n" })).toContain(
       gate,
     );
+    expect(
+      python({ ".coveragerc": "[report]\n    precision = 2\n    fail_under = 85\n" }),
+    ).toContain(gate);
+    expect(python({ "pytest.ini": "[pytest]\naddopts = --cov-fail-under=0.5\n" })).toContain(gate);
+    expect(
+      python({ "pytest.ini": "[pytest]\naddopts = --cov-fail-under=90 --cov-fail-under=0\n" }),
+    ).toContain("noncompliant tests.coverage-gate backend at .");
     expect(
       python({ "pytest.ini": "[pytest]\naddopts = --cov  # --cov-fail-under=90\n" }),
     ).toContain("noncompliant tests.coverage-gate backend at .");

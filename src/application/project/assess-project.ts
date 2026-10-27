@@ -195,10 +195,17 @@ export async function assessProject(
           findings,
           ...(validation.config ? { governance: validation.config.governance } : {}),
         };
-  if (identity === undefined || (await fs.directoryIdentity(directory)) !== identity) {
-    throw new AssessError(`${directory} was replaced while it was being assessed; assess it again`);
-  }
+  const unchanged = async () => {
+    if (identity === undefined || (await fs.directoryIdentity(directory)) !== identity) {
+      throw new AssessError(
+        `${directory} was replaced while it was being assessed; assess it again`,
+      );
+    }
+  };
+  await unchanged();
   const github: GitHubState = options.live ? await options.live() : { kind: "not-requested" };
+  // Reading GitHub reads the project's governance files too.
+  if (options.live) await unchanged();
   const assessment = assess(
     { entries, listed, declarations: texts, gaps },
     { git, liftoff, github },

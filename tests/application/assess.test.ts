@@ -224,6 +224,25 @@ describe("ASSESS-001 assessing a project changes nothing and runs nothing", () =
     await expect(run({}, replaced)).rejects.toThrow(/was replaced while it was being assessed/);
   });
 
+  it("refuses a project directory replaced while GitHub is read", async () => {
+    repository();
+    let replaced = false;
+    const fake: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      directoryIdentity: async () => (replaced ? "another" : "this"),
+    });
+    await expect(
+      run(
+        {
+          live: async () => {
+            replaced = true;
+            return { kind: "not-requested" };
+          },
+        },
+        fake,
+      ),
+    ).rejects.toThrow(/was replaced while it was being assessed/);
+  });
+
   it("calls nothing but reads when GitHub is not asked for", async () => {
     repository();
     let asked = false;
