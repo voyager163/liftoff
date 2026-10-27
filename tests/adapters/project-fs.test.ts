@@ -380,6 +380,29 @@ function shortWrites(limit: number): ReadCalls {
   };
 }
 
+describe("CHANGE-004 a replaced file takes the permissions of the one it replaces", () => {
+  it.each<[string, number, boolean, number]>([
+    ["keeps them exactly when it stays not executable", 0o600, false, 0o600],
+    ["keeps them exactly when it stays executable", 0o744, true, 0o744],
+    ["adds execute wherever it may be read", 0o600, true, 0o700],
+    ["adds execute for everyone who may read it", 0o644, true, 0o755],
+    ["removes execute", 0o755, false, 0o644],
+  ])("%s", async (_, from, executable, expected) => {
+    write("original", "a");
+    write("replacement", "b");
+    chmodSync(path.join(work, "original"), from);
+    const mode = () => statSync(path.join(work, "replacement")).mode & 0o777;
+    const before = mode();
+    await fs.matchPermissions(
+      path.join(work, "original"),
+      path.join(work, "replacement"),
+      executable,
+    );
+    // Windows has no such permissions, so nothing is changed there.
+    expect(mode()).toBe(process.platform === "win32" ? before : expected);
+  });
+});
+
 describe("ASSESS-002 listing a directory follows no link and stays within its limit", () => {
   it("lists a directory's entries by name, with links as neither file nor directory", async () => {
     write("dir/b.txt", "");

@@ -15,6 +15,13 @@ export const CHANGE_JOURNAL_FILE = ".liftoff/change-journal.json";
 
 const sha256 = z.string().check(z.regex(/^[0-9a-f]{64}$/, "must be a sha256 hex digest"));
 
+/**
+ * Who owns a changed file: one of the manifest's ownership classes, or
+ * "project" for a file the manifest does not list, such as the project's
+ * own source a repair patches.
+ */
+export const CHANGE_OWNERSHIP = [...OWNERSHIP, "project"] as const;
+
 const fileChange = z.strictObject({
   /** Repository-relative POSIX path. */
   path: z.string(),
@@ -23,7 +30,7 @@ const fileChange = z.strictObject({
   /** sha256 of the file once changed, or null when it is removed. */
   after: z.nullable(sha256),
   /** Who owns the file once changed; absent when it is removed. */
-  ownership: z.optional(z.enum(OWNERSHIP)),
+  ownership: z.optional(z.enum(CHANGE_OWNERSHIP)),
   /** Whether the changed file is executable; absent when it is removed. */
   executable: z.optional(z.boolean()),
 });

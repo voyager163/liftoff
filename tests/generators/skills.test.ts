@@ -220,6 +220,28 @@ describe("SKILL-007 skills to assess a project and its governance", () => {
   });
 });
 
+describe("SKILL-008 a skill to repair a project with the person's approval", () => {
+  it("ships to generated projects, and leaves every change to liftoff repair and the person", async () => {
+    const own = (await loadAgentSources(assets)).skills.map((skill) => skill.name);
+    expect(own).not.toContain("liftoff-repair");
+    const { skills } = await loadAgentSources(assets, { projectSkills: true });
+    const body = skills.find((skill) => skill.name === "liftoff-repair")?.body ?? "";
+    for (const text of [
+      "liftoff repair --check --json",
+      "liftoff repair --restore <paths>",
+      "liftoff repair --patch <diff> --paths <paths>",
+      "never in the project itself",
+      "git diff --no-renames",
+      "Never edit, create or delete a file in the project yourself",
+      "never answer Liftoff's question for the person",
+      "liftoff capabilities --json",
+    ]) {
+      expect(body).toContain(text);
+    }
+    expect(body).not.toContain("<!-- include:");
+  });
+});
+
 describe("SKILL-006 Liftoff's own rendered skills are current", () => {
   it("passes the drift check", () => {
     const output = execFileSync(process.execPath, ["scripts/render-own-files.ts", "--check"], {

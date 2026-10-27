@@ -1,50 +1,22 @@
-import { JournalError } from "../../domain/change/journal.ts";
-import { type ChangePlan, type FileChange, sealChangePlan } from "../../domain/plan/change-plan.ts";
-import { PLAN_SCHEMA, PlanError, sha256Hex } from "../../domain/plan/plan.ts";
-import {
-  CONFIG_FILE,
-  ConfigError,
-  isStandardLayout,
-  type ProjectConfig,
-  parseConfig,
-} from "../../domain/project/config.ts";
-import {
-  MANIFEST_FILE,
-  type Manifest,
-  ManifestError,
-  type ManifestFile,
-  type Ownership,
-  parseManifest,
-  serializeManifest,
-} from "../../domain/project/manifest.ts";
+import type { ChangePlan, FileChange } from "../../domain/plan/change-plan.ts";
+import { PlanError } from "../../domain/plan/plan.ts";
+import type { ManifestFile, Ownership } from "../../domain/project/manifest.ts";
 import { pathKey } from "../../domain/project/paths.ts";
 import { isExecutable, type ProjectFile } from "../../generators/project.ts";
 import {
   CHANGE_COMMANDS,
   MAX_CHANGED_BYTES,
   type NewContent,
-  readJournal,
-  UNREADABLE_JOURNAL_ADVICE,
   type Unchanged,
 } from "../change/apply-changes.ts";
-import { generate } from "../init/generation.ts";
+import {
+  generateFor,
+  nameOnDisk,
+  RECORDS,
+  readProject,
+  sealProjectChange,
+} from "../change/project-change.ts";
 import type { AssetPort, FileHash, ProjectFsPort } from "../ports.ts";
-import { inventoryLegacy } from "../project/legacy-inventory.ts";
-
-/** The most entries read from one directory when finding a file's name on disk. */
-const MAX_LISTED = 10_000;
-
-/** The most of liftoff.yaml or the manifest read; neither comes near it. */
-const MAX_RECORD_BYTES = 1024 * 1024;
-
-export class UpdateError extends Error {
-  override readonly name: string = "UpdateError";
-}
-
-/** A project this release cannot update, such as one from before the rebuild. */
-export class UpdateUnsupportedError extends UpdateError {
-  override readonly name = "UpdateUnsupportedError";
-}
 
 /**
  * What an update does with one file:
@@ -128,72 +100,16 @@ export async function planUpdate(
   options: { readonly add?: ReadonlySet<string> } = {},
 ): Promise<UpdatePlan> {
   const { fs } = ports;
-  if ((await fs.directoryIdentity(directory)) === undefined) {
-    throw new UpdateError(`${directory} is not a directory Liftoff can update`);
-  }
-  await refuseUnfinishedChange(fs, directory);
-  const configText = await readRecord(fs, directory, CONFIG_FILE);
-  if (configText === undefined) {
-    if ((await inventoryLegacy(fs, directory)).project) {
-      throw new UpdateUnsupportedError(
-        "this project was made by a Liftoff release before the rebuild; this release changes nothing in it, and adopting it comes in a later release",
-      );
-    }
-    throw new UpdateError(
-      `there is no ${CONFIG_FILE} in ${directory}; update changes only projects Liftoff made`,
-    );
-  }
-  const manifestText = await readRecord(fs, directory, MANIFEST_FILE);
-  if (manifestText === undefined) {
-    throw new UpdateError(
-      `${MANIFEST_FILE} is missing, so Liftoff cannot tell which files it manages`,
-    );
-  }
-  let config: ProjectConfig;
-  let manifest: Manifest;
-  try {
-    config = parseConfig(configText);
-    manifest = parseManifest(manifestText);
-  } catch (error) {
-    if (!(error instanceof ConfigError || error instanceof ManifestError)) throw error;
-    throw new UpdateError(`${error.message}; liftoff validate says more`);
-  }
-  // The configuration the project was made with: never a changed one, which
-  // would switch what the project is made of.
-  const written = manifest.files.find((file) => file.path === CONFIG_FILE);
-  if (written?.sha256 !== sha256Hex(configText)) {
-    throw new UpdateError(
-      `${CONFIG_FILE} changed since Liftoff last wrote it, and update never applies a changed configuration; put it back as it was to update`,
-    );
-  }
-  if (!isStandardLayout(config)) {
-    throw new UpdateUnsupportedError(
-      "this release updates only projects in the standard layout; a project whose parts live elsewhere can be updated once adopting projects is available",
-    );
-  }
-  const { selection, files } = await generate(ports.assets, config, liftoffVersion);
-  const made = new Set(manifest.plugins.map((plugin) => plugin.id));
-  const making = new Set(selection.plugins.map((plugin) => plugin.id));
-  const switched = [
-    ...[...making].filter((id) => !made.has(id)).map((id) => `adds ${id}`),
-    ...[...made].filter((id) => !making.has(id)).map((id) => `drops ${id}`),
-  ];
-  if (switched.length > 0) {
-    throw new UpdateError(
-      `this release would make the project from other plugins (it ${switched.sort().join(", ")}), and update never switches the workflow, governance profile, stack, pattern, agents or any other plugin`,
-    );
-  }
-
-  // By name as macOS and Windows compare names, ignoring case.
-  const records = new Set([pathKey(CONFIG_FILE), pathKey(MANIFEST_FILE)]);
-  const generated = new Map(
-    files
-      .filter((file) => !records.has(pathKey(file.path)))
-      .map((file) => [pathKey(file.path), file]),
-  );
+  const project = await readProject(fs, directory, "update");
+  const { config, manifest } = project;
+  const {
+    selection,
+    files: generated,
+    config: written,
+  } = await generateFor(ports.assets, project, liftoffVersion, "update");
   const steps: UpdateFile[] = [];
   const changes: FileChange[] = [];
-  const unchanged: Unchanged[] = [{ path: CONFIG_FILE, sha256: sha256Hex(configText) }];
+  const unchanged: Unchanged[] = [written];
   const contents = new Map<string, NewContent>();
   const entries = new Map(manifest.files.map((entry) => [entry.path, entry]));
   const replace = (file: ProjectFile, before: string | null) => {
@@ -215,7 +131,7 @@ export async function planUpdate(
 
   for (const entry of manifest.files) {
     // liftoff.yaml and the manifest are never changed as other files are.
-    if (entry.ownership !== "managed" || records.has(pathKey(entry.path))) continue;
+    if (entry.ownership !== "managed" || RECORDS.has(pathKey(entry.path))) continue;
     const wanted = generated.get(pathKey(entry.path));
     // No file changes owner, and one this release does not change is left.
     if (
@@ -305,36 +221,12 @@ export async function planUpdate(
     return { ...result, contents: new Map() };
   }
 
-  const updated = serializeManifest({
+  const sealed = sealProjectChange(project, "update", liftoffVersion, changes, contents, {
     ...manifest,
     plugins: selection.plugins.map(({ id, version }) => ({ id, version })),
     files: [...entries.values()],
-    history: [...manifest.history, { operation: "update", liftoff: liftoffVersion }],
   });
-  // Never a manifest Liftoff would then refuse to read.
-  if (Buffer.byteLength(updated) > MAX_RECORD_BYTES) {
-    throw new UpdateError(
-      `${MANIFEST_FILE} would be over ${MAX_RECORD_BYTES / 1024 / 1024} MiB after this update, more than Liftoff reads, so nothing was changed`,
-    );
-  }
-  changes.push({
-    path: MANIFEST_FILE,
-    before: sha256Hex(manifestText),
-    after: sha256Hex(updated),
-    ownership: "managed",
-    executable: false,
-  });
-  contents.set(MANIFEST_FILE, { content: updated, executable: false });
-  const plan = sealChangePlan({
-    schema: PLAN_SCHEMA,
-    operation: "update",
-    liftoff: liftoffVersion,
-    target: directory,
-    config: { ...config },
-    effects: ["modify-files"],
-    changes,
-  });
-  return { ...result, plan, contents };
+  return { ...result, ...sealed };
 }
 
 /**
@@ -370,62 +262,6 @@ export async function planFromSaved(
   return update;
 }
 
-/** An update cannot begin while another change has not finished. */
-async function refuseUnfinishedChange(fs: ProjectFsPort, directory: string): Promise<void> {
-  let journal: Awaited<ReturnType<typeof readJournal>>;
-  try {
-    journal = await readJournal(fs, directory);
-  } catch (error) {
-    if (!(error instanceof JournalError)) throw error;
-    throw new UpdateError(
-      `a change stopped part way, but its journal cannot be read: ${error.message}; ${UNREADABLE_JOURNAL_ADVICE}`,
-    );
-  }
-  if (journal !== undefined) {
-    const command = CHANGE_COMMANDS[journal.operation];
-    throw new UpdateError(
-      `a change by ${command} that began ${journal.started} has not finished; unless it is still running, finish or undo it with ${command} --recover first`,
-    );
-  }
-}
-
-/** liftoff.yaml or the manifest, or undefined when it is missing. */
-async function readRecord(
-  fs: ProjectFsPort,
-  directory: string,
-  relative: string,
-): Promise<string | undefined> {
-  const found = await fs.readWithin(directory, relative, MAX_RECORD_BYTES);
-  if (found.kind === "missing") return undefined;
-  if (found.kind === "file" && found.text !== undefined) return found.text;
-  throw new UpdateError(
-    found.kind === "inaccessible"
-      ? `${relative} cannot be read by this user`
-      : `${relative} is not a regular file of at most 1 MiB that Liftoff can read: it is a directory, a link or another kind of file, or it changed as it was read`,
-  );
-}
-
-/**
- * A file's path as its directories name it, in the letter case they use, or
- * undefined when it is not there, cannot be listed, or more than one name
- * matches it.
- */
-async function nameOnDisk(
-  fs: ProjectFsPort,
-  directory: string,
-  relative: string,
-): Promise<string | undefined> {
-  const named: string[] = [];
-  for (const part of relative.split("/")) {
-    const listing = await fs.listWithin(directory, named.join("/") || ".", MAX_LISTED);
-    if (listing.kind !== "directory") return undefined;
-    const matching = listing.entries.filter((entry) => pathKey(entry.name) === pathKey(part));
-    if (matching.length !== 1) return undefined;
-    named.push(matching[0]?.name ?? part);
-  }
-  return named.join("/");
-}
-
 /** Why a managed file this release changes or removes is left as it is. */
 function heldBecause(now: FileHash, removing: boolean): string {
   switch (now.kind) {
@@ -435,9 +271,9 @@ function heldBecause(now: FileHash, removing: boolean): string {
       }
       return removing
         ? "this release no longer makes it, but it was changed since Liftoff wrote it, so it is the project's to remove"
-        : "it was changed since Liftoff wrote it; restore it from version control to take this release's version";
+        : "it was changed since Liftoff wrote it; to take this release's version, put it back with liftoff repair or restore it from version control";
     case "missing":
-      return "it is missing; Liftoff does not put back a file that was removed";
+      return "it is missing; update does not put back a file that was removed, but liftoff repair can";
     case "directory":
       return "a directory is where the file should be";
     case "inaccessible":

@@ -22,8 +22,9 @@ run them. For each one this release changes:
 - if it is still as Liftoff wrote it, it takes this release's version, or
   is removed if this release no longer makes it;
 - if you changed it, removed it, or something else stands in its place, it
-  is left as it is and named, with why. To take this release's version,
-  restore it from version control and run update again.
+  is left as it is and named, with why. To take this release's version, put
+  it back with [`liftoff repair`](repairing.md), or restore it from version
+  control and run update again.
 
 Files the project owns are never changed, even when this release's template
 for them changed: your source code, lock files, `.env.example`,

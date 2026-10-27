@@ -148,3 +148,5 @@ rulesets on GitHub with `liftoff governance`.
 Liftoff's or not, against the standard with `liftoff assess`.
 [Updating a project](projects/updating.md) covers bringing the files Liftoff
 manages to a new release with `liftoff update`.
+[Repairing a project](projects/repairing.md) covers putting back Liftoff's
+files and applying reviewed patches with `liftoff repair`.

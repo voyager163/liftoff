@@ -17,7 +17,7 @@ changing anything the person did not agree to.
    install anything yourself without asking.
 2. **Check the project** with `liftoff validate --json`. Report any Liftoff
    file that was changed by hand or is missing, but do not restore it: the
-   person decides.
+   person decides, and the `liftoff-repair` skill can help them put it back.
 3. **Install dependencies** only after the person agrees, using the
    commands in `AGENTS.md` (for example `uv sync` in `backend/`).
 4. **Run the checks** listed in `AGENTS.md` (`liftoff-verify`) and show their

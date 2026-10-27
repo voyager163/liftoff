@@ -79,3 +79,16 @@ project or on GitHub, and they leave any change to the person, through the
 commands the findings name.
 
 Verification: test
+
+## SKILL-008 A skill to repair a project with the person's approval
+
+Generated projects get the `liftoff-repair` skill. It runs
+`liftoff repair --check` and explains what needs attention. For a file a
+recipe can put back, it offers the `liftoff repair --restore` command. For
+anything else, it may prepare a unified diff outside the project, in a
+temporary directory, and show it to the person, who reviews it and applies
+it with `liftoff repair --patch` and the paths it may change. The skill
+never edits the project's files itself, and never confirms a change for the
+person.
+
+Verification: test

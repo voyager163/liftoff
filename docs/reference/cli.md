@@ -191,6 +191,36 @@ liftoff update --plan update.plan.json --yes
 liftoff update --recover undo
 ```
 
+## liftoff repair
+
+Finds the files Liftoff wrote that are not as they should be and puts back those you choose: a file Liftoff manages that is missing or was changed by hand, as this release makes it, or a missing file Liftoff wrote for the project, when this release would write it exactly as before. With --patch it applies a reviewed unified diff, such as one a coding agent prepared, to the project's own files within the paths named with --paths: every hunk must match exactly, and it never changes a file Liftoff manages, a framework's file, liftoff.yaml, .liftoff or .git. It shows the plan and asks before changing anything; the default answer is no. In scripts, pass --yes. Each file is changed only if it is still as planned, and a repair that stops part way can be finished or undone with --recover. Like update, it never switches what the project is made of.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.repair/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--check` | Change nothing; list the files Liftoff wrote that are not as it left them, and exit 3 when one Liftoff manages needs attention. |
+| `--restore <paths>` | Put back these files, comma-separated, from those repair lists. |
+| `--patch <file>` | Apply this reviewed unified diff (git diff --no-renames) to the project's own files. |
+| `--paths <paths>` | With --patch, the files and directories it may change, comma-separated; it is refused if it changes anything else. |
+| `--out <file>` | Save the plan to this file and change nothing in the project; apply it with --plan. |
+| `--plan <file>` | Apply exactly this saved plan, with the same --patch and --paths for a patch, and refuse it if anything changed since. |
+| `--recover <mode>` | Finish or undo a repair that stopped part way. (one of `finish`, `undo`) |
+| `--yes` | Change the files without asking. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff repair --check
+liftoff repair
+liftoff repair --restore .github/liftoff/review-policy.mjs --yes
+liftoff repair --patch fix.diff --paths backend/app
+liftoff repair --recover undo
+```
+
 ## liftoff review classify
 
 Classifies the change on this branch against its base with the repository's review policy (.github/review-policy.yml, read from the base branch). Reports the risk tier, review depth, required human approvals and why. It is the same check CI runs, so the result predicts what the pull request will need.

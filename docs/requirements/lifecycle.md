@@ -81,7 +81,9 @@ changes:
 - its repository-relative path;
 - the sha256 of the file as it must be now, or that it must not exist;
 - the sha256 it will have, or that it is removed;
-- for a file that is kept, who owns it and whether it is executable.
+- for a file that is kept, who owns it (`managed`, `seeded` or `framework`
+  as the manifest says, or `project` for a file the manifest does not list)
+  and whether it is executable.
 
 Its only effect is `modify-files`. It is sealed like an init plan, so an
 edited plan is refused, and each kind of plan is refused where the other is
@@ -168,7 +170,10 @@ Verification: test
 
 ## CHANGE-004 Files change one at a time, the manifest last
 
-Each file is replaced in one step, keeping the executable bit planned. The
+Each file is replaced in one step, keeping the permissions of the file it
+replaces, so a private file stays private; only when the plan changes
+whether it is executable is execute permission added wherever it may be
+read, or removed. The
 project's files change first, then `liftoff.yaml`, then
 `.liftoff/manifest.json`, so the manifest never lists files that were not
 written. Once every file has changed, the journal and the kept copies are
@@ -407,5 +412,97 @@ otherwise.
   applied, then it is refused and nothing changes.
 - Given an update that stopped part way, when it is recovered, then each
   file is finished or undone and the journal is removed.
+
+Verification: test
+
+## REPAIR-001 Repair lists what needs attention, changing nothing
+
+`liftoff repair --check` lists each file Liftoff wrote that is not as it
+should be: a file the manifest lists as managed that is missing, changed by
+hand, or something else where it should be, and a file Liftoff wrote for the
+project that is missing. A file the project changed is the project's, and
+framework files are the framework's, so neither is listed. Each listed file
+says what is wrong and whether a recipe can put it back, and why not when no
+recipe can. It writes nothing anywhere and exits 3 when a file Liftoff
+manages is listed, 0 otherwise: a missing file Liftoff wrote for the
+project is listed too, but may have been removed on purpose, so it does
+not change the exit code.
+
+Verification: test
+
+## REPAIR-002 Recipes put back files Liftoff wrote, only those chosen
+
+Repair puts back a file only when it is chosen at a question, where none is
+chosen by default, or named with `--restore`, which names only files it can
+put back:
+
+- a managed file that is missing or was changed by hand is put back as this
+  release makes it; one that already is, though the manifest records another
+  version, is listed with no recipe, since recording a release's version is
+  what `liftoff update` does;
+- a file Liftoff wrote for the project that is missing is put back only when
+  this release makes it exactly as Liftoff first wrote it.
+
+It never replaces a directory, a link or a file it cannot read, never puts
+back a file this release no longer makes, names in other letter case or
+gives another owner, and never changes `liftoff.yaml`. The manifest records
+each file put back, and the repair in its history. Like an update
+(UPDATE-002), it refuses a changed `liftoff.yaml`, another set of plugins, a
+change that has not finished, and projects this release cannot update.
+
+- Given a managed file that was deleted and one changed by hand, when only
+  the deleted one is chosen, then it is put back and the other is left as
+  it is.
+
+Verification: test
+
+## REPAIR-003 A reviewed patch changes only the project's own files, within the paths named
+
+`liftoff repair --patch <file> --paths <paths>` applies a unified diff, as
+`git diff --no-renames` writes it, such as one a coding agent prepared and
+the person reviewed. It is refused, changing nothing, when:
+
+- it changes a file outside the files and directories named with `--paths`,
+  compared as macOS and Windows compare names;
+- it changes a file the manifest lists as managed or as a framework's,
+  `liftoff.yaml`, anything in `.liftoff`, a `.git` directory, or a path not
+  every system can hold;
+- a hunk does not match the file exactly at the line it names; no hunk is
+  moved or applied loosely;
+- it renames, copies or changes the mode of a file, changes a binary file,
+  names a file twice, names a file in quotes, or makes one path both a file
+  and a directory of other files;
+- it holds more than one commit, as `git format-patch` writes several, or is
+  not UTF-8 text;
+- a file it changes or removes is missing, not UTF-8 text, larger than
+  4 MiB, or a link; a file it adds already exists;
+- the patch itself is larger than 4 MiB.
+
+Blank lines after its last hunk are ignored. A file it adds may be made
+executable; a file it changes keeps its mode. The manifest records the
+repair in its history and is otherwise unchanged; a file Liftoff wrote for
+the project that the patch removes is then listed, as one that may have
+been removed on purpose.
+
+- Given a patch made with `git diff` against the project, when it is
+  applied within its paths, then each file is exactly what Git would make.
+- Given a patch that also changes a managed file, then nothing changes.
+
+Verification: test
+
+## REPAIR-004 Repair previews, saves and applies exactly what was approved
+
+A repair shows its plan and asks before changing anything; the default
+answer is no, and without a terminal it needs `--yes`. `--out <file>`
+saves the plan and changes nothing; `--plan <file>` applies exactly that
+plan, planned again (with the same `--patch` and `--paths` for a patch) and
+refused unless it is the same plan, made by this release. `--check` goes
+without `--restore` and `--patch`. Files change as CHANGE-002 to CHANGE-004
+say; a repair that stops part way exits 5, `liftoff repair --recover finish`
+or `--recover undo` finishes or undoes it after asking, and Ctrl+C before
+any file changes exits 4. A repair exits 3 when files Liftoff manages still
+need attention or something could not be removed afterwards, and 0
+otherwise; after a patch, which looks at no other file, it does not say
+whether any still need attention.
 
 Verification: test

@@ -1152,6 +1152,12 @@ describe("ASSESS-004 every finding that needs action says who acts next", () => 
     expect(assessment.next).toContainEqual(
       expect.objectContaining({ category: "project", text: "Merge the workflows" }),
     );
+    expect(assessment.next).toContainEqual(
+      expect.objectContaining({
+        command: "liftoff repair",
+        checks: ["liftoff.managed-file-changed"],
+      }),
+    );
     expect(lines(assessment)).toEqual(
       expect.arrayContaining([
         "noncompliant liftoff.managed-file-changed AGENTS.md",

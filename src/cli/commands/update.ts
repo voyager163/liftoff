@@ -1,31 +1,26 @@
-import { readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-import {
-  applyChanges,
-  CHANGE_COMMANDS,
-  ChangeError,
-  type ChangePorts,
-  type ChangeResult,
-  ChangeStoppedError,
-  readJournal,
-  recoverChanges,
-  UNREADABLE_JOURNAL_ADVICE,
-} from "../../application/change/apply-changes.ts";
 import {
   needsPerson,
   planFromSaved,
   planUpdate,
   type UpdateFile,
   type UpdatePlan,
-  UpdateUnsupportedError,
   updateAvailable,
 } from "../../application/update/update-project.ts";
-import { JournalError } from "../../domain/change/journal.ts";
-import { CHANGE_JOURNAL_FILE, parseChangePlan } from "../../domain/plan/change-plan.ts";
-import { SelectionError } from "../../plugins/registry.ts";
-import type { CommandResult, CommandSpec, Io, ParsedArgs } from "../command.ts";
-import { UnsupportedError, UsageError } from "../outcome.ts";
+import type { CommandResult, CommandSpec } from "../command.ts";
+import { UsageError } from "../outcome.ts";
 import { shown } from "../terminal.ts";
+import {
+  applyApproved,
+  changeSummary,
+  checkPreview,
+  leftBehind,
+  listed,
+  planLine,
+  readSavedPlan,
+  recoverChange,
+  savePlan,
+  toCli,
+} from "./changing.ts";
 import { defaultProjectPorts, type ProjectPorts, projectDirectory } from "./project-ports.ts";
 
 const OWNED = {
@@ -33,12 +28,6 @@ const OWNED = {
   seeded: "the project owns it",
   framework: "its framework owns it",
 } as const;
-
-/** What a plan changes: its files, then the manifest. */
-function changed(update: UpdatePlan): string {
-  const files = (update.plan?.changes.length ?? 1) - 1;
-  return files === 0 ? "the manifest" : `${files} file${files === 1 ? "" : "s"}, then the manifest`;
-}
 
 /** The plan, in the words the text shows it. */
 export function renderUpdate(update: UpdatePlan, version: string): string[] {
@@ -77,9 +66,7 @@ export function renderUpdate(update: UpdatePlan, version: string): string[] {
     lines.push("Left as they are:", ...held.map((file) => `  ${file.path}: ${file.reason ?? ""}`));
   }
   if (update.plan !== undefined) {
-    lines.push(
-      `Plan ${update.plan.hash.slice(0, 12)}: changes ${changed(update)}. Effects: modify-files (nothing is installed, run or sent anywhere).`,
-    );
+    lines.push(planLine(update.plan));
   }
   return lines.map(shown);
 }
@@ -92,29 +79,6 @@ const reported = (update: UpdatePlan) => ({
   plugins: update.plugins,
   ...(update.plan === undefined ? {} : { plan: update.plan.hash }),
 });
-
-/**
- * Turns a refusal into the right exit code. A configuration this release
- * cannot make came from liftoff.yaml, not the command line, so it is
- * unsupported here.
- */
-function toCli(error: unknown): never {
-  if (error instanceof UpdateUnsupportedError || error instanceof SelectionError) {
-    throw new UnsupportedError(error.message);
-  }
-  throw error;
-}
-
-/** The new files named with --add, which must be ones the update offers. */
-function named(args: ParsedArgs): Set<string> {
-  const add = args.options.add as string | undefined;
-  return new Set(
-    (add ?? "")
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry !== ""),
-  );
-}
 
 export function makeUpdateCommand(
   portsFor: (cwd: string) => ProjectPorts = defaultProjectPorts,
@@ -167,11 +131,6 @@ export function makeUpdateCommand(
     ],
     async run(args, { io, version }): Promise<CommandResult> {
       const ports = portsFor(io.cwd);
-      const changePorts: ChangePorts = {
-        fs: ports.fs,
-        processes: ports.processes,
-        now: () => new Date().toISOString(),
-      };
       const given = (...options: string[]) => options.filter((option) => args.given.has(option));
       const yes = args.options.yes === true;
       const recover = args.options.recover as "finish" | "undo" | undefined;
@@ -180,20 +139,11 @@ export function makeUpdateCommand(
         if (others.length > 0) {
           throw new UsageError(`--recover goes only with --dir and --yes, not --${others[0]}`);
         }
-        return recoverUpdate(io, changePorts, args, recover);
+        return recoverChange(io, ports, args, recover, "update");
       }
       const planFile = args.options.plan as string | undefined;
       const out = args.options.out as string | undefined;
-      const preview = args.options.check === true || out !== undefined;
-      // --check writes nothing at all, not even a plan.
-      if (args.options.check === true && out !== undefined) {
-        throw new UsageError("--check writes nothing, so it goes without --out");
-      }
-      if (preview && yes) {
-        throw new UsageError(
-          "--check and --out change nothing in the project, so --yes has nothing to confirm",
-        );
-      }
+      const { preview } = checkPreview(args);
 
       let update: UpdatePlan;
       // Whether the plan was shown with the question about new files, and not changed since.
@@ -205,13 +155,12 @@ export function makeUpdateCommand(
             `a saved plan names its project and files, so --plan goes without --${others[0]}`,
           );
         }
-        const text = await readFile(path.resolve(io.cwd, planFile), "utf8").catch(() => {
-          throw new UsageError(`cannot read the plan ${planFile}`);
-        });
-        update = await planFromSaved(ports, parseChangePlan(text), version).catch(toCli);
+        update = await planFromSaved(ports, await readSavedPlan(io, planFile), version).catch(
+          toCli,
+        );
       } else {
         const directory = await projectDirectory(io.cwd, args.options.dir as string);
-        const add = named(args);
+        const add = listed(args.options.add as string | undefined);
         update = await planUpdate(ports, directory, version, { add }).catch(toCli);
         const offered = new Set(
           update.files
@@ -247,20 +196,7 @@ export function makeUpdateCommand(
 
       const lines = renderUpdate(update, version);
       if (preview) {
-        if (out !== undefined) {
-          if (update.plan === undefined) {
-            lines.push("", "There is nothing to change, so no plan was saved.");
-          } else {
-            const file = path.resolve(io.cwd, out);
-            io.signal.throwIfAborted();
-            await writeFile(file, `${JSON.stringify(update.plan, null, 2)}\n`);
-            lines.push(
-              "",
-              `Saved the plan to ${shown(file)}.`,
-              `Apply it with: liftoff update --plan ${shown(out)}`,
-            );
-          }
-        }
+        if (out !== undefined) lines.push(...(await savePlan(io, out, update.plan, "update")));
         return {
           outcome: args.options.check === true && updateAvailable(update) ? "attention" : "success",
           report: { ...reported(update), changed: false },
@@ -278,31 +214,13 @@ export function makeUpdateCommand(
       }
 
       if (!shownAlready) io.stderr(`${lines.join("\n")}\n`);
-      if (!yes) {
-        if (!io.interactive) {
-          throw new UsageError(
-            "update changes files; pass --yes to confirm when no one can answer a prompt",
-          );
-        }
-        if (!(await io.confirm(`In ${shown(update.directory)}, change ${changed(update)}?`))) {
-          return {
-            outcome: "cancelled",
-            report: { ...reported(update), changed: false },
-            text: "Nothing was changed.\n",
-          };
-        }
-      }
-      let result: ChangeResult;
-      try {
-        result = await applyChanges(changePorts, update.plan, update.contents, {
-          unchanged: update.unchanged,
-          signal: io.signal,
-        });
-      } catch (error) {
-        return stopped(error, ports, update);
-      }
+      const result = await applyApproved(io, ports, { ...update, plan: update.plan }, "update", {
+        yes,
+        report: reported(update),
+      });
+      if ("outcome" in result) return result;
       const updated = [
-        `Updated ${update.name}: changed ${changed(update)}.`,
+        `Updated ${update.name}: changed ${changeSummary(update.plan)}.`,
         ...(held ? ["Some files were left as they are; liftoff update --check lists them."] : []),
         ...leftBehind(result.leftovers),
       ];
@@ -318,124 +236,5 @@ export function makeUpdateCommand(
         text: `${updated.map(shown).join("\n")}\n`,
       };
     },
-  };
-}
-
-/** What a change or recovery could not remove, for the person to delete. */
-const leftBehind = (leftovers: readonly string[], complete = true) =>
-  leftovers.length === 0
-    ? []
-    : [
-        complete ? "Left behind once every file had changed:" : "Could not be removed:",
-        ...leftovers.map((left) => `  ${left}`),
-      ];
-
-/**
- * An update that stopped after its journal was written stopped part way,
- * whatever stopped it, and is reported as partial with how to recover.
- * Anything else changed nothing and is rethrown.
- */
-async function stopped(
-  error: unknown,
-  ports: ProjectPorts,
-  update: UpdatePlan,
-): Promise<CommandResult> {
-  const journal =
-    error instanceof ChangeStoppedError || !(error instanceof ChangeError)
-      ? await readJournal(ports.fs, update.directory).catch(() => undefined)
-      : undefined;
-  if (journal?.plan !== update.plan?.hash) throw error;
-  const message = error instanceof Error ? error.message : String(error);
-  return {
-    outcome: "partial",
-    report: { ...reported(update), changed: true, stopped: message },
-    text: `${shown(`The update stopped part way: ${message}`)}\nFinish it with liftoff update --recover finish, or undo it with liftoff update --recover undo.\n`,
-  };
-}
-
-/** Finishes or undoes an update that stopped part way, after asking. */
-async function recoverUpdate(
-  io: Io,
-  ports: ChangePorts,
-  args: ParsedArgs,
-  mode: "finish" | "undo",
-): Promise<CommandResult> {
-  const directory = await projectDirectory(io.cwd, args.options.dir as string);
-  const journal = await readJournal(ports.fs, directory).catch((error: unknown) => {
-    if (!(error instanceof JournalError)) throw error;
-    throw new ChangeError(`${error.message}; ${UNREADABLE_JOURNAL_ADVICE}`);
-  });
-  if (journal === undefined) {
-    return {
-      outcome: "success",
-      report: { directory, recovered: false },
-      text: `No update to ${shown(directory)} stopped part way; there is nothing to recover.\n`,
-    };
-  }
-  if (journal.operation !== "update") {
-    const command = CHANGE_COMMANDS[journal.operation];
-    throw new UsageError(
-      `the change that stopped was made by ${command}; recover it with ${command} --recover`,
-    );
-  }
-  io.stderr(
-    `${shown(`An update to ${directory} that began ${journal.started} stopped part way; it changes ${journal.changes.length} files, recorded in ${CHANGE_JOURNAL_FILE}.`)}\n`,
-  );
-  if (args.options.yes !== true) {
-    if (!io.interactive) {
-      throw new UsageError(
-        "recovery changes files; pass --yes to confirm when no one can answer a prompt",
-      );
-    }
-    if (!(await io.confirm(`${mode === "finish" ? "Finish" : "Undo"} it?`))) {
-      return {
-        outcome: "cancelled",
-        report: { directory, recovered: false },
-        text: "Nothing was changed.\n",
-      };
-    }
-  }
-  let result: Awaited<ReturnType<typeof recoverChanges>>;
-  try {
-    // Only the change shown and approved, not one that stopped since.
-    result = await recoverChanges(ports, directory, mode, {
-      plan: journal.plan,
-      signal: io.signal,
-    });
-  } catch (error) {
-    // A refusal, or the cancel recovery raises before any file changed,
-    // changed nothing; anything else, even after Ctrl+C, may have stopped it
-    // part way.
-    const cancelled = io.signal.aborted && error === io.signal.reason;
-    if (!(error instanceof ChangeStoppedError) && (error instanceof ChangeError || cancelled)) {
-      throw error;
-    }
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      outcome: "partial",
-      report: { directory, recovered: false, mode, stopped: message },
-      text: `${shown(`Recovery stopped: ${message}`)}
-The update is still not ${mode === "finish" ? "finished" : "undone"}, and ${CHANGE_JOURNAL_FILE} stays; run liftoff update --recover ${mode} again.
-`,
-    };
-  }
-  const list = (heading: string, files: readonly string[]) =>
-    files.length === 0 ? [] : [heading, ...files.map((file) => `  ${file}`)];
-  const lines = [
-    result.complete
-      ? `The update is ${mode === "finish" ? "finished" : "undone"}: ${result.changed.length} file${result.changed.length === 1 ? "" : "s"} changed.`
-      : `The update is not yet ${mode === "finish" ? "finished" : "undone"}; ${CHANGE_JOURNAL_FILE} stays until it is.`,
-    ...list("Changed:", result.changed),
-    ...list(
-      "Changed by something else meanwhile, so left as they are; put each back as it was, then run this again:",
-      result.conflicts,
-    ),
-    ...list("Waiting until those are resolved:", result.waiting),
-    ...leftBehind(result.leftovers, result.complete),
-  ];
-  return {
-    outcome: !result.complete ? "partial" : result.leftovers.length > 0 ? "attention" : "success",
-    report: { directory, recovered: result.complete, mode, ...result },
-    text: `${lines.map(shown).join("\n")}\n`,
   };
 }

@@ -248,8 +248,8 @@ export async function validateProject(
         path: file.path,
         message:
           file.ownership === "managed"
-            ? "a file Liftoff manages is missing"
-            : "a file Liftoff created is gone; that is fine if you removed it on purpose",
+            ? "a file Liftoff manages is missing; liftoff repair can put it back"
+            : "a file Liftoff created is gone; that is fine if you removed it on purpose, and liftoff repair can put it back if not",
       });
     } else if (
       found.kind === "file" &&
@@ -262,7 +262,7 @@ export async function validateProject(
         code: "managed-file-changed",
         path: file.path,
         message:
-          "a file Liftoff manages was changed by hand; liftoff update leaves it as it is, so it takes no update until it is restored",
+          "a file Liftoff manages was changed by hand; liftoff update leaves it as it is, so it takes no update until it is restored, which liftoff repair can do",
       });
     }
   }
