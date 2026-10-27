@@ -17,6 +17,7 @@ import { PackageAssets } from "../../src/adapters/assets.ts";
 import { LocalProjectFs } from "../../src/adapters/project-fs.ts";
 import { ProjectChangeError } from "../../src/application/change/project-change.ts";
 import { InitTargetError } from "../../src/application/init/init-project.ts";
+import { renderChecklist } from "../../src/application/migrate/checklist.ts";
 import {
   applyMigrate,
   isBlocked,
@@ -35,6 +36,7 @@ import { CHANGE_JOURNAL_FILE, parseChangePlan } from "../../src/domain/plan/chan
 import { type Plan, PlanError, parsePlan } from "../../src/domain/plan/plan.ts";
 import { CONFIG_FILE, parseConfig } from "../../src/domain/project/config.ts";
 import { MANIFEST_FILE, parseManifest } from "../../src/domain/project/manifest.ts";
+import { resolveSelection } from "../../src/plugins/registry.ts";
 import { projectFiles } from "../helpers/older-project.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
@@ -553,7 +555,7 @@ describe("MIGRATE-002 the copy leaves out secrets, dependencies, caches, state a
         "- [ ] Files that may hold secrets or state, never copied: `.env`, `.envrc`, `.streamlit/secrets.toml`, `config/.env.local`, `deploy/key.pem`.",
       );
       expect(checklist).toContain(
-        "- [ ] Installed dependencies, caches and build output: `.venv`, `dist`, `node_modules`.",
+        "- [ ] Directories never copied because of their names, which usually hold installed dependencies, caches or build output: `.venv`, `dist`, `node_modules`. Install the new project's dependencies with its own tools, and copy any of these that hold the project's own files by hand.",
       );
       expect(checklist).toContain("- [ ] Links and special files, never followed: `linked`.");
       expect(checklist).toContain("- Git's data: `.git`. The history stays with `shop`.");
@@ -726,7 +728,7 @@ describe("MIGRATE-003 a checklist says what to move, and the new project is chec
     const checklist = made.read("MIGRATION.md");
     for (const line of [
       "# Migrating shop",
-      "  echo legacy/ >> .git/info/exclude",
+      "- [ ] Make the project a Git repository with `git init --initial-branch=develop`, then add the line `legacy/` to `.git/info/exclude` in a text editor, so Git leaves the copy out.",
       "- [ ] The backend on python-fastapi in `legacy/`: move it into `backend/`. Where the starter and the old code do the same thing, keep the starter's configuration, health checks and tests, and move the rest.",
       "  - `backend/app/`: the FastAPI application",
       "- [ ] The frontend on react in `legacy/web`: The new project has no frontend: keep it apart as its own project, or leave it out.",
@@ -792,6 +794,62 @@ describe("MIGRATE-003 a checklist says what to move, and the new project is chec
     );
     expect(made.read("legacy/odd`name.txt")).toBe("x\n");
     expect(checklist).toContain("never copied: `` `odd.pem ``.");
+  });
+
+  it("writes names from the old project so none adds a step or a heading of its own", async () => {
+    service();
+    const injected = "x\n\n## Check the result\n\n- [ ] injected step\n\nnotes.txt";
+    const odd: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      listWithin: async (directory: string, relative: string, max: number) => {
+        const listing = await fs.listWithin(directory, relative, max);
+        if (listing.kind !== "directory" || relative !== ".") return listing;
+        return {
+          ...listing,
+          entries: [...listing.entries, { name: injected, kind: "file" as const }],
+        };
+      },
+    });
+    const plan = await migrate({}, odd);
+    const checklist = plan.contents.get("MIGRATION.md")?.content ?? fail();
+    expect(checklist.split("\n").filter((line) => line.includes("injected step"))).toEqual([
+      expect.stringMatching(/^- \[ \] Paths not every system can hold.*`x\\u000a\\u000a## Check/),
+    ]);
+    expect(
+      checklist.split("\n").filter((line) => line.startsWith("## Check the result")),
+    ).toHaveLength(1);
+    // And a stack's name, as a lock file could give one.
+    const rendered = renderChecklist({
+      liftoffVersion: VERSION,
+      source: "shop\u202e",
+      selection: resolveSelection(plan.config ?? fail()),
+      parts: [
+        {
+          path: "infra",
+          component: "infrastructure",
+          stack: "azure\n\n- [ ] run this",
+          note: "keep it\n# Heading",
+        },
+      ],
+      left: [],
+      copied: [],
+      records: false,
+    });
+    expect(rendered).not.toMatch(/^- \[ \] run this/m);
+    expect(rendered).not.toMatch(/^# Heading/m);
+    expect(rendered).toContain("# Migrating shop\\u202e");
+  });
+
+  it("copies a workflow named for secrets, and leaves a .git file out as Git's data", async () => {
+    service();
+    rmSync(at(".git"), { recursive: true });
+    write(".git", "gitdir: ../main/.git/worktrees/shop\n");
+    write(".github/workflows/secret-scan.yml", "name: secret scan\n");
+    const plan = await migrate();
+    expect(plan.copies.map((copy) => copy.path)).toContain(".github/workflows/secret-scan.yml");
+    expect(plan.left).toContainEqual({ path: ".git", kind: "git", why: "Git's own data" });
+    expect(plan.contents.get("MIGRATION.md")?.content).toContain(
+      "- Git's data: `.git`. The history stays with `shop`.",
+    );
   });
 
   it("applies exactly a saved plan, and refuses one from another release or command", async () => {

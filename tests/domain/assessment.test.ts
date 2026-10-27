@@ -130,6 +130,12 @@ describe("ASSESS-001 only declarations are read, and secrets are never", () => {
     ["credentials-production.json", true],
     ["config/secrets.local.toml", true],
     ["secrets", true],
+    ["prod.env", true],
+    ["deploy/app.env", true],
+    [".env-prod", true],
+    ["certs/example.com+3-key.pem", true],
+    [".github/workflows/secret-scan.yml", false],
+    [".github/workflows/secrets.yaml", false],
     ["config/secrets.example.toml", false],
     ["credentials.sample.json", false],
     ["src/service_account.py", false],
@@ -325,6 +331,10 @@ jobs:
         'provider "registry.opentofu.org/hashicorp/azurerm" {\n}\nprovider "registry.opentofu.org/hashicorp/random" {\n}\n',
       ),
     ).toEqual(["hashicorp/azurerm", "hashicorp/random"]);
+    // An address is one quoted string on one line.
+    expect(
+      lockedProviders('provider "registry.opentofu.org/x/a\n\n- [ ] injected" {\n}\n'),
+    ).toEqual([]);
   });
 });
 

@@ -613,7 +613,7 @@ async function copyList(
     if (gap.kind === "skipped") {
       left.push({
         path: gap.path,
-        kind: path.posix.basename(gap.path) === ".git" ? "git" : "dependencies",
+        kind: isGitData(gap.path) ? "git" : "dependencies",
         why: gap.detail,
       });
     } else if (gap.kind === "link") {
@@ -659,6 +659,11 @@ async function copyList(
   for (const file of files) {
     signal?.throwIfAborted();
     const key = pathKey(file);
+    // A .git file, as in a worktree or a submodule, is Git's too.
+    if (isGitData(file)) {
+      left.push({ path: file, kind: "git", why: "Git's own data" });
+      continue;
+    }
     if (records.has(key)) {
       left.push({
         path: file,
@@ -693,6 +698,9 @@ async function copyList(
   left.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { copies, left, closed: [...new Set(closed)], bytes };
 }
+
+/** Whether a path is Git's own data: a .git directory or file, in any letter case. */
+const isGitData = (file: string) => pathKey(path.posix.basename(file)) === ".git";
 
 /** Each kind of part the new project has, and where the choice came from. */
 type Chosen = Partial<Record<Component, ChosenPart>> & {

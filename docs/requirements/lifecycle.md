@@ -211,8 +211,9 @@ configuration, `pytest.toml`, `.coveragerc`, `setup.cfg`, `tox.ini`, `pytest.ini
 `.terraform.lock.hcl` and the workflows in `.github/workflows`, plus what
 `liftoff validate` reads in a Liftoff project, without following a link to
 any of them. Every other file is seen by name only. Files that may hold secrets or state, such as `.env`,
-`.envrc`, `*.tfstate`, `*.tfvars`, private keys, `.npmrc`, `credentials.json`,
-`secrets.toml` and SQLite databases, are listed as not read.
+`prod.env`, `.envrc`, `*.tfstate`, `*.tfvars`, private keys, `.npmrc`,
+`credentials.json`, `secrets.toml` and SQLite databases, are listed as not
+read; a workflow in `.github/workflows` never is, whatever its name.
 
 - Given a generated project, when it is assessed, then no file in it
   changes and only those declarations and Liftoff's own files are read.
@@ -743,8 +744,9 @@ may have been closed to others; on Windows it has the access the directory
 it is in gives new directories. It copies every regular file the walk
 reaches, except:
 
-- Git's data, installed dependencies, caches and build output, in the
-  directories the walk does not enter (ASSESS-002);
+- Git's data, a `.git` directory or file at any depth, and the
+  directories the walk does not enter because of their names, which usually
+  hold installed dependencies, caches or build output (ASSESS-002);
 - files that may hold secrets or state, which `liftoff assess` lists as not
   read (ASSESS-001), including a SQLite database's journal, write-ahead log
   and shared memory;
@@ -756,8 +758,8 @@ reaches, except:
   Windows take for another the copy holds: the same file, a file and a
   directory, or two spellings of one directory.
 
-Each file or directory left out is named, with why, in the plan and in
-`MIGRATION.md`. The plan lists each copied file with its sha256 and size. A
+Each file or directory left out is named, with why, in what migrating
+shows, its `--json` report and `MIGRATION.md`, whose hash the plan holds. The plan lists each copied file with its sha256 and size. A
 file changed since the plan was made makes the plan stale, and it is
 refused; a file that changes while it is being copied stops the migration
 before anything is created.
@@ -786,7 +788,10 @@ not list it. It lists, as steps to tick off:
   tests;
 - deleting `legacy/` and `MIGRATION.md` once done.
 
-The old project and its Git history stay where they are.
+Names from the old project, such as file names and stacks, are written with
+control characters and characters that change the direction of text
+escaped, so none can add a step or a heading of its own. The old project
+and its Git history stay where they are.
 
 `liftoff migrate --check` writes nothing, shows the proposal and the plan,
 and exits 3 when the project cannot be migrated as it is, and 0 otherwise.

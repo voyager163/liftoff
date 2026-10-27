@@ -73,9 +73,11 @@ the access of the folder it is in, so put the new project in a folder only
 you can open if the old one held anything private. It holds every file
 except:
 
-- Git's data, installed dependencies, caches and build output, such as
-  `.git`, `node_modules`, `.venv` and `dist`;
-- files that may hold secrets or state, such as `.env`, `.envrc`,
+- Git's data (`.git`), and directories never copied because of their
+  names, which usually hold installed dependencies, caches or build output,
+  such as `node_modules`, `.venv`, `dist` and `build`: copy any that hold
+  the project's own files by hand;
+- files that may hold secrets or state, such as `.env`, `prod.env`, `.envrc`,
   `*.tfstate`, `*.tfvars`, private keys, `.npmrc`, `credentials.json`,
   `secrets.toml` and SQLite databases with their journals and write-ahead
   logs (`.env.example` is copied);

@@ -59,8 +59,23 @@ export interface ChecklistInput {
   readonly records: boolean;
 }
 
-/** Text as a Markdown code span, whatever backticks it holds. */
-function code(text: string): string {
+/**
+ * Text from the old project, such as a file name or a stack's name, with
+ * every control character and character that changes the direction of text
+ * written as an escape, so it stays on its own line and reads as it is: no
+ * name can add a step or a heading of its own to the checklist.
+ */
+function plain(text: string): string {
+  return text.replace(
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it escapes.
+    /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g,
+    (character) => `\\u${(character.codePointAt(0) ?? 0).toString(16).padStart(4, "0")}`,
+  );
+}
+
+/** Text as a Markdown code span, whatever backticks it holds, escaped as plain() does. */
+function code(raw: string): string {
+  const text = plain(raw);
   const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
   const fence = "`".repeat(longest + 1);
   const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
@@ -109,7 +124,7 @@ function pluginsFor(
 export function renderChecklist(input: ChecklistInput): string {
   const { selection, parts, left, copied, source } = input;
   const lines: string[] = [
-    `# Migrating ${source}`,
+    `# Migrating ${plain(source)}`,
     "",
     `Liftoff ${input.liftoffVersion} made this project from ${code(source)} and copied that project's files into ${code(`${COPY_DIRECTORY}/`)}, leaving out what is listed below. Nothing in ${code(source)} was changed, and its Git history stays there.`,
     "",
@@ -117,12 +132,7 @@ export function renderChecklist(input: ChecklistInput): string {
     "",
     "## Start",
     "",
-    "- [ ] Make the project a Git repository, and keep the copy out of it:",
-    "",
-    "  ```sh",
-    "  git init --initial-branch=develop",
-    `  echo ${COPY_DIRECTORY}/ >> .git/info/exclude`,
-    "  ```",
+    `- [ ] Make the project a Git repository with ${code("git init --initial-branch=develop")}, then add the line ${code(`${COPY_DIRECTORY}/`)} to ${code(".git/info/exclude")} in a text editor, so Git leaves the copy out.`,
     "",
   ];
 
@@ -137,7 +147,7 @@ export function renderChecklist(input: ChecklistInput): string {
   for (const part of moved) {
     const to = part.to ?? "";
     lines.push(
-      `- [ ] The ${part.component} on ${part.stack} in ${code(inCopy(part.path))}: move it into ${code(`${to}/`)}. ${part.note}`,
+      `- [ ] The ${part.component} on ${plain(part.stack)} in ${code(inCopy(part.path))}: move it into ${code(`${to}/`)}. ${plain(part.note)}`,
     );
     const layout = pluginsFor(selection, part.component).flatMap((plugin) => plugin.layout);
     if (layout.length > 0) {
@@ -147,7 +157,7 @@ export function renderChecklist(input: ChecklistInput): string {
   }
   for (const part of apart) {
     lines.push(
-      `- [ ] The ${part.component} on ${part.stack} in ${code(inCopy(part.path))}: ${part.note}`,
+      `- [ ] The ${part.component} on ${plain(part.stack)} in ${code(inCopy(part.path))}: ${plain(part.note)}`,
     );
   }
   lines.push(
@@ -184,7 +194,7 @@ export function renderChecklist(input: ChecklistInput): string {
     ],
     [
       "dependencies",
-      "Installed dependencies, caches and build output: {}. Install the new project's dependencies with its own tools.",
+      "Directories never copied because of their names, which usually hold installed dependencies, caches or build output: {}. Install the new project's dependencies with its own tools, and copy any of these that hold the project's own files by hand.",
     ],
     ["link", "Links and special files, never followed: {}. Recreate any the project needs."],
     ["large", "Files over 64 MiB: {}. Copy any the project needs by hand."],
@@ -204,7 +214,7 @@ export function renderChecklist(input: ChecklistInput): string {
   }
   if (input.records) {
     leftOut.push(
-      `- Records from a Liftoff release before the rebuild${input.release === undefined ? "" : ` (${input.release})`}: ${of("records").join(", ")}. They stay with ${code(source)} as its history, and are not proof of anything about this project.`,
+      `- Records from a Liftoff release before the rebuild${input.release === undefined ? "" : ` (${plain(input.release)})`}: ${of("records").join(", ")}. They stay with ${code(source)} as its history, and are not proof of anything about this project.`,
     );
   }
   if (leftOut.length > 0) lines.push("## What the copy left out", "", ...leftOut, "");

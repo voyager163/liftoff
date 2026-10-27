@@ -68,20 +68,23 @@ const CREDENTIAL_FILES = new Set([
 const DATA = /\.(json|ya?ml|toml|ini|env|txt|xml|conf|cfg|properties|plist)$/;
 
 /**
- * Files that may hold secrets or state, such as `.env`, `.envrc`, a
- * `.tfstate`, `credentials.json`, `secrets.local.toml` or a SQLite
- * database. They are noted as present, never read, and never copied.
- * Examples meant to be committed, with "example", "sample" or "template" in
- * their name, are not; nor is code named for secrets, such as
- * `credentials_test.py`.
+ * Files that may hold secrets or state, such as `.env`, `prod.env`,
+ * `.envrc`, a `.tfstate`, `credentials.json`, `secrets.local.toml` or a
+ * SQLite database. They are noted as present, never read, and never copied.
+ * Examples meant to be committed, whose name ends in "example", "sample" or
+ * "template", perhaps before an extension, are not; nor is code named for
+ * secrets, such as `credentials_test.py`, nor a GitHub workflow, such as
+ * `secret-scan.yml`, which assess reads.
  */
 export function holdsSecretsOrState(file: string): boolean {
   const name = path.posix.basename(file).toLowerCase();
-  if (/(^|[._-])(example|sample|template)([._-]|$)/.test(name)) return false;
+  if (/[._-](example|sample|template)(\.[^.]+)?$/.test(name)) return false;
+  if (/^\.github\/workflows\/[^/]+\.ya?ml$/i.test(file)) return false;
   const secretName = /^(secrets?|credentials?|client[-_]secrets?|service[-_]account)([._-]|$)/;
   return (
     name === ".env" ||
-    name.startsWith(".env.") ||
+    /^\.env[._-]/.test(name) ||
+    name.endsWith(".env") ||
     CREDENTIAL_FILES.has(name) ||
     (secretName.test(name) && (DATA.test(name) || !name.includes("."))) ||
     /\.(secrets?)$/.test(name) ||
