@@ -1,4 +1,5 @@
 import type { CommandSpec } from "./command.ts";
+import { makeAssessCommand } from "./commands/assess.ts";
 import { capabilitiesCommand } from "./commands/capabilities.ts";
 import {
   makeGovernanceApplyNextCommand,
@@ -23,6 +24,7 @@ export const REGISTRY: readonly CommandSpec[] = [
   makeInitCommand(),
   makeValidateCommand(),
   makeDoctorCommand(),
+  makeAssessCommand(),
   makeReviewClassifyCommand(),
   makeGovernanceStatusCommand(),
   makeGovernanceAssessCommand(),

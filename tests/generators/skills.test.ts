@@ -177,7 +177,7 @@ describe("SKILL-005 skills only mention real commands", () => {
     const known = new Set(REGISTRY.map(commandName));
     const mentioned = new Set<string>();
     for (const skill of skills) {
-      for (const match of skill.body.matchAll(/`liftoff ([a-z]+(?: [a-z]+)?)/g)) {
+      for (const match of skill.body.matchAll(/`liftoff ([a-z][a-z-]*(?: [a-z][a-z-]*)?)/g)) {
         const words = (match[1] ?? "").split(" ");
         const name = known.has(words.join(" ")) ? words.join(" ") : (words[0] ?? "");
         mentioned.add(name);
@@ -187,12 +187,35 @@ describe("SKILL-005 skills only mention real commands", () => {
     expect(mentioned).toContain("review classify");
     expect(mentioned).toContain("doctor");
     expect(mentioned).toContain("validate");
+    expect(mentioned).toContain("assess");
+    expect(mentioned).toContain("governance apply-next");
   });
 
   it("every skill that calls Liftoff negotiates capabilities first", async () => {
     const { skills } = await loadAgentSources(assets, { projectSkills: true });
     for (const skill of skills.filter((s) => s.body.includes("`liftoff "))) {
       expect(skill.body, skill.name).toContain("liftoff capabilities --json");
+    }
+  });
+});
+
+describe("SKILL-007 skills to assess a project and its governance", () => {
+  it("ships them to generated projects only, and they change nothing", async () => {
+    const own = (await loadAgentSources(assets)).skills.map((skill) => skill.name);
+    expect(own).not.toContain("liftoff-assess");
+    const { skills } = await loadAgentSources(assets, { projectSkills: true });
+    const body = (name: string) => skills.find((skill) => skill.name === name)?.body ?? "";
+    expect(skills.map((skill) => skill.name)).toEqual(
+      expect.arrayContaining(["liftoff-assess", "liftoff-governance-assess", "liftoff-setup"]),
+    );
+    expect(body("liftoff-assess")).toContain("liftoff assess --json");
+    expect(body("liftoff-assess")).toContain("without changing anything");
+    expect(body("liftoff-assess")).toContain("Never call an unknown");
+    expect(body("liftoff-governance-assess")).toContain("liftoff governance assess --json");
+    expect(body("liftoff-governance-assess")).toContain("Do not run it on");
+    for (const name of ["liftoff-assess", "liftoff-governance-assess"]) {
+      expect(body(name)).toContain("liftoff capabilities --json");
+      expect(body(name)).not.toContain("<!-- include:");
     }
   });
 });

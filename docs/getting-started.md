@@ -144,3 +144,5 @@ covers OpenSpec, Spec Kit and manual development.
 release and publish their images.
 [Activating governance](projects/governance-activation.md) covers applying the
 rulesets on GitHub with `liftoff governance`.
+[Assessing a project](projects/assessing.md) covers checking any project,
+Liftoff's or not, against the standard with `liftoff assess`.

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { BigIntStats } from "node:fs";
+import type { BigIntStats, Dir } from "node:fs";
 import { constants } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import {
@@ -9,6 +9,7 @@ import {
   mkdir,
   mkdtemp,
   open,
+  opendir,
   readdir,
   readFile,
   rename,
@@ -19,6 +20,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import type {
+  DirectoryListing,
   FileHash,
   PathEntry,
   PathState,
@@ -61,6 +63,10 @@ export class LocalProjectFs implements ProjectFsPort {
 
   hashWithin(directory: string, relative: string, maxBytes: number): Promise<FileHash> {
     return hashWithin(directory, relative, maxBytes);
+  }
+
+  listWithin(directory: string, relative: string, maxEntries: number): Promise<DirectoryListing> {
+    return listWithin(directory, relative, maxEntries);
   }
 
   async moveFile(from: string, to: string): Promise<void> {
@@ -187,6 +193,90 @@ const NODE_CALLS: ReadCalls = {
   lstat: (target) => lstat(target, { bigint: true }),
   open: (target, flags, mode) => open(target, flags, mode),
 };
+
+/** The calls listWithin makes, which a test can replace to change directories between them. */
+export interface ListCalls {
+  lstat(path: string): Promise<BigIntStats>;
+  opendir(path: string): Promise<Dir>;
+}
+
+const NODE_LIST_CALLS: ListCalls = {
+  lstat: NODE_CALLS.lstat,
+  opendir: (target) => opendir(target),
+};
+
+/**
+ * Lists a directory under `directory` without following a link: every
+ * directory on the way, and the directory itself, is inspected before it is
+ * opened and again once it has been read, and must be the same directory
+ * both times, or a link swapped in may have been followed. As with
+ * openWithin, a directory swapped for a link and back between the two
+ * inspections is the one case this cannot see. No more than `maxEntries`
+ * entries are read.
+ */
+export async function listWithin(
+  directory: string,
+  relative: string,
+  maxEntries: number,
+  calls: ListCalls = NODE_LIST_CALLS,
+): Promise<DirectoryListing> {
+  const parts = relative === "." ? [] : relative.split("/");
+  // A path that cannot be inspected is in a directory this user may not
+  // search: that directory is the one reported.
+  const container = (depth: number) => parts.slice(0, depth - 1).join("/") || ".";
+  const inspected: {
+    readonly path: string;
+    readonly depth: number;
+    readonly stats: BigIntStats;
+  }[] = [];
+  for (let depth = 1; depth <= parts.length; depth++) {
+    const target = path.join(directory, ...parts.slice(0, depth));
+    const seen = await inspect(calls, target);
+    if (seen === "missing") return { kind: "missing" };
+    if (seen === "inaccessible") return { kind: "inaccessible", via: container(depth) };
+    if (!seen.isDirectory()) {
+      if (depth < parts.length) return { kind: "other", via: parts.slice(0, depth).join("/") };
+      return { kind: seen.isFile() ? "file" : "other" };
+    }
+    inspected.push({ path: target, depth, stats: seen });
+  }
+  const target = path.join(directory, ...parts);
+  const entries: { name: string; kind: "file" | "directory" | "other" }[] = [];
+  let complete = true;
+  let opened: Dir;
+  try {
+    opened = await calls.opendir(target);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return { kind: "missing" };
+    if (code === "EACCES" || code === "EPERM") return { kind: "inaccessible" };
+    if (code === "EMFILE" || code === "ENFILE" || code === "EIO") throw error;
+    return { kind: "other" };
+  }
+  try {
+    for (let entry = await opened.read(); entry !== null; entry = await opened.read()) {
+      if (entries.length === maxEntries) {
+        complete = false;
+        break;
+      }
+      entries.push({
+        name: entry.name,
+        kind: entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other",
+      });
+    }
+  } finally {
+    await opened.close();
+  }
+  for (const { path: again, depth, stats } of inspected) {
+    const now = await inspect(calls, again);
+    if (now === "inaccessible") return { kind: "inaccessible", via: container(depth) };
+    if (now === "missing" || !now.isDirectory() || !sameFile(now, stats)) {
+      return { kind: "other", via: parts.slice(0, depth).join("/") };
+    }
+  }
+  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return { kind: "directory", entries, complete };
+}
 
 /**
  * Reads a regular file under `directory` without following a link, however
@@ -429,7 +519,7 @@ async function openWithin(
 }
 
 async function inspect(
-  calls: ReadCalls,
+  calls: Pick<ReadCalls, "lstat">,
   target: string,
 ): Promise<BigIntStats | "missing" | "inaccessible"> {
   try {

@@ -403,6 +403,8 @@ describe("PROJ-007 coding-agent files", () => {
       "AGENTS.md",
       "CLAUDE.md",
       ".claude/skills/liftoff-setup/SKILL.md",
+      ".claude/skills/liftoff-assess/SKILL.md",
+      ".agents/skills/liftoff-governance-assess/SKILL.md",
       ".agents/skills/liftoff-code-review/SKILL.md",
       ".claude/agents/liftoff-verifier.md",
       ".github/agents/liftoff-verifier.agent.md",

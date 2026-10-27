@@ -14,7 +14,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { type FileHandle, lstat, open } from "node:fs/promises";
+import { type FileHandle, lstat, open, opendir } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,7 +22,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   copyWithin,
   hashWithin,
+  type ListCalls,
   LocalProjectFs,
+  listWithin,
   type ReadCalls,
   readWithin,
 } from "../../src/adapters/project-fs.ts";
@@ -377,3 +379,79 @@ function shortWrites(limit: number): ReadCalls {
     },
   };
 }
+
+describe("ASSESS-002 listing a directory follows no link and stays within its limit", () => {
+  it("lists a directory's entries by name, with links as neither file nor directory", async () => {
+    write("dir/b.txt", "");
+    write("dir/a.txt", "");
+    mkdirSync(path.join(work, "dir/sub"));
+    symlinkSync(path.join(work, "dir/sub"), path.join(work, "dir/link"), "junction");
+    expect(await fs.listWithin(work, "dir", 10)).toEqual({
+      kind: "directory",
+      complete: true,
+      entries: [
+        { name: "a.txt", kind: "file" },
+        { name: "b.txt", kind: "file" },
+        { name: "link", kind: "other" },
+        { name: "sub", kind: "directory" },
+      ],
+    });
+    expect(await fs.listWithin(work, ".", 10)).toEqual({
+      kind: "directory",
+      complete: true,
+      entries: [{ name: "dir", kind: "directory" }],
+    });
+    expect(await fs.listWithin(work, "dir/link", 10)).toEqual({ kind: "other" });
+    expect(await fs.listWithin(work, "dir/link/inner", 10)).toEqual({
+      kind: "other",
+      via: "dir/link",
+    });
+    expect(await fs.listWithin(work, "dir/a.txt", 10)).toEqual({ kind: "file" });
+    expect(await fs.listWithin(work, "dir/a.txt/inner", 10)).toEqual({
+      kind: "other",
+      via: "dir/a.txt",
+    });
+    expect(await fs.listWithin(work, "missing", 10)).toEqual({ kind: "missing" });
+  });
+
+  it("lists no more than the limit", async () => {
+    for (const name of ["1", "2", "3"]) write(`dir/${name}`, "");
+    const listed = await fs.listWithin(work, "dir", 2);
+    expect(listed).toMatchObject({ kind: "directory", complete: false });
+    expect(listed.kind === "directory" ? listed.entries.length : 0).toBe(2);
+    expect(await fs.listWithin(work, "dir", 3)).toMatchObject({ complete: true });
+  });
+
+  it("refuses a directory swapped for a link while it is listed", async () => {
+    write("dir/mine.txt", "");
+    const outside = mkdtempSync(path.join(tmpdir(), "liftoff-fs-outside-"));
+    try {
+      writeFileSync(path.join(outside, "theirs.txt"), "");
+      const swapping: ListCalls = {
+        lstat: (target) => lstat(target, { bigint: true }),
+        opendir: async (target) => {
+          renameSync(path.join(work, "dir"), path.join(work, "moved"));
+          symlinkSync(outside, path.join(work, "dir"), "junction");
+          return opendir(target);
+        },
+      };
+      expect(await listWithin(work, "dir", 10, swapping)).toEqual({ kind: "other", via: "dir" });
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("tells a directory it may not read from one that failed", async () => {
+    write("dir/x", "");
+    const failing = (code: string): ListCalls => ({
+      lstat: (target) => lstat(target, { bigint: true }),
+      opendir: async () => {
+        throw Object.assign(new Error(code), { code });
+      },
+    });
+    expect(await listWithin(work, "dir", 10, failing("EACCES"))).toEqual({ kind: "inaccessible" });
+    expect(await listWithin(work, "dir", 10, failing("ENOENT"))).toEqual({ kind: "missing" });
+    expect(await listWithin(work, "dir", 10, failing("ELOOP"))).toEqual({ kind: "other" });
+    await expect(listWithin(work, "dir", 10, failing("EMFILE"))).rejects.toThrow("EMFILE");
+  });
+});

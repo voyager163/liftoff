@@ -68,6 +68,23 @@ export type RegularFileRead =
   | { readonly kind: "other" | "inaccessible"; readonly via?: string }
   | { readonly kind: "file"; readonly size: number; readonly text?: string };
 
+/**
+ * A directory listed with listWithin, or why it was not. `complete` is false
+ * when it had more entries than the limit, which are left out. The other
+ * kinds are as for RegularFileRead.
+ */
+export type DirectoryListing =
+  | { readonly kind: "missing" | "file" }
+  | { readonly kind: "other" | "inaccessible"; readonly via?: string }
+  | {
+      readonly kind: "directory";
+      readonly entries: readonly {
+        readonly name: string;
+        readonly kind: "file" | "directory" | "other";
+      }[];
+      readonly complete: boolean;
+    };
+
 /** Something under a directory: a regular file, a directory, or anything else such as a link. */
 export interface TreeEntry {
   /** Relative POSIX path. */
@@ -92,6 +109,13 @@ export interface ProjectFsPort {
    * readWithin reads it; a file over `maxBytes` is not read.
    */
   hashWithin(directory: string, relative: string, maxBytes: number): Promise<FileHash>;
+  /**
+   * Lists the directory at `relative` under `directory` ("." for `directory`
+   * itself), following no link on the way or at it, with no more than
+   * `maxEntries` of its entries, sorted by name. It is "other" when anything
+   * on the way changed while it was being listed.
+   */
+  listWithin(directory: string, relative: string, maxEntries: number): Promise<DirectoryListing>;
   /**
    * Renames a file, replacing `to` in one step if it exists, on the same
    * volume; `to`'s directory must exist. Nothing else happens first.
