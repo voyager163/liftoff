@@ -30,6 +30,7 @@ import { type ProjectPorts, projectDirectory } from "./project-ports.ts";
 const NAMES = {
   update: { a: "An update", the: "The update", no: "No update" },
   repair: { a: "A repair", the: "The repair", no: "No repair" },
+  adopt: { a: "An adoption", the: "The adoption", no: "No adoption" },
 } as const;
 export type ChangeCommand = keyof typeof NAMES;
 

@@ -1005,8 +1005,28 @@ function dataChecks(
   return findings;
 }
 
-/** Instructions and review skills, for a project set up for coding agents. */
-function agentChecks(tree: Tree, agents: readonly (keyof typeof HOSTS)[]): AssessmentFinding[] {
+/**
+ * What adopting does for a project that is not Liftoff's, named only when
+ * `liftoff adopt` can: when a backend this release supports was found.
+ */
+const adopting = (text: string, adoptable: boolean): NextAction =>
+  adoptable
+    ? { category: "liftoff", text, command: "liftoff adopt" }
+    : {
+        category: "unavailable",
+        text: "Adopting needs a backend this release supports (a FastAPI, PydanticAI, Fastify or Huma application), and none was found.",
+      };
+
+/**
+ * Instructions and review skills, for a project set up for coding agents.
+ * Adopting a project that is not Liftoff's adds the skills.
+ */
+function agentChecks(
+  tree: Tree,
+  agents: readonly (keyof typeof HOSTS)[],
+  liftoff: LiftoffState["kind"],
+  adoptable: boolean,
+): AssessmentFinding[] {
   // A project may use no coding agent at all.
   if (agents.length === 0) return [];
   const findings = [
@@ -1031,10 +1051,15 @@ function agentChecks(tree: Tree, agents: readonly (keyof typeof HOSTS)[]): Asses
           HOSTS[host].skills.map((directory) => `${directory}/liftoff-code-review/SKILL.md`),
         ),
         { found: `${host} has the review skills`, missing: `no review skills for ${host}` },
-        {
-          category: "unavailable",
-          text: "Adding Liftoff's skills to an existing project comes with adopting it, in a later release.",
-        },
+        liftoff === "project"
+          ? {
+              category: "unavailable",
+              text: "Adding a coding-agent host to a Liftoff project comes in a later release; liftoff repair puts back the skills of a host liftoff.yaml selects.",
+            }
+          : adopting(
+              "Adopt the project, which adds Liftoff's review skills for each coding-agent host it is set up for.",
+              adoptable,
+            ),
         host,
       ),
     );
@@ -1342,7 +1367,7 @@ function infrastructureChecks(tree: Tree, part: Part): AssessmentFinding[] {
 /** What validate reports that liftoff repair can put right. */
 const REPAIRED = new Set(["managed-file-missing", "managed-file-changed", "seeded-file-missing"]);
 
-function liftoffChecks(state: LiftoffState): AssessmentFinding[] {
+function liftoffChecks(state: LiftoffState, adoptable: boolean): AssessmentFinding[] {
   // What validate found, other than whether this is a Liftoff project at
   // all: in a project that is not Liftoff's, only a change that stopped
   // part way, such as an adoption before liftoff.yaml was written.
@@ -1382,10 +1407,10 @@ function liftoffChecks(state: LiftoffState): AssessmentFinding[] {
         status: "noncompliant",
         message: "not a Liftoff project: there is no liftoff.yaml",
         evidence: [],
-        next: {
-          category: "unavailable",
-          text: "Adopting an existing project into Liftoff comes in a later release.",
-        },
+        next: adopting(
+          "Adopt the project, which adds only Liftoff's own files and changes none of the project's.",
+          adoptable,
+        ),
       },
       ...validated,
     ];
@@ -1401,12 +1426,12 @@ function liftoffChecks(state: LiftoffState): AssessmentFinding[] {
         check: "liftoff.project",
         area: "liftoff",
         status: "unsupported",
-        message: `made by a Liftoff release before the rebuild, which left ${records.length} record${records.length === 1 ? "" : "s"}; this release changes and runs nothing in it`,
+        message: `made by a Liftoff release before the rebuild, which left ${records.length} record${records.length === 1 ? "" : "s"}; this release changes and runs nothing in it until it is adopted`,
         evidence: records.map(how),
-        next: {
-          category: "unavailable",
-          text: "Adopting a project from before the rebuild comes in a later release.",
-        },
+        next: adopting(
+          "Adopt the project into this release, which keeps the old records as they are.",
+          adoptable,
+        ),
       },
       ...records
         .filter((record) => record.blocks !== undefined)
@@ -1531,7 +1556,11 @@ export function assess(
 ): Assessment {
   const detected = detectParts(tree);
   const agents = detectAgents(tree);
-  const findings: AssessmentFinding[] = [...liftoffChecks(state.liftoff), ...detected.findings];
+  const adoptable = detected.parts.some((part) => part.component === "backend" && part.supported);
+  const findings: AssessmentFinding[] = [
+    ...liftoffChecks(state.liftoff, adoptable),
+    ...detected.findings,
+  ];
   for (const part of detected.parts) {
     findings.push(
       part.supported
@@ -1578,7 +1607,7 @@ export function assess(
     );
   }
   findings.push(
-    ...agentChecks(tree, agents),
+    ...agentChecks(tree, agents, state.liftoff.kind, adoptable),
     ...ciChecks(tree),
     ...governanceChecks(
       tree,

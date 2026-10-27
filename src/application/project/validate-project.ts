@@ -126,7 +126,7 @@ export async function validateProject(
         code: "pre-rebuild-project",
         ...(marker ? { path: marker.path } : {}),
         message:
-          "this was made by a Liftoff release before the rebuild; this release changes and runs nothing in it. Adopting existing projects comes in a later release.",
+          "this was made by a Liftoff release before the rebuild; this release changes and runs nothing in it until it is adopted with liftoff adopt.",
       });
       for (const record of legacy.records) {
         findings.push({

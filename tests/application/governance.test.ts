@@ -138,7 +138,7 @@ describe("GOV-001 assessing reads GitHub and changes nothing", () => {
       id: "handoff",
       status: "next",
       detail: expect.stringMatching(
-        /^liftoff\.manifest\.json: this was made by a Liftoff release before the rebuild; .*a later release\.$/,
+        /^liftoff\.manifest\.json: this was made by a Liftoff release before the rebuild; .*until it is adopted with liftoff adopt\.$/,
       ),
     });
   });

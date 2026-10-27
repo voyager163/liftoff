@@ -87,6 +87,7 @@ describe("PROJ-002 manifest", () => {
     schema: "liftoff.manifest/v1",
     generatedBy: { liftoff: "1.0.0" },
     history: [{ operation: "init", liftoff: "1.0.0" }],
+    kept: [],
     plugins: [
       { id: "stack/python-fastapi", version: "1" },
       { id: "common/repository", version: "1" },
@@ -288,6 +289,26 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
 });
 
 describe("PROJ-025 the manifest records its history and anything from before the rebuild", () => {
+  it("records where an adopted project kept its own files, and nothing for one Liftoff made", () => {
+    const made = parseManifest(
+      JSON.stringify({
+        schema: "liftoff.manifest/v1",
+        generatedBy: { liftoff: "1.0.0" },
+        plugins: [],
+        files: [],
+      }),
+    );
+    expect(made.kept).toEqual([]);
+    expect(serializeManifest(made)).not.toContain("kept");
+    const adopted = { ...made, kept: ["README.md", "AGENTS.md"] };
+    const text = serializeManifest(adopted);
+    expect(JSON.parse(text).kept).toEqual(["AGENTS.md", "README.md"]);
+    expect(serializeManifest(parseManifest(text))).toBe(text);
+    expect(() => parseManifest(text.replace('"README.md"', '"../README.md"'))).toThrow(
+      ManifestError,
+    );
+  });
+
   const base = {
     schema: "liftoff.manifest/v1",
     generatedBy: { liftoff: "1.1.0" },
@@ -342,6 +363,7 @@ describe("PROJ-025 the manifest records its history and anything from before the
   it("writes the same bytes however the manifest was built", () => {
     const built: Manifest = {
       ...base,
+      kept: [],
       schema: "liftoff.manifest/v1",
       history: [{ liftoff: "1.1.0", operation: "init" as const }],
       plugins: [{ version: "1", id: "p" }],

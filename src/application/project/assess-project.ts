@@ -10,7 +10,9 @@ import {
   LIMITS,
 } from "../../domain/assess/tree.ts";
 import type { LegacyInventory } from "../../domain/legacy/inventory.ts";
+import { pathKey } from "../../domain/project/paths.ts";
 import type { ProjectFsPort } from "../ports.ts";
+import { inventoryLegacy } from "./legacy-inventory.ts";
 import { validateProject } from "./validate-project.ts";
 
 export class AssessError extends Error {
@@ -75,6 +77,12 @@ export async function assessProject(
     );
   }
 
+  // What a Liftoff release before the rebuild kept that can hold copies of
+  // files, credentials or state is seen by name alone: never walked or read.
+  const legacy = await inventoryLegacy(fs, directory);
+  const sealed = new Set(
+    legacy.records.filter((record) => !record.opened).map((record) => pathKey(record.path)),
+  );
   const entries = new Map<string, EntryKind>();
   const listed = new Set<string>();
   const gaps: Gap[] = [];
@@ -121,7 +129,14 @@ export async function assessProject(
     for (const { name, kind } of listing.entries) {
       const file = at === "." ? name : `${at}/${name}`;
       entries.set(file, kind);
-      if (kind === "other") {
+      if (sealed.has(pathKey(file))) {
+        gaps.push({
+          kind: "not-read",
+          path: file,
+          detail:
+            "kept by a Liftoff release before the rebuild, and may hold copies of files, credentials or state, so only its name was seen",
+        });
+      } else if (kind === "other") {
         gaps.push({ kind: "link", path: file, detail: "a link or special file, never followed" });
       } else if (kind === "directory") {
         if (isSkippedDirectory(name)) {

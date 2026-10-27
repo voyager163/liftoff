@@ -80,7 +80,7 @@ export async function readProject(
   if (configText === undefined) {
     if ((await inventoryLegacy(fs, directory)).project) {
       throw new ProjectChangeUnsupportedError(
-        "this project was made by a Liftoff release before the rebuild; this release changes nothing in it, and adopting it comes in a later release",
+        `this project was made by a Liftoff release before the rebuild; this release changes it only once it is adopted with liftoff adopt`,
       );
     }
     throw new ProjectChangeError(
@@ -115,11 +115,17 @@ export interface Generated {
   readonly config: Unchanged;
 }
 
+/** Whether Liftoff adopted the project with an application of its own, rather than made it. */
+export const isAdopted = (manifest: Manifest): boolean =>
+  manifest.history[0]?.operation === "adopt";
+
 /**
  * Generates what this release makes for the configuration the project was
- * made with. It refuses a liftoff.yaml changed since Liftoff wrote it, a
- * project in another layout, and a configuration this release would make
- * from other plugins, so a change never switches what the project is made of.
+ * made with: for an adopted project, only Liftoff's own files, where its
+ * parts live. It refuses a liftoff.yaml changed since Liftoff wrote it, a
+ * project it made in another layout, and a configuration this release
+ * would make from other plugins, so a change never switches what the
+ * project is made of.
  */
 export async function generateFor(
   assets: AssetPort,
@@ -134,12 +140,14 @@ export async function generateFor(
       `${CONFIG_FILE} changed since Liftoff last wrote it, and ${operation} never applies a changed configuration; put it back as it was to ${operation}`,
     );
   }
-  if (!isStandardLayout(config)) {
+  // A project Liftoff made has an application in the standard layout.
+  const application = !isAdopted(manifest);
+  if (application && !isStandardLayout(config)) {
     throw new ProjectChangeUnsupportedError(
-      `this release can ${operation} only projects in the standard layout; a project whose parts live elsewhere can be changed once adopting projects is available`,
+      `this release can ${operation} a project it made only in the standard layout, but liftoff.yaml binds parts to other directories`,
     );
   }
-  const { selection, files } = await generate(assets, config, liftoffVersion);
+  const { selection, files } = await generate(assets, config, liftoffVersion, { application });
   const made = new Set(manifest.plugins.map((plugin) => plugin.id));
   const making = new Set(selection.plugins.map((plugin) => plugin.id));
   const switched = [
@@ -232,7 +240,7 @@ export async function nameOnDisk(
 }
 
 /** A change cannot begin while another has not finished. */
-async function refuseUnfinishedChange(fs: ProjectFsPort, directory: string): Promise<void> {
+export async function refuseUnfinishedChange(fs: ProjectFsPort, directory: string): Promise<void> {
   let journal: Awaited<ReturnType<typeof readJournal>>;
   try {
     journal = await readJournal(fs, directory);

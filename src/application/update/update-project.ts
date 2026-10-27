@@ -179,8 +179,11 @@ export async function planUpdate(
     }
   }
 
-  // Compared as macOS and Windows compare names, ignoring case.
-  const listed = new Set(manifest.files.map((entry) => pathKey(entry.path)));
+  // Compared as macOS and Windows compare names, ignoring case. Where an
+  // adopted project kept a file of its own, Liftoff's is never offered.
+  const listed = new Set(
+    [...manifest.files.map((entry) => entry.path), ...manifest.kept].map(pathKey),
+  );
   for (const file of generated.values()) {
     if (listed.has(pathKey(file.path))) continue;
     const now = await fs.hashWithin(directory, file.path, MAX_CHANGED_BYTES);

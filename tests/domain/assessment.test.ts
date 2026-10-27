@@ -1205,6 +1205,58 @@ describe("ASSESS-003 Liftoff projects and projects from before the rebuild", () 
     );
   });
 
+  it("names liftoff adopt for a project that is not Liftoff's, or is from before the rebuild", () => {
+    const none: LiftoffState = {
+      kind: "none",
+      findings: [{ severity: "error", code: "not-a-liftoff-project", message: "no liftoff.yaml" }],
+    };
+    const adopting = run(tree({ "pyproject.toml": FASTAPI, "CLAUDE.md": "" }), NOT_LIVE, none);
+    const adopt = adopting.next.filter((action) => action.command === "liftoff adopt");
+    expect(adopt.map((action) => action.category)).toEqual(["liftoff", "liftoff"]);
+    expect(adopt.flatMap((action) => action.checks).sort()).toEqual([
+      "agents.review-skills",
+      "liftoff.project",
+    ]);
+    const old: LiftoffState = {
+      kind: "pre-rebuild",
+      findings: [],
+      inventory: {
+        project: true,
+        records: [
+          {
+            path: "liftoff.manifest.json",
+            record: "manifest",
+            state: "migratable",
+            opened: true,
+            reason: "the project's old manifest",
+          },
+        ],
+      },
+    };
+    expect(
+      run(tree({ "pyproject.toml": FASTAPI }), NOT_LIVE, old).next.find(
+        (action) => action.command === "liftoff adopt",
+      )?.text,
+    ).toBe("Adopt the project into this release, which keeps the old records as they are.");
+    // Without a backend this release supports, adopting cannot help.
+    const express = run(
+      tree({ "package.json": '{"dependencies":{"express":"^5.0.0"}}', "CLAUDE.md": "" }),
+      NOT_LIVE,
+      none,
+    );
+    expect(express.next.filter((action) => action.command === "liftoff adopt")).toEqual([]);
+    expect(express.next.find((action) => action.checks.includes("liftoff.project"))).toMatchObject({
+      category: "unavailable",
+    });
+    // In a Liftoff project, adding a host is not something this release does.
+    const project: LiftoffState = { kind: "project", findings: [] };
+    expect(
+      run(tree({ "pyproject.toml": FASTAPI, "CLAUDE.md": "" }), NOT_LIVE, project).next.find(
+        (action) => action.checks.includes("agents.review-skills"),
+      ),
+    ).toMatchObject({ category: "unavailable" });
+  });
+
   it("reports an interrupted change in a project that is not Liftoff's yet", () => {
     const state: LiftoffState = {
       kind: "none",

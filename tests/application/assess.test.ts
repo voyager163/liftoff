@@ -23,6 +23,7 @@ import {
   type ProjectAssessment,
 } from "../../src/application/project/assess-project.ts";
 import { isDeclaration, LIMITS } from "../../src/domain/assess/tree.ts";
+import { LEGACY_CANDIDATES } from "../../src/domain/legacy/inventory.ts";
 import { validateConfig } from "../../src/domain/project/config.ts";
 import { FakeInitializer } from "../helpers/initializer.ts";
 
@@ -174,9 +175,13 @@ describe("ASSESS-001 assessing a project changes nothing and runs nothing", () =
     const manifest = JSON.parse(
       readFileSync(path.join(work, ".liftoff/manifest.json"), "utf8"),
     ) as { files: { path: string }[] };
-    // Declarations, and Liftoff's own files: its records, and what the
-    // manifest lists, which validate hashes.
-    const own = new Set(manifest.files.map((file) => file.path));
+    // Declarations, and Liftoff's own files: its records, what the manifest
+    // lists, which validate hashes, and where releases before the rebuild
+    // kept theirs, which are looked for.
+    const own = new Set([
+      ...manifest.files.map((file) => file.path),
+      ...LEGACY_CANDIDATES.map((candidate) => candidate.path),
+    ]);
     const opened = calls.filter(
       (call) => call.method === "readWithin" || call.method === "hashWithin",
     );
@@ -258,6 +263,44 @@ describe("ASSESS-001 assessing a project changes nothing and runs nothing", () =
 });
 
 describe("ASSESS-002 the walk is bounded and follows no link", () => {
+  it("never walks into what an old release kept that can hold copies of files (LEGACY-003)", async () => {
+    repository();
+    write("backend/pyproject.toml", PYPROJECT);
+    write(
+      "liftoff.manifest.json",
+      JSON.stringify({
+        artifactVersion: 7,
+        generatedBy: "Mission Control Liftoff",
+        liftoffVersion: "0.12.3",
+      }),
+    );
+    write("governance/credentials/package.json", '{"dependencies":{"fastify":"^5.0.0"}}');
+    write(".liftoff/repair-history/r1/pyproject.toml", PYPROJECT);
+    const read: string[] = [];
+    const spy = Object.assign(Object.create(fs) as ProjectFsPort, {
+      readWithin: (directory: string, relative: string, maxBytes: number) => {
+        read.push(relative);
+        return fs.readWithin(directory, relative, maxBytes);
+      },
+      listWithin: (directory: string, relative: string, maxEntries: number) => {
+        read.push(`${relative}/`);
+        return fs.listWithin(directory, relative, maxEntries);
+      },
+    });
+    const assessment = await run({}, spy);
+    expect(assessment.parts.map((part) => `${part.stack} in ${part.path}`)).toEqual([
+      "python-fastapi in backend",
+    ]);
+    expect(
+      read.filter((file) => /^(governance\/credentials|\.liftoff\/repair-history)/.test(file)),
+    ).toEqual([]);
+    for (const sealed of ["governance/credentials", ".liftoff/repair-history"]) {
+      expect(assessment.gaps).toContainEqual(
+        expect.objectContaining({ kind: "not-read", path: sealed }),
+      );
+    }
+  });
+
   it("follows no link and lists it as a gap", async () => {
     repository();
     const outside = mkdtempSync(path.join(tmpdir(), "liftoff-assess-outside-"));
