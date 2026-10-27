@@ -142,7 +142,9 @@ describe("ASSESS-001 assessing a project changes nothing and runs nothing", () =
     };
     const before = snapshot();
     const calls: { method: string; file: string }[] = [];
-    const READS = new Set(["entry", "state", "listWithin", "readWithin", "readText"]);
+    // Every way to look at the project that follows no link; nothing else,
+    // and nothing that writes.
+    const READS = new Set(["entry", "listWithin", "readWithin", "hashWithin"]);
     const spy = new Proxy(fs, {
       get(target, property, receiver) {
         const value = Reflect.get(target, property, receiver);
@@ -151,9 +153,9 @@ describe("ASSESS-001 assessing a project changes nothing and runs nothing", () =
         return (...args: unknown[]) => {
           if (!READS.has(method)) throw new Error(`assess called ${method}`);
           const file =
-            method === "readWithin" || method === "listWithin"
-              ? String(args[1])
-              : path.relative(work, String(args[0])).split(path.sep).join("/");
+            method === "entry"
+              ? path.relative(work, String(args[0])).split(path.sep).join("/")
+              : String(args[1]);
           calls.push({ method, file });
           return value.apply(target, args);
         };
@@ -161,27 +163,26 @@ describe("ASSESS-001 assessing a project changes nothing and runs nothing", () =
     });
     const assessment = await run({}, spy);
     expect(snapshot()).toEqual(before);
-    const read = calls.filter((call) => call.method === "readWithin").map((call) => call.file);
-    expect(read.length).toBeGreaterThan(0);
-    // Declarations, and the change journal validate looks for.
-    expect(read.filter((file) => !isDeclaration(file) && !file.startsWith(".liftoff/"))).toEqual(
-      [],
-    );
     const manifest = JSON.parse(
       readFileSync(path.join(work, ".liftoff/manifest.json"), "utf8"),
-    ) as {
-      files: { path: string }[];
-    };
-    const liftoffFiles = new Set([
-      "liftoff.yaml",
-      ".liftoff/manifest.json",
-      ...manifest.files.map((file) => file.path),
-    ]);
-    const texts = calls.filter((call) => call.method === "readText").map((call) => call.file);
+    ) as { files: { path: string }[] };
+    // Declarations, and Liftoff's own files: its records, and what the
+    // manifest lists, which validate hashes.
+    const own = new Set(manifest.files.map((file) => file.path));
+    const opened = calls.filter(
+      (call) => call.method === "readWithin" || call.method === "hashWithin",
+    );
+    expect(opened.filter((call) => call.method === "readWithin").length).toBeGreaterThan(0);
     expect(
-      texts.filter((file) => !liftoffFiles.has(file) && !file.startsWith(".liftoff/")),
+      opened.filter(
+        (call) =>
+          !isDeclaration(call.file) &&
+          !own.has(call.file) &&
+          !call.file.startsWith(".liftoff/") &&
+          call.file !== "liftoff.yaml",
+      ),
     ).toEqual([]);
-    expect([...read, ...texts]).not.toContain(".env");
+    expect(opened.map((call) => call.file)).not.toContain(".env");
     expect(assessment.gaps).toContainEqual(
       expect.objectContaining({ kind: "not-read", path: ".env" }),
     );

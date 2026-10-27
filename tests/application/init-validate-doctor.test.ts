@@ -284,6 +284,75 @@ describe("VALID-001 validate reports without repairing", () => {
     expect(result.valid).toBe(false);
   });
 
+  it("follows no link to liftoff.yaml, the manifest or a file it lists", async () => {
+    const target = await create();
+    const outside = path.join(work, "outside.yaml");
+    writeFileSync(outside, "secret: do-not-read\n");
+    // Windows may refuse a link to a file without a privilege, but not a
+    // junction to a directory, which is a link all the same.
+    const link = (at: string) =>
+      process.platform === "win32"
+        ? symlinkSync(work, at, "junction")
+        : symlinkSync(outside, at, "file");
+    const config = path.join(target, "liftoff.yaml");
+    const original = readFileSync(config, "utf8");
+    rmSync(config);
+    link(config);
+    const linked = await validateProject(fs, target);
+    expect(linked.findings.map((f) => [f.code, f.path])).toEqual([
+      ["config-not-a-file", "liftoff.yaml"],
+    ]);
+    expect(JSON.stringify(linked.findings)).not.toContain("secret");
+
+    rmSync(config);
+    mkdirSync(config);
+    expect((await validateProject(fs, target)).findings[0]?.code).toBe("config-not-a-file");
+    rmSync(config, { recursive: true });
+    writeFileSync(config, original);
+
+    const readme = path.join(target, "README.md");
+    rmSync(readme);
+    link(readme);
+    expect((await validateProject(fs, target)).findings).toEqual([
+      expect.objectContaining({
+        code: "not-a-file",
+        path: "README.md",
+        message: expect.stringContaining("a link"),
+      }),
+    ]);
+  });
+
+  it("reports a file of its own that this user may not read", async () => {
+    const target = await create();
+    const closed = (closedPath: string): ProjectFsPort =>
+      Object.assign(Object.create(fs) as ProjectFsPort, {
+        readWithin: (directory: string, relative: string, max: number) =>
+          relative === closedPath
+            ? Promise.resolve({ kind: "inaccessible" })
+            : fs.readWithin(directory, relative, max),
+        hashWithin: (directory: string, relative: string, max: number) =>
+          relative === closedPath
+            ? Promise.resolve({ kind: "inaccessible" })
+            : fs.hashWithin(directory, relative, max),
+      });
+    expect((await validateProject(closed("liftoff.yaml"), target)).findings).toEqual([
+      expect.objectContaining({ code: "config-unreadable", severity: "error" }),
+    ]);
+    expect((await validateProject(closed(".liftoff/manifest.json"), target)).findings).toEqual([
+      expect.objectContaining({ code: "manifest-unreadable" }),
+    ]);
+    expect((await validateProject(closed("AGENTS.md"), target)).findings).toEqual([
+      expect.objectContaining({ code: "file-unreadable", severity: "warning", path: "AGENTS.md" }),
+    ]);
+    writeFileSync(path.join(target, ".liftoff/manifest.json"), " ".repeat(1024 * 1024 + 1));
+    expect((await validateProject(fs, target)).findings).toEqual([
+      expect.objectContaining({
+        code: "manifest-not-a-file",
+        message: expect.stringContaining("over 1 MiB"),
+      }),
+    ]);
+  });
+
   it("reports invalid configuration, manifests and plugins", async () => {
     const target = await create();
     const manifestPath = path.join(target, ".liftoff/manifest.json");

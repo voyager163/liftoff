@@ -183,10 +183,11 @@ anywhere else, runs no project script or tool, installs nothing, asks for no
 credentials and, without `--live`, contacts no network service.
 
 It reads only the declarations it interprets: `pyproject.toml`,
-`package.json`, `go.mod`, Compose files, `vitest.config.*`,
+`package.json`, `go.mod`, Compose files, Vitest, Vite and Jest
+configuration, `.coveragerc`, `setup.cfg`, `tox.ini`, `pytest.ini`,
 `.terraform.lock.hcl` and the workflows in `.github/workflows`, plus what
-`liftoff validate` reads in a Liftoff project. Every other file is seen by
-name only. Files that may hold secrets or state, such as `.env`,
+`liftoff validate` reads in a Liftoff project, without following a link to
+any of them. Every other file is seen by name only. Files that may hold secrets or state, such as `.env`,
 `*.tfstate`, `*.tfvars`, private keys and `.npmrc`, are listed as not read.
 
 - Given a generated project, when it is assessed, then no file in it
@@ -234,7 +235,12 @@ names its check and is one of:
 - **inaccessible**: closed to this user.
 
 A check whose answer lies where the walk did not reach is unknown or
-inaccessible, never noncompliant. Each finding lists the paths it rests on
+inaccessible, never noncompliant. In a directory that is not the root of a
+Git repository, what GitHub, coding agents and Liftoff look for at the root
+(workflows, governance files, `AGENTS.md`, review skills and
+`liftoff.yaml`) is unknown when it is not found, since the root may have
+it. A member of an npm or uv workspace may have its lock file at the
+workspace's root. Each finding lists the paths it rests on
 and whether each was seen by name, read, or read from GitHub. The same
 project gives the same report, unless a directory has more entries than the
 limit, when which of them are listed is up to the file system.

@@ -35,7 +35,7 @@ const LIFTOFF = {
 
 export function renderProjectAssessment(assessment: ProjectAssessment, version: string): string {
   const lines = [
-    `Assessment of ${shown(assessment.directory)} against Liftoff ${version}'s standard`,
+    `Assessment of ${assessment.directory} against Liftoff ${version}'s standard`,
     `${assessment.git ? "A Git repository" : "Not the root of a Git repository"}; ${LIFTOFF[assessment.liftoff]}.`,
     `Parts: ${
       assessment.parts.length === 0
@@ -43,7 +43,7 @@ export function renderProjectAssessment(assessment: ProjectAssessment, version: 
         : assessment.parts
             .map(
               (part) =>
-                `${part.component} ${part.stack} at ${shown(part.path)}${part.supported ? "" : " (unsupported)"}`,
+                `${part.component} ${part.stack} at ${part.path}${part.supported ? "" : " (unsupported)"}`,
             )
             .join("; ")
     }.`,
@@ -56,15 +56,13 @@ export function renderProjectAssessment(assessment: ProjectAssessment, version: 
       lines.push("", area);
     }
     lines.push(
-      `  ${finding.status.padEnd(12)} ${finding.check}${finding.subject ? ` (${shown(finding.subject)})` : ""}: ${shown(finding.message)}`,
+      `  ${finding.status.padEnd(12)} ${finding.check}${finding.subject ? ` (${finding.subject})` : ""}: ${finding.message}`,
     );
   }
   if (assessment.gaps.length > 0) {
     lines.push("", `Not walked or read (${assessment.gaps.length}):`);
     for (const gap of assessment.gaps.slice(0, SHOWN_GAPS)) {
-      lines.push(
-        `  ${gap.kind.padEnd(12)} ${gap.path ? `${shown(gap.path)}: ` : ""}${shown(gap.detail)}`,
-      );
+      lines.push(`  ${gap.kind.padEnd(12)} ${gap.path ? `${gap.path}: ` : ""}${gap.detail}`);
     }
     if (assessment.gaps.length > SHOWN_GAPS) {
       lines.push(`  … and ${assessment.gaps.length - SHOWN_GAPS} more in the --json report`);
@@ -74,7 +72,7 @@ export function renderProjectAssessment(assessment: ProjectAssessment, version: 
     lines.push("", "Next:");
     for (const action of assessment.next) {
       lines.push(
-        `  ${action.category.padEnd(12)} ${action.command ? `${action.command}: ` : ""}${shown(action.text)} [${action.checks.join(", ")}]`,
+        `  ${action.category.padEnd(12)} ${action.command ? `${action.command}: ` : ""}${action.text} [${action.checks.join(", ")}]`,
       );
     }
   }
@@ -83,7 +81,8 @@ export function renderProjectAssessment(assessment: ProjectAssessment, version: 
     "",
     `${summary.compliant} compliant, ${summary.noncompliant} noncompliant, ${summary.unknown} unknown, ${summary.unsupported} unsupported, ${summary.inaccessible} inaccessible.`,
   );
-  return `${lines.join("\n")}\n`;
+  // Paths, stacks and messages come from the project, so every line is escaped.
+  return `${lines.map(shown).join("\n")}\n`;
 }
 
 export function makeAssessCommand(

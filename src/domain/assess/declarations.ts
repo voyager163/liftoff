@@ -38,8 +38,8 @@ export interface PythonProject {
   /** Package names, as pip compares them, from every dependency list. */
   readonly dependencies: ReadonlySet<string>;
   readonly requiresPython: boolean;
-  /** Whether a coverage threshold is declared. */
-  readonly coverageGate: boolean;
+  /** Whether it is the root of a uv workspace, which locks its members. */
+  readonly workspace: boolean;
 }
 
 /**
@@ -58,6 +58,7 @@ export function readPyproject(text: string): PythonProject {
     (section === "tool.uv" && key === "dev-dependencies");
   const tables = () => /^tool\.poetry\.(.+\.)?(dev-)?dependencies$/.test(section);
   let requiresPython = false;
+  let workspace = false;
   for (const raw of text.split(/\r?\n/)) {
     const line = withoutComment(raw);
     if (array !== undefined) {
@@ -75,6 +76,7 @@ export function readPyproject(text: string): PythonProject {
     const header = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*$/.exec(line);
     if (header) {
       section = (header[1] ?? "").replace(/["'\s]/g, "");
+      if (section === "tool.uv.workspace") workspace = true;
       continue;
     }
     const assignment = /^\s*("[^"]*"|'[^']*'|[A-Za-z0-9_.-]+)\s*=\s*(.*)$/.exec(line);
@@ -82,7 +84,9 @@ export function readPyproject(text: string): PythonProject {
     const key = (assignment[1] ?? "").replace(/^["']|["']$/g, "");
     const value = assignment[2] ?? "";
     if (section === "project" && key === "requires-python") requiresPython = true;
-    if (tables() && key.toLowerCase() !== "python") {
+    if (tables() && key.toLowerCase() === "python") {
+      requiresPython = true;
+    } else if (tables()) {
       dependencies.add(pythonName(key));
     } else if (lists(key) && value.trimStart().startsWith("[")) {
       const depth = (value.match(/\[/g) ?? []).length - (value.match(/\]/g) ?? []).length;
@@ -96,11 +100,7 @@ export function readPyproject(text: string): PythonProject {
       }
     }
   }
-  return {
-    dependencies,
-    requiresPython,
-    coverageGate: /(^|\n)\s*fail_under\s*=|--cov-fail-under/.test(text),
-  };
+  return { dependencies, requiresPython, workspace };
 }
 
 export const hasPython = (project: PythonProject, ...names: readonly string[]): boolean =>
@@ -110,7 +110,6 @@ export interface NodePackage {
   readonly dependencies: ReadonlySet<string>;
   readonly engine: boolean;
   readonly workspaces: boolean;
-  readonly coverageGate: boolean;
 }
 
 /** Reads a package.json, or undefined when it is not a JSON object. */
@@ -130,12 +129,10 @@ export function readPackageJson(text: string): NodePackage | undefined {
       : [];
   };
   const engines = json.engines as Record<string, unknown> | undefined;
-  const jest = json.jest as Record<string, unknown> | undefined;
   return {
     dependencies: new Set([...keys("dependencies"), ...keys("devDependencies")]),
     engine: typeof engines === "object" && engines !== null && typeof engines.node === "string",
     workspaces: json.workspaces !== undefined,
-    coverageGate: typeof jest === "object" && jest !== null && jest.coverageThreshold !== undefined,
   };
 }
 

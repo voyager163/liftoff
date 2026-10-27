@@ -161,14 +161,16 @@ fail_under = 80
       "ruff",
     ]);
     expect(project.requiresPython).toBe(true);
-    expect(project.coverageGate).toBe(true);
-    expect(
-      readPyproject('[tool.pytest.ini_options]\naddopts = ["--cov-fail-under=80"]\n').coverageGate,
-    ).toBe(true);
+    expect(project.workspace).toBe(false);
     expect(readPyproject("[project]\ndependencies = []\n")).toMatchObject({
       requiresPython: false,
-      coverageGate: false,
+      workspace: false,
     });
+    expect(readPyproject('[tool.poetry.dependencies]\npython = "^3.12"\n')).toMatchObject({
+      requiresPython: true,
+      dependencies: new Set(),
+    });
+    expect(readPyproject('[tool.uv.workspace]\nmembers = ["api"]\n').workspace).toBe(true);
   });
 
   it("reads a package.json, or refuses what is not a JSON object", () => {
@@ -185,7 +187,7 @@ fail_under = 80
       }),
     );
     expect([...(json?.dependencies ?? [])]).toEqual(["fastify", "vitest"]);
-    expect(json).toMatchObject({ engine: true, workspaces: true, coverageGate: true });
+    expect(json).toMatchObject({ engine: true, workspaces: true });
     expect(readPackageJson('{"dependencies": []}')).toMatchObject({
       engine: false,
       workspaces: false,
@@ -464,6 +466,168 @@ describe("ASSESS-003 the standard's checks", () => {
   });
 });
 
+describe("ASSESS-003 what the walk did not see is never a difference", () => {
+  it("finds lock files at the root of an npm or uv workspace", () => {
+    const npm = run(
+      tree({
+        "package.json": JSON.stringify({ workspaces: ["api", "web"] }),
+        "package-lock.json": "",
+        "api/package.json": JSON.stringify({ dependencies: { fastify: "5" } }),
+        "web/package.json": JSON.stringify({ dependencies: { vue: "3" } }),
+      }),
+    );
+    expect(lines(npm)).toEqual(
+      expect.arrayContaining([
+        "compliant dependencies.lockfile backend at api",
+        "compliant dependencies.lockfile frontend at web",
+      ]),
+    );
+    const uv = run(
+      tree({
+        "pyproject.toml": '[tool.uv.workspace]\nmembers = ["api"]\n',
+        "uv.lock": "",
+        "api/pyproject.toml": FASTAPI,
+      }),
+    );
+    expect(uv.parts.map((part) => part.path)).toEqual(["api"]);
+    expect(lines(uv)).toContain("compliant dependencies.lockfile backend at api");
+    // A lock file beside an unrelated package above does not count.
+    const unrelated = run(
+      tree({
+        "package.json": "{}",
+        "package-lock.json": "",
+        "api/package.json": JSON.stringify({ dependencies: { fastify: "5" } }),
+      }),
+    );
+    expect(lines(unrelated)).toContain("noncompliant dependencies.lockfile backend at api");
+  });
+
+  it("finds a coverage threshold wherever the tools read one", () => {
+    const python = (files: Record<string, string>) =>
+      lines(run(tree({ "pyproject.toml": FASTAPI, ...files })));
+    expect(python({ ".coveragerc": "[report]\nfail_under = 90\n" })).toContain(
+      "compliant tests.coverage-gate backend at .",
+    );
+    expect(python({ "pytest.ini": "[pytest]\naddopts = --cov-fail-under=80\n" })).toContain(
+      "compliant tests.coverage-gate backend at .",
+    );
+    expect(python({ "tox.ini": "[tox]\n" })).toContain(
+      "noncompliant tests.coverage-gate backend at .",
+    );
+    const node = (files: Record<string, string>) =>
+      lines(
+        run(tree({ "package.json": JSON.stringify({ dependencies: { fastify: "5" } }), ...files })),
+      );
+    expect(node({ "jest.config.js": "module.exports = { coverageThreshold: {} };" })).toContain(
+      "compliant tests.coverage-gate backend at .",
+    );
+    expect(
+      node({ "vite.config.ts": "export default { test: { coverage: { thresholds: {} } } };" }),
+    ).toContain("compliant tests.coverage-gate backend at .");
+    expect(
+      lines(
+        run(
+          tree(
+            { "package.json": JSON.stringify({ dependencies: { fastify: "5" } }) },
+            {
+              unread: {
+                "vitest.config.ts": {
+                  status: "unknown",
+                  reason: "changed while it was being read",
+                },
+              },
+            },
+          ),
+        ),
+      ),
+    ).toContain("unknown tests.coverage-gate backend at .");
+  });
+
+  it("is unknown where a directory was listed only in part, and finds what it did list", () => {
+    const lock = 'provider "registry.opentofu.org/hashicorp/azurerm" {\n}\n';
+    const partial = tree(
+      {
+        "infra/dev/main.tf": "",
+        "infra/dev/.terraform.lock.hcl": lock,
+        "infra/prod/main.tf": "",
+        "web/package.json": JSON.stringify({ dependencies: { vue: "3" } }),
+        "web/Dockerfile": "",
+        "Docs/pull_request_template.md": "",
+        ".github/workflows/ci.yml": "on: push\njobs: {}\n",
+      },
+      {
+        unlisted: ["infra/prod", "web", ".github/workflows"],
+        gaps: [
+          { kind: "limit", path: "infra/prod", detail: "only its first 1 entries were listed" },
+          { kind: "limit", path: "web", detail: "only its first 2 entries were listed" },
+          {
+            kind: "limit",
+            path: ".github/workflows",
+            detail: "only its first 1 entries were listed",
+          },
+        ],
+      },
+    );
+    const found = lines(run(partial));
+    expect(found).toEqual(
+      expect.arrayContaining([
+        "unknown infrastructure.provider-lock infrastructure at infra",
+        "unknown tests.coverage-gate frontend at web",
+        "unknown dependencies.lockfile frontend at web",
+        "compliant build.container frontend at web",
+        "compliant governance.pr-template",
+        "unknown ci.pull-request",
+        "unknown ci.pinned-actions",
+      ]),
+    );
+    expect(
+      found.filter(
+        (line) =>
+          line.startsWith("noncompliant") &&
+          !line.includes("governance") &&
+          !line.includes("docs") &&
+          !line.includes("liftoff"),
+      ),
+    ).toEqual([]);
+    const stopped = tree(
+      { "infra/dev/main.tf": "", "infra/dev/.terraform.lock.hcl": lock },
+      {
+        unlisted: ["infra/prod"],
+        gaps: [{ kind: "limit", path: ".", detail: "the walk stopped after 3 entries" }],
+      },
+    );
+    expect(lines(run(stopped))).toContain(
+      "unknown infrastructure.provider-lock infrastructure at infra/dev",
+    );
+  });
+
+  it("is unknown about what a repository keeps at its root, below the root", () => {
+    const below = assess(tree({ "pyproject.toml": FASTAPI, "uv.lock": "" }), {
+      git: false,
+      liftoff: NONE,
+      github: NOT_LIVE,
+    });
+    const found = lines(below);
+    expect(found).toEqual(
+      expect.arrayContaining([
+        "unknown liftoff.project",
+        "unknown ci.workflows",
+        "unknown governance.review-policy",
+        "noncompliant docs.readme",
+        "compliant dependencies.lockfile backend at .",
+      ]),
+    );
+    expect(
+      found.filter((line) => /^noncompliant (ci|governance|agents|liftoff)\./.test(line)),
+    ).toEqual([]);
+    expect(below.next).toContainEqual(
+      expect.objectContaining({
+        text: "Assess the root of the Git repository for what applies to the whole repository.",
+      }),
+    );
+  });
+});
+
 describe("ASSESS-003 CI and governance", () => {
   const ci = `
 on: pull_request
@@ -664,6 +828,22 @@ describe("ASSESS-005 GitHub is read only when asked", () => {
 });
 
 describe("ASSESS-003 Liftoff projects and projects from before the rebuild", () => {
+  it("keeps a Liftoff file this user may not read apart from a difference", () => {
+    const state: LiftoffState = {
+      kind: "project",
+      findings: [
+        { severity: "error", code: "config-unreadable", message: "closed", path: "liftoff.yaml" },
+        { severity: "error", code: "config-not-a-file", message: "a link", path: "liftoff.yaml" },
+      ],
+    };
+    expect(lines(run(tree({}), NOT_LIVE, state))).toEqual(
+      expect.arrayContaining([
+        "inaccessible liftoff.config-unreadable liftoff.yaml",
+        "noncompliant liftoff.config-not-a-file liftoff.yaml",
+      ]),
+    );
+  });
+
   it("reports an interrupted change in a project that is not Liftoff's yet", () => {
     const state: LiftoffState = {
       kind: "none",

@@ -259,6 +259,8 @@ interface Detected {
   readonly python: ReadonlyMap<string, PythonProject>;
   readonly node: ReadonlyMap<string, NodePackage>;
   readonly go: ReadonlyMap<string, GoModule>;
+  /** Roots of npm and uv workspaces, which lock their members' dependencies. */
+  readonly workspaces: { readonly python: ReadonlySet<string>; readonly node: ReadonlySet<string> };
 }
 
 /** The project's applications, frontends and infrastructure. */
@@ -268,6 +270,7 @@ export function detectParts(tree: Tree): Detected {
   const python = new Map<string, PythonProject>();
   const node = new Map<string, NodePackage>();
   const go = new Map<string, GoModule>();
+  const workspaces = { python: new Set<string>(), node: new Set<string>() };
   const files = [...tree.entries]
     .filter(([file, kind]) => kind === "file" && !file.startsWith(".github/"))
     .map(([file]) => file);
@@ -302,6 +305,7 @@ export function detectParts(tree: Tree): Detected {
         continue;
       }
       python.set(directory, project.value);
+      if (project.value.workspace) workspaces.python.add(directory);
       if (hasPython(project.value, "fastapi")) {
         part(
           "backend",
@@ -310,7 +314,8 @@ export function detectParts(tree: Tree): Detected {
             : "python-fastapi",
           true,
         );
-      } else {
+      } else if (!project.value.workspace) {
+        // A workspace root that is no application only gathers its members.
         part("application", "Python without FastAPI", false);
       }
     } else if (PYTHON_WITHOUT_PYPROJECT.includes(name)) {
@@ -325,7 +330,10 @@ export function detectParts(tree: Tree): Detected {
         continue;
       }
       // A workspace root only lists its packages, which are found on their own.
-      if (json.value.workspaces) continue;
+      if (json.value.workspaces) {
+        workspaces.node.add(directory);
+        continue;
+      }
       node.set(directory, json.value);
       const has = (...names: string[]) =>
         names.some((dependency) => json.value.dependencies.has(dependency));
@@ -390,7 +398,7 @@ export function detectParts(tree: Tree): Detected {
     });
   }
   parts.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.stack < b.stack ? -1 : 1));
-  return { parts, findings, python, node, go };
+  return { parts, findings, python, node, go, workspaces };
 }
 
 /** The development workflows the project uses. */
@@ -438,6 +446,16 @@ const LOCKFILES = {
   go: { standard: "go.sum", others: [], next: "Record module checksums with `go mod tidy`." },
 } as const;
 
+/** The directories above one, nearest first, up to the project itself. */
+function ancestors(directory: string): string[] {
+  const above: string[] = [];
+  for (let at = directory; at !== "."; ) {
+    at = parentOf(at);
+    above.push(at);
+  }
+  return above;
+}
+
 const ecosystem = (part: Part) =>
   part.stack.startsWith("python") ? "python" : part.stack === "go-huma" ? "go" : "node";
 
@@ -447,17 +465,29 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
   const kind = ecosystem(part);
   const subject = `${part.component} at ${at}`;
   const lock = LOCKFILES[kind];
-  const locked = presence(tree, within(at, lock.standard));
-  const other = lock.others.find((file) => presence(tree, within(at, file)).found === true);
+  // A workspace member's dependencies are locked at the workspace's root.
+  const lockedAt = [
+    at,
+    ...ancestors(at).filter(
+      (directory) => kind !== "go" && detected.workspaces[kind].has(directory),
+    ),
+  ];
+  const locked = firstPresent(
+    tree,
+    lockedAt.map((directory) => within(directory, lock.standard)),
+  );
+  const other = lockedAt
+    .flatMap((directory) => lock.others.map((file) => within(directory, file)))
+    .find((file) => presence(tree, file).found === true);
   findings.push(
     locked.found === false && other !== undefined
       ? {
           check: "dependencies.lockfile",
           area: "dependencies",
           status: "noncompliant",
-          message: `locks dependencies with ${other}; this release's standard is ${lock.standard}`,
+          message: `locks dependencies with ${base(other)}; this release's standard is ${lock.standard}`,
           subject,
-          evidence: [listed(within(at, other))],
+          evidence: [listed(other)],
           next: { category: "project", text: lock.next },
         }
       : expect(
@@ -542,7 +572,7 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
         ),
   );
 
-  findings.push(coverageGate(tree, part, detected, subject));
+  findings.push(coverageGate(tree, part, subject));
 
   findings.push(
     expect(
@@ -559,87 +589,120 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
   return findings;
 }
 
-function coverageGate(
+/**
+ * Where a coverage threshold is declared, read from the first of `files` that
+ * declares one; or why that cannot be told; or undefined when every one of
+ * them was seen and none declares one.
+ */
+function declaredIn(
   tree: Tree,
-  part: Part,
-  detected: Detected,
-  subject: string,
-): AssessmentFinding {
+  files: readonly string[],
+  pattern: RegExp,
+):
+  | { readonly evidence: Evidence }
+  | { readonly status: "inaccessible" | "unknown"; readonly why: string }
+  | undefined {
+  let unknown: { readonly status: "inaccessible" | "unknown"; readonly why: string } | undefined;
+  for (const file of files) {
+    const there = presence(tree, file);
+    if (there.found === false) continue;
+    if (there.found === "unknown") {
+      unknown ??= { status: there.status, why: there.why };
+      continue;
+    }
+    const text = parsed(tree, there.path, (value) => value, "text");
+    if ("status" in text) unknown ??= { status: text.status, why: text.reason };
+    else if (pattern.test(text.value)) return { evidence: read(there.path) };
+  }
+  return unknown;
+}
+
+/** Each name with each JavaScript or TypeScript extension a config file may have. */
+const scripts = (...names: string[]) =>
+  names.flatMap((name) =>
+    ["ts", "mts", "cts", "js", "mjs", "cjs"].map((extension) => `${name}.${extension}`),
+  );
+
+const COVERAGE = {
+  python: {
+    files: ["pyproject.toml", ".coveragerc", "setup.cfg", "tox.ini", "pytest.ini"],
+    pattern: /(^|\n)\s*fail_under\s*=|--cov-fail-under/,
+    where: "pyproject.toml, .coveragerc, setup.cfg, tox.ini or pytest.ini",
+    next: "Set fail_under under [tool.coverage.report] in pyproject.toml.",
+  },
+  node: {
+    files: [
+      ...scripts("vitest.config", "vite.config", "jest.config"),
+      "jest.config.json",
+      "package.json",
+    ],
+    pattern: /\bthresholds\b|\bcoverageThreshold\b/,
+    where: "a Vitest, Vite or Jest configuration or package.json",
+    next: "Set coverage thresholds in vitest.config.ts.",
+  },
+} as const;
+
+function coverageGate(tree: Tree, part: Part, subject: string): AssessmentFinding {
   const check = "tests.coverage-gate";
   const at = part.path;
-  const gate = (evidence: Evidence) => ({
-    check,
-    area: "tests" as const,
-    status: "compliant" as const,
-    message: "the tests fail below a coverage threshold",
-    subject,
-    evidence: [evidence],
-  });
-  const missing = (text: string): AssessmentFinding => ({
-    check,
-    area: "tests",
-    status: "noncompliant",
-    message: "no coverage threshold declared",
-    subject,
-    evidence: [],
-    next: { category: "project", text },
-  });
   const kind = ecosystem(part);
-  if (kind === "python") {
-    return detected.python.get(at)?.coverageGate
-      ? gate(read(within(at, "pyproject.toml")))
-      : missing("Set fail_under under [tool.coverage.report] in pyproject.toml.");
-  }
-  if (kind === "node") {
-    if (detected.node.get(at)?.coverageGate) return gate(read(within(at, "package.json")));
-    const configs = filesUnder(
-      tree,
-      at,
-      (file) => /^vitest\.config\.[cm]?[jt]s$/.test(base(file)) && parentOf(file) === at,
-    ).files;
-    for (const config of configs) {
-      const text = parsed(tree, config, (value) => value, "text");
-      if ("status" in text) {
-        return {
-          check,
-          area: "tests",
-          status: text.status,
-          message: `could not read ${config}: ${text.reason}`,
-          subject,
-          evidence: [listed(config)],
-          next: accessNext(text.status),
-        };
-      }
-      if (/\bthresholds\b/.test(text.value)) return gate(read(config));
-    }
-    return missing("Set coverage thresholds in vitest.config.ts.");
-  }
-  // Liftoff's Go projects gate coverage with a small tool of their own.
-  const tool = presence(tree, within(at, "tools/coverage/main.go"));
-  if (tool.found === true) return gate(listed(tool.path));
-  if (tool.found === "unknown") {
+  const found =
+    kind === "go"
+      ? // Liftoff's Go projects gate coverage with a small tool of their own.
+        (() => {
+          const tool = presence(tree, within(at, "tools/coverage/main.go"));
+          if (tool.found === true) return { evidence: listed(tool.path) };
+          return tool.found === "unknown" ? { status: tool.status, why: tool.why } : undefined;
+        })()
+      : declaredIn(
+          tree,
+          COVERAGE[kind].files.map((file) => within(at, file)),
+          COVERAGE[kind].pattern,
+        );
+  if (found !== undefined && "evidence" in found) {
     return {
       check,
       area: "tests",
-      status: tool.status,
-      message: `could not be checked: ${tool.why}`,
+      status: "compliant",
+      message: "the tests fail below a coverage threshold",
+      subject,
+      evidence: [found.evidence],
+    };
+  }
+  if (found !== undefined) {
+    return {
+      check,
+      area: "tests",
+      status: found.status,
+      message: `could not be checked: ${found.why}`,
       subject,
       evidence: [],
-      next: accessNext(tool.status),
+      next: accessNext(found.status),
+    };
+  }
+  if (kind === "go") {
+    return {
+      check,
+      area: "tests",
+      status: "unknown",
+      message:
+        "Go has no standard place to declare a coverage threshold, so one in a script or CI step is not seen",
+      subject,
+      evidence: [],
+      next: {
+        category: "project",
+        text: "Make sure CI fails when coverage falls below a threshold.",
+      },
     };
   }
   return {
     check,
     area: "tests",
-    status: "unknown",
-    message:
-      "Go has no standard place to declare a coverage threshold, so one in a script or CI step is not seen",
+    status: "noncompliant",
+    message: `no coverage threshold declared in ${COVERAGE[kind].where}`,
     subject,
     evidence: [],
-    next: {
-      category: "project",
-      text: "Make sure CI fails when coverage falls below a threshold.",
-    },
+    next: { category: "project", text: COVERAGE[kind].next },
   };
 }
 
@@ -818,16 +881,20 @@ function agentChecks(tree: Tree, agents: readonly (keyof typeof HOSTS)[]): Asses
 }
 
 function ciChecks(tree: Tree): AssessmentFinding[] {
-  const workflowFiles = [...tree.entries]
-    .filter(([file, kind]) => kind === "file" && /^\.github\/workflows\/[^/]+\.ya?ml$/.test(file))
-    .map(([file]) => file);
+  const listing = filesUnder(
+    tree,
+    ".github/workflows",
+    (file) => /\.ya?ml$/.test(file) && file.split("/").length === 3,
+  );
+  const workflowFiles = listing.files;
+  // Part of .github/workflows was not seen, so a workflow may be there.
+  const unseen = listing.hidden?.found === "unknown" ? listing.hidden : undefined;
   if (workflowFiles.length === 0) {
     return [
       expect(
         "ci.workflows",
         "ci",
-        // Not there, unless .github/workflows could not be listed.
-        presence(tree, ".github/workflows/ci.yml"),
+        unseen ?? { found: false },
         { found: "", missing: "no GitHub Actions workflows" },
         {
           category: "project",
@@ -853,8 +920,9 @@ function ciChecks(tree: Tree): AssessmentFinding[] {
     } else workflows.push([file, workflow.value]);
   }
   // A check none of the workflows read satisfies is unknown, not missing,
-  // while some could not be read.
-  const otherwise = unread.length > 0 ? "unknown" : "noncompliant";
+  // while some could not be seen or read.
+  const partial = unseen !== undefined || unread.length > 0;
+  const otherwise = unseen?.status ?? (unread.length > 0 ? "unknown" : "noncompliant");
   const some = (
     check: string,
     holds: (workflow: Workflow) => boolean,
@@ -871,7 +939,7 @@ function ciChecks(tree: Tree): AssessmentFinding[] {
           check,
           area: "ci",
           status: otherwise,
-          message: unread.length > 0 ? `${missing} in the workflows that could be read` : missing,
+          message: partial ? `${missing} in the workflows that could be read` : missing,
           evidence: workflows.map(([file]) => read(file)),
           next: { category: "project", text: next },
         };
@@ -922,11 +990,10 @@ function ciChecks(tree: Tree): AssessmentFinding[] {
       : {
           check: "ci.pinned-actions",
           area: "ci",
-          status: unread.length > 0 ? "unknown" : "compliant",
-          message:
-            unread.length > 0
-              ? "every action in the workflows that could be read is pinned to a full commit SHA"
-              : "every action is pinned to a full commit SHA",
+          status: partial ? (unseen?.status ?? "unknown") : "compliant",
+          message: partial
+            ? "every action in the workflows that could be read is pinned to a full commit SHA"
+            : "every action is pinned to a full commit SHA",
           evidence: workflows.map(([file]) => read(file)),
         },
   ];
@@ -1031,37 +1098,62 @@ function governanceChecks(tree: Tree, profile: string | undefined): AssessmentFi
 }
 
 function infrastructureChecks(tree: Tree, part: Part): AssessmentFinding[] {
-  const roots = filesUnder(tree, part.path, (file) => file.endsWith(".tf"))
-    .files.map(parentOf)
+  // The part is where the configurations seen are; one not seen may be
+  // anywhere in the same top-level directory.
+  const scope = part.path.split("/")[0] ?? ".";
+  const configurations = filesUnder(tree, scope, (file) => file.endsWith(".tf"));
+  const roots = configurations.files
+    .map(parentOf)
     .filter((directory, index, all) => all.indexOf(directory) === index)
     // Modules are locked by the roots that use them.
     .filter((directory) => !directory.split("/").includes("modules"));
-  const unlocked = roots.filter(
-    (root) => presence(tree, within(root, ".terraform.lock.hcl")).found !== true,
-  );
+  const unlocked: string[] = [];
+  let unseen = configurations.hidden;
+  for (const root of roots) {
+    const lock = presence(tree, within(root, ".terraform.lock.hcl"));
+    if (lock.found === false) unlocked.push(root);
+    else if (lock.found === "unknown") unseen ??= lock;
+  }
+  const check = "infrastructure.provider-lock";
   const subject = `infrastructure at ${part.path}`;
-  return [
-    unlocked.length === 0
-      ? {
-          check: "infrastructure.provider-lock",
-          area: "infrastructure",
-          status: "compliant",
-          message: "every root module locks its providers",
-          subject,
-          evidence: roots.map((root) => listed(within(root, ".terraform.lock.hcl"))),
-        }
-      : {
-          check: "infrastructure.provider-lock",
-          area: "infrastructure",
-          status: "noncompliant",
-          message: `no .terraform.lock.hcl in ${unlocked.join(", ")}`,
-          subject,
-          evidence: unlocked.map(listed),
-          next: {
-            category: "project",
-            text: "Commit each root module's .terraform.lock.hcl (tofu init writes it).",
-          },
+  if (unlocked.length > 0) {
+    return [
+      {
+        check,
+        area: "infrastructure",
+        status: "noncompliant",
+        message: `no .terraform.lock.hcl in ${unlocked.join(", ")}`,
+        subject,
+        evidence: unlocked.map(listed),
+        next: {
+          category: "project",
+          text: "Commit each root module's .terraform.lock.hcl (tofu init writes it).",
         },
+      },
+    ];
+  }
+  if (unseen?.found === "unknown") {
+    return [
+      {
+        check,
+        area: "infrastructure",
+        status: unseen.status,
+        message: `could not be checked: ${unseen.why}`,
+        subject,
+        evidence: [],
+        next: accessNext(unseen.status),
+      },
+    ];
+  }
+  return [
+    {
+      check,
+      area: "infrastructure",
+      status: "compliant",
+      message: "every root module locks its providers",
+      subject,
+      evidence: roots.map((root) => listed(within(root, ".terraform.lock.hcl"))),
+    },
   ];
 }
 
@@ -1079,7 +1171,8 @@ function liftoffChecks(state: LiftoffState): AssessmentFinding[] {
       (finding): AssessmentFinding => ({
         check: `liftoff.${finding.code}`,
         area: "liftoff",
-        status: "noncompliant",
+        // validate names a file closed to this user "…-unreadable".
+        status: finding.code.endsWith("-unreadable") ? "inaccessible" : "noncompliant",
         message: finding.message,
         ...(finding.path === undefined ? {} : { subject: finding.path }),
         evidence: finding.path === undefined ? [] : [read(finding.path)],
@@ -1218,6 +1311,28 @@ function githubChecks(state: GitHubState): { findings: AssessmentFinding[]; gaps
   };
 }
 
+/**
+ * GitHub, coding agents and Liftoff look for these at the root of the
+ * repository, which a directory that is not one may be below.
+ */
+function belowTheRoot(finding: AssessmentFinding): AssessmentFinding {
+  const repositoryWide =
+    finding.area === "ci" ||
+    finding.area === "governance" ||
+    finding.area === "agents" ||
+    finding.check === "liftoff.project";
+  if (!repositoryWide || finding.status !== "noncompliant") return finding;
+  return {
+    ...finding,
+    status: "unknown",
+    message: `${finding.message} here, but this is not the root of a Git repository, which may have it`,
+    next: {
+      category: "project",
+      text: "Assess the root of the Git repository for what applies to the whole repository.",
+    },
+  };
+}
+
 /** Assesses a walked project against this release's standard. */
 export function assess(
   tree: Tree,
@@ -1292,6 +1407,7 @@ export function assess(
   findings.push(...github.findings);
 
   const ordered = findings
+    .map((finding) => (state.git ? finding : belowTheRoot(finding)))
     .map((finding, index) => ({ finding, index }))
     .sort(
       (a, b) => AREAS.indexOf(a.finding.area) - AREAS.indexOf(b.finding.area) || a.index - b.index,

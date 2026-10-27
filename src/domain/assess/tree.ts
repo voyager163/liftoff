@@ -88,7 +88,12 @@ export function isDeclaration(file: string): boolean {
       "docker-compose.yaml",
       "docker-compose.yml",
       ".terraform.lock.hcl",
-    ].includes(name) || /^vitest\.config\.[cm]?[jt]s$/.test(name)
+      // Where a coverage threshold may be declared.
+      ".coveragerc",
+      "setup.cfg",
+      "tox.ini",
+      "pytest.ini",
+    ].includes(name) || /^(vitest|vite|jest)\.config\.([cm]?[jt]s|json)$/.test(name)
   );
 }
 
@@ -168,27 +173,46 @@ function unknownFrom(gap: Gap | undefined, file: string): Presence {
   };
 }
 
+/** Each directory's entries, by the directory's path; built once per tree. */
+const childrenOf = new WeakMap<Tree, Map<string, string[]>>();
+
+function children(tree: Tree, directory: string): readonly string[] {
+  let index = childrenOf.get(tree);
+  if (index === undefined) {
+    index = new Map();
+    for (const known of tree.entries.keys()) {
+      const parent = parentOf(known);
+      index.set(parent, [...(index.get(parent) ?? []), known]);
+    }
+    childrenOf.set(tree, index);
+  }
+  return index.get(directory) ?? [];
+}
+
 /**
  * Whether a file or directory is in the project. Names are compared ignoring
- * letter case, as macOS, Windows and GitHub mostly do.
+ * letter case, as macOS, Windows and GitHub mostly do. A path in a directory
+ * that was not listed in full, or behind a link, is unknown unless it was
+ * seen.
  */
 export function presence(tree: Tree, file: string): Presence {
-  const wanted = file.toLowerCase();
+  let at = ".";
   const parent = parentOf(file);
-  if (tree.listed.has(parent) || parent === ".") {
-    for (const known of tree.entries.keys()) {
-      if (parentOf(known) === parent && known.toLowerCase() === wanted) {
-        return { found: true, path: known };
-      }
-    }
-    return tree.listed.has(parent) ? { found: false } : unknownFrom(gapOver(tree, parent), file);
+  if (parent !== ".") {
+    const above = presence(tree, parent);
+    if (above.found !== true) return above;
+    // Nothing is inside a file.
+    if (tree.entries.get(above.path) === "file") return { found: false };
+    at = above.path;
   }
-  const above = presence(tree, parent);
-  if (above.found === false || above.found === "unknown") return above;
-  // Nothing is inside a file; a directory not listed, or a link, may hold it.
-  return tree.entries.get(above.path) === "file"
+  const wanted = path.posix.basename(file).toLowerCase();
+  const seen = children(tree, at).find(
+    (known) => path.posix.basename(known).toLowerCase() === wanted,
+  );
+  if (seen !== undefined) return { found: true, path: seen };
+  return tree.listed.has(at) && tree.entries.get(at) !== "other"
     ? { found: false }
-    : unknownFrom(gapOver(tree, above.path), file);
+    : unknownFrom(gapOver(tree, at), file);
 }
 
 /** The first of several paths that is there, or why none can be known to be. */

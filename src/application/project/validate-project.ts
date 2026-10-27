@@ -2,7 +2,6 @@ import path from "node:path";
 import { JournalError } from "../../domain/change/journal.ts";
 import type { LegacyInventory } from "../../domain/legacy/inventory.ts";
 import { CHANGE_JOURNAL_FILE } from "../../domain/plan/change-plan.ts";
-import { sha256Hex } from "../../domain/plan/plan.ts";
 import {
   CONFIG_FILE,
   ConfigError,
@@ -26,6 +25,11 @@ import { inventoryLegacy } from "./legacy-inventory.ts";
 
 export type Severity = "error" | "warning" | "info";
 
+/** The most of liftoff.yaml or the manifest read; neither comes near it. */
+const MAX_RECORD_BYTES = 1024 * 1024;
+/** The largest file Liftoff creates that is hashed; none comes near it. */
+const MAX_FILE_BYTES = 16 * 1024 * 1024;
+
 export interface Finding {
   readonly severity: Severity;
   readonly code: string;
@@ -44,15 +48,43 @@ export interface ValidationResult {
 }
 
 /**
- * Checks a project against its own configuration and manifest. It reads only:
- * nothing is repaired, installed or reported anywhere.
+ * Checks a project against its own configuration and manifest. It reads only,
+ * and follows no link to a file or on the way to one: nothing is repaired,
+ * installed or reported anywhere.
  */
 export async function validateProject(
   fs: ProjectFsPort,
   directory: string,
 ): Promise<ValidationResult> {
   const findings: Finding[] = [];
-  const read = (relative: string) => fs.readText(path.join(directory, ...relative.split("/")));
+  /**
+   * liftoff.yaml or the manifest: its text, undefined when it is missing,
+   * or null once a finding says why it cannot be read.
+   */
+  const record = async (relative: string, name: string): Promise<string | undefined | null> => {
+    const found = await fs.readWithin(directory, relative, MAX_RECORD_BYTES);
+    if (found.kind === "missing") return undefined;
+    if (found.kind === "file" && found.text !== undefined) return found.text;
+    findings.push(
+      found.kind === "inaccessible"
+        ? {
+            severity: "error",
+            code: `${name}-unreadable`,
+            path: relative,
+            message: `${relative} cannot be read by this user`,
+          }
+        : {
+            severity: "error",
+            code: `${name}-not-a-file`,
+            path: relative,
+            message:
+              found.kind === "file"
+                ? `${relative} is over ${MAX_RECORD_BYTES / 1024 / 1024} MiB, so it was not read`
+                : `${relative} is not a regular file Liftoff can read: it is a directory, a link or another kind of file, or it changed as it was read`,
+          },
+    );
+    return null;
+  };
   const result = (extra: Partial<ValidationResult> = {}): ValidationResult => ({
     directory,
     valid: !findings.some((finding) => finding.severity === "error"),
@@ -83,7 +115,8 @@ export async function validateProject(
     });
   }
 
-  const configText = await read(CONFIG_FILE);
+  const configText = await record(CONFIG_FILE, "config");
+  if (configText === null) return result();
   if (configText === undefined) {
     const legacy = await inventoryLegacy(fs, directory);
     if (legacy.project) {
@@ -147,7 +180,8 @@ export async function validateProject(
     }
   }
 
-  const manifestText = await read(MANIFEST_FILE);
+  const manifestText = await record(MANIFEST_FILE, "manifest");
+  if (manifestText === null) return result({ config });
   if (manifestText === undefined) {
     findings.push({
       severity: "error",
@@ -192,18 +226,22 @@ export async function validateProject(
   for (const file of manifest.files) {
     // Framework files belong to the framework, which may change or remove them.
     if (file.ownership === "framework") continue;
-    const state = await fs.state(path.join(directory, ...file.path.split("/")));
-    if (state === "directory" || state === "empty-directory") {
+    const found = await fs.hashWithin(directory, file.path, MAX_FILE_BYTES);
+    if (found.kind === "directory" || found.kind === "other") {
       findings.push({
         severity: "error",
         code: "not-a-file",
         path: file.path,
-        message: "this should be a file Liftoff created, but it is a directory",
+        message: `this should be a file Liftoff created, but it is ${found.kind === "directory" ? "a directory" : "a link or another kind of file, or it is reached through one"}`,
       });
-      continue;
-    }
-    const text = await read(file.path);
-    if (text === undefined) {
+    } else if (found.kind === "inaccessible") {
+      findings.push({
+        severity: "warning",
+        code: "file-unreadable",
+        path: file.path,
+        message: "a file Liftoff created cannot be read by this user, so it was not checked",
+      });
+    } else if (found.kind === "missing") {
       findings.push({
         severity: file.ownership === "managed" ? "error" : "warning",
         code: file.ownership === "managed" ? "managed-file-missing" : "seeded-file-missing",
@@ -213,7 +251,12 @@ export async function validateProject(
             ? "a file Liftoff manages is missing"
             : "a file Liftoff created is gone; that is fine if you removed it on purpose",
       });
-    } else if (file.ownership === "managed" && sha256Hex(text) !== file.sha256) {
+    } else if (
+      found.kind === "file" &&
+      file.ownership === "managed" &&
+      found.sha256 !== file.sha256
+    ) {
+      // A file over the limit is not hashed, and no file Liftoff writes is that large.
       findings.push({
         severity: "warning",
         code: "managed-file-changed",

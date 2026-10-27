@@ -87,7 +87,15 @@ describe("ASSESS-004 the report and its exit code", () => {
         directory: "/work/a\u001b[2Jb\u202ec",
         git: false,
         liftoff: "none",
-        parts: [],
+        parts: [
+          {
+            component: "infrastructure",
+            path: "infra",
+            stack: "OpenTofu or Terraform with hashicorp/\u001b]0;title\u0007\u0085x",
+            supported: false,
+            evidence: [],
+          },
+        ],
         workflows: ["manual"],
         agents: [],
         findings: [],
@@ -105,7 +113,9 @@ describe("ASSESS-004 the report and its exit code", () => {
     );
     expect(text).toContain("/work/a\\u001b[2Jb\\u202ec");
     expect(text).toContain("Not the root of a Git repository; not a Liftoff project.");
-    expect(text).toContain("Parts: none found.");
+    expect(text).toContain("hashicorp/\\u001b]0;title\\u0007\\u0085x at infra (unsupported)");
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it looks for.
+    expect(text).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/);
     expect(text).toContain("Agents: none.");
     expect(text).toContain("… and 5 more in the --json report");
   });

@@ -27,7 +27,9 @@ It reads only the declarations it interprets, up to 300 of them and 512 KiB
 each:
 
 - `pyproject.toml`, `package.json` and `go.mod`;
-- Compose files, `vitest.config.*` and `.terraform.lock.hcl`;
+- Compose files and `.terraform.lock.hcl`;
+- where a coverage threshold may be set: Vitest, Vite and Jest
+  configuration, `.coveragerc`, `setup.cfg`, `tox.ini` and `pytest.ini`;
 - the workflows in `.github/workflows`.
 
 In a Liftoff project it also reads what `liftoff validate` reads. Every other
@@ -69,6 +71,13 @@ The checks cover:
 - **Governance:** the review policy, rulesets, pull request template,
   `REVIEW.md`, `GOVERNANCE.md` and Dependabot.
 - **Infrastructure and docs:** locked OpenTofu providers, and `README.md`.
+
+A member of an npm or uv workspace may have its lock file at the
+workspace's root. When you assess a directory that is not the root of a Git
+repository, such as one service in a monorepo, what GitHub and coding agents
+look for at the root (workflows, governance files, `AGENTS.md` and review
+skills) is unknown rather than missing when it is not there, since the root
+may have it.
 
 The command exits 0 when every finding is compliant and 3 otherwise.
 
