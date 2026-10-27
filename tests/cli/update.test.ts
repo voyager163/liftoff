@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -44,13 +44,17 @@ const PR = SKILL("liftoff-pr");
 
 const exec = async (
   argv: string[],
-  options: { answer?: boolean; answers?: Answers; port?: ProjectFsPort } = {},
+  options: {
+    answer?: boolean;
+    answers?: Answers;
+    /** The file system, or one made with a way to press Ctrl+C. */
+    port?: ProjectFsPort | ((cancel: () => void) => ProjectFsPort);
+  } = {},
 ) => {
-  const command = makeUpdateCommand((cwd) => ({
-    ...defaultProjectPorts(cwd),
-    fs: options.port ?? fs,
-  }));
   const io = captureIo(root(), options.answer, options.answers);
+  const port =
+    typeof options.port === "function" ? options.port(() => io.controller.abort()) : options.port;
+  const command = makeUpdateCommand((cwd) => ({ ...defaultProjectPorts(cwd), fs: port ?? fs }));
   const code = await runCli(argv, io, [command, makeValidateCommand()], "1.0.0");
   return {
     code,
@@ -413,6 +417,107 @@ describe("UPDATE-004 an update that stops part way is finished or undone", () =>
     expect(refused.err).toContain("the change that stopped is no longer the one shown");
     expect(read(CHANGE_JOURNAL_FILE)).toBe(swapped);
     expect(read(PR)).not.toBe("old pr\n");
+  });
+
+  it.each([
+    [
+      "a file only the manifest changes for is edited",
+      ".github/liftoff/review-policy.mjs",
+      "changed since the plan was made",
+    ],
+    [
+      "a file this release no longer makes appears again",
+      ".github/workflows/98-gone.yml",
+      "already exists",
+    ],
+  ])("changes nothing when %s after the plan was shown", async (_, file, problem) => {
+    older();
+    age((manifest) => {
+      const policy = entry(manifest, ".github/liftoff/review-policy.mjs");
+      policy.sha256 = sha("older policy\n");
+      manifest.files.push({
+        ...policy,
+        path: ".github/workflows/98-gone.yml",
+        sha256: sha("gone\n"),
+      });
+    });
+    const before = snapshot();
+    const port = Object.assign(Object.create(fs) as ProjectFsPort, {
+      createExclusive: async (lock: string, content: string) => {
+        write(file, "edited meanwhile\n");
+        return fs.createExclusive(lock, content);
+      },
+    });
+    const { code, err } = await update(["--yes"], { port });
+    expect(code).toBe(1);
+    expect(err).toContain(`nothing was changed: ${file} ${problem}`);
+    expect(snapshot()).toEqual({
+      ...before,
+      [file]: Buffer.from("edited meanwhile\n").toString("base64"),
+    });
+  });
+
+  it("changes nothing when cancelled before the first file, and stops recoverably after it", async () => {
+    olderTwo();
+    const before = snapshot();
+    const cancelAt = (moves: number) => (cancel: () => void) => {
+      let moved = 0;
+      return Object.assign(Object.create(fs) as ProjectFsPort, {
+        createExclusive: async (lock: string, content: string) => {
+          if (moves === 0) cancel();
+          return fs.createExclusive(lock, content);
+        },
+        moveFile: async (from: string, to: string) => {
+          await fs.moveFile(from, to);
+          moved += 1;
+          if (moved === moves) cancel();
+        },
+      });
+    };
+    const cancelled = await update(["--yes"], { port: cancelAt(0) });
+    expect(cancelled.code).toBe(4);
+    expect(snapshot()).toEqual(before);
+    expect(readdirSync(work).filter((name) => name.includes("liftoff-staging"))).toEqual([]);
+
+    const stopped = await update(["--yes"], { port: cancelAt(1) });
+    expect(stopped.code).toBe(5);
+    expect(stopped.out).toContain("the change was cancelled after 1 of 3 files");
+    const notYet = await update(["--recover", "finish", "--yes"], { port: cancelAt(0) });
+    expect(notYet.code).toBe(4);
+    const halfway = await update(["--recover", "finish", "--yes"], { port: cancelAt(1) });
+    expect(halfway.code).toBe(5);
+    expect(halfway.out).toContain(
+      "Recovery stopped: recovery was cancelled after 1 file; run it again",
+    );
+    const finished = await update(["--recover", "finish", "--yes"]);
+    expect(finished.code).toBe(0);
+    expect(finished.out).toContain("The update is finished: 1 file changed.");
+  });
+
+  it("names what it could not remove once every file had changed", async () => {
+    older();
+    const port = Object.assign(Object.create(fs) as ProjectFsPort, {
+      remove: async (target: string) => {
+        if (/\.liftoff-staging-[^/\\]+$/.test(target) || target.endsWith("change.lock")) {
+          throw new Error(`EPERM: operation not permitted, rm '${path.basename(target)}'`);
+        }
+        return fs.remove(target);
+      },
+    });
+    const { code, out } = await update(["--yes", "--json"], { port });
+    expect(code).toBe(3);
+    const report = JSON.parse(out);
+    expect(report).toMatchObject({ changed: true, outcome: "attention" });
+    expect(report.leftovers).toEqual([
+      expect.stringMatching(
+        /^the kept copies in \.demo\.liftoff-staging-\S+ beside the project could not be removed \(EPERM/,
+      ),
+      expect.stringMatching(
+        /^\.liftoff\/change\.lock could not be removed \(EPERM.*\); delete it$/,
+      ),
+    ]);
+    expect(existsSync(path.join(root(), ...CHANGE_JOURNAL_FILE.split("/")))).toBe(false);
+    expect(read(VERIFY)).not.toBe("old verify\n");
   });
 
   it("changes nothing when a file changes after the plan was shown", async () => {

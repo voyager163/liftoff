@@ -105,9 +105,11 @@ Verification: test
 Before anything changes, and once no other change can start, every file must
 still be exactly as the plan says: the same content, a regular file and not
 a link, or still absent. So must any file the change rests on without
-changing it, such as `liftoff.yaml` for an update. If any is not, nothing
-changes and each such file is named. So a change that finished while this one was being prepared is
-never overwritten. Each new file's content must hash to what the plan says
+changing it, such as `liftoff.yaml` for an update, or a file whose manifest
+entry an update rewrites, which must still have the content seen, or still
+be absent. If any is not, nothing changes and each such file is named. So a
+change that finished while this one was being prepared is never
+overwritten. Each new file's content must hash to what the plan says
 and be no larger than 64 MiB, and a plan whose journal could not be read
 back is refused, both before anything changes. For each file, its original
 is copied as every file is read (following no link, never waiting on a
@@ -170,8 +172,14 @@ Each file is replaced in one step, keeping the executable bit planned. The
 project's files change first, then `liftoff.yaml`, then
 `.liftoff/manifest.json`, so the manifest never lists files that were not
 written. Once every file has changed, the journal and the kept copies are
-removed. A change across several files is not atomic; the journal is how an
+removed. If the kept copies or the lock cannot be removed then, the change
+is still complete, and what is left is named for the person to delete. A
+change across several files is not atomic; the journal is how an
 interrupted one is recovered.
+
+A change, or its recovery, cancelled with Ctrl+C stops between files:
+before the first file, nothing changes; after it, the change stops part way
+and can be recovered.
 
 Verification: test
 
@@ -387,8 +395,11 @@ that stops part way exits 5, and `liftoff update --recover finish` or
 `--recover undo` finishes or undoes it after asking. A recovery that stops
 part way also exits 5, keeping the journal so it can be run again. Recovery
 acts only on the interrupted update it showed when it asked: if another
-change stopped meanwhile, it refuses and changes nothing. An update exits 3 when
-files were held back or new files could not be added, and 0 otherwise.
+change stopped meanwhile, it refuses and changes nothing. Cancelled with
+Ctrl+C before any file changes, an update or a recovery exits 4; after, 5.
+An update exits 3 when files were held back, new files could not be added,
+or something could not be removed once every file had changed, and 0
+otherwise.
 
 - Given a saved plan, when a file it changes is edited before it is
   applied, then it is refused and nothing changes.

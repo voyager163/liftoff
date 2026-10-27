@@ -5,6 +5,7 @@ import {
   CHANGE_COMMANDS,
   ChangeError,
   type ChangePorts,
+  type ChangeResult,
   ChangeStoppedError,
   readJournal,
   recoverChanges,
@@ -251,6 +252,7 @@ export function makeUpdateCommand(
             lines.push("", "There is nothing to change, so no plan was saved.");
           } else {
             const file = path.resolve(io.cwd, out);
+            io.signal.throwIfAborted();
             await writeFile(file, `${JSON.stringify(update.plan, null, 2)}\n`);
             lines.push(
               "",
@@ -290,27 +292,40 @@ export function makeUpdateCommand(
           };
         }
       }
+      let result: ChangeResult;
       try {
-        await applyChanges(changePorts, update.plan, update.contents, update.unchanged);
+        result = await applyChanges(changePorts, update.plan, update.contents, {
+          unchanged: update.unchanged,
+          signal: io.signal,
+        });
       } catch (error) {
         return stopped(error, ports, update);
       }
-      const done = `Updated ${update.name}: changed ${changed(update)}.`;
+      const updated = [
+        `Updated ${update.name}: changed ${changed(update)}.`,
+        ...(held ? ["Some files were left as they are; liftoff update --check lists them."] : []),
+        ...leftBehind(result.leftovers),
+      ];
       return {
-        outcome: held ? "attention" : "success",
+        outcome: held || result.leftovers.length > 0 ? "attention" : "success",
         report: {
           ...reported(update),
           // What --check would now find: files held back or not added, or new files offered.
           available: held || update.files.some((file) => file.step === "offer"),
           changed: true,
+          leftovers: result.leftovers,
         },
-        text: held
-          ? `${done}\nSome files were left as they are; liftoff update --check lists them.\n`
-          : `${done}\n`,
+        text: `${updated.map(shown).join("\n")}\n`,
       };
     },
   };
 }
+
+/** What a complete change could not remove, for the person to delete. */
+const leftBehind = (leftovers: readonly string[]) =>
+  leftovers.length === 0
+    ? []
+    : ["Left behind once every file had changed:", ...leftovers.map((left) => `  ${left}`)];
 
 /**
  * An update that stopped after its journal was written stopped part way,
@@ -380,10 +395,19 @@ async function recoverUpdate(
   let result: Awaited<ReturnType<typeof recoverChanges>>;
   try {
     // Only the change shown and approved, not one that stopped since.
-    result = await recoverChanges(ports, directory, mode, journal.plan);
+    result = await recoverChanges(ports, directory, mode, {
+      plan: journal.plan,
+      signal: io.signal,
+    });
   } catch (error) {
-    // A refusal changed nothing; anything else may have stopped it part way.
-    if (error instanceof ChangeError) throw error;
+    // A refusal, or a cancel before any file changed, changed nothing;
+    // anything else may have stopped it part way.
+    if (
+      !(error instanceof ChangeStoppedError) &&
+      (error instanceof ChangeError || io.signal.aborted)
+    ) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     return {
       outcome: "partial",
@@ -405,9 +429,10 @@ The update is still not ${mode === "finish" ? "finished" : "undone"}, and ${CHAN
       result.conflicts,
     ),
     ...list("Waiting until those are resolved:", result.waiting),
+    ...leftBehind(result.leftovers),
   ];
   return {
-    outcome: result.complete ? "success" : "partial",
+    outcome: !result.complete ? "partial" : result.leftovers.length > 0 ? "attention" : "success",
     report: { directory, recovered: result.complete, mode, ...result },
     text: `${lines.map(shown).join("\n")}\n`,
   };

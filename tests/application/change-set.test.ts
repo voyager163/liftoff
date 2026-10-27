@@ -151,7 +151,7 @@ function recording(options: { failOnMove?: number; afterMove?: (count: number) =
 describe("CHANGE-002 a file changed since the plan is never overwritten", () => {
   it("makes every planned change", async () => {
     const { plan, contents } = project();
-    expect(await applyChanges(ports(fs), plan, contents)).toEqual({ changed: 5 });
+    expect(await applyChanges(ports(fs), plan, contents)).toEqual({ changed: 5, leftovers: [] });
     expect(read("README.md").toString()).toBe("# New\n");
     expect(read("run.sh").toString()).toBe("#!/bin/sh\necho hi\n");
     expect(existsSync(path.join(root, "data.bin"))).toBe(false);
@@ -386,6 +386,7 @@ describe("CHANGE-003 a change that stops part way can be finished or undone", ()
       conflicts: [],
       waiting: [],
       complete: true,
+      leftovers: [],
     });
     expect(read("run.sh").toString()).toBe("#!/bin/sh\necho hi\n");
     expect(read(".liftoff/manifest.json").toString()).toBe('{"files":[]}\n');
@@ -726,7 +727,7 @@ describe("CHANGE-003 a change and its recovery hold one lock", () => {
     );
     expect(read("README.md").toString()).toBe("# Old\n");
     rmSync(lockFile());
-    expect(await applyChanges(ports(fs), plan, contents)).toEqual({ changed: 5 });
+    expect(await applyChanges(ports(fs), plan, contents)).toEqual({ changed: 5, leftovers: [] });
     expect(readdirSync(path.join(root, ".liftoff"))).toEqual(["manifest.json"]);
   });
 });

@@ -77,7 +77,9 @@ liftoff update --recover undo
 ```
 
 Recovery asks first, and leaves alone any file something else changed
-meanwhile until you put it back.
+meanwhile until you put it back. Ctrl+C stops an update or a recovery
+between files: before the first, nothing changes (exit 4); after it, the
+update stops part way and you can recover it.
 
 ## Exit codes
 
@@ -86,7 +88,7 @@ meanwhile until you put it back.
 | 0 | Updated, or there was nothing to update |
 | 1 | Refused or failed; nothing was changed |
 | 2 | The command line was wrong, or `--yes` was needed |
-| 3 | `--check` found an update, or files were held back or could not be added |
-| 4 | You answered no |
+| 3 | `--check` found an update; files were held back or could not be added; or something could not be removed after the update, which it names |
+| 4 | You answered no, or pressed Ctrl+C before anything changed |
 | 5 | The update, or its recovery, stopped part way |
 | 6 | This release cannot update this project yet |

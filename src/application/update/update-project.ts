@@ -81,7 +81,11 @@ export interface UpdatePlan {
   readonly plan?: ChangePlan;
   /** The new content of each file the plan writes. */
   readonly contents: ReadonlyMap<string, NewContent>;
-  /** liftoff.yaml as the update was planned from it, which must not change before it applies. */
+  /**
+   * Files the update rests on without changing them, which must still be as
+   * planned when it applies: liftoff.yaml, and each file only its manifest
+   * entry changes for, as it was seen or still absent.
+   */
   readonly unchanged: readonly Unchanged[];
 }
 
@@ -186,6 +190,7 @@ export async function planUpdate(
   );
   const steps: UpdateFile[] = [];
   const changes: FileChange[] = [];
+  const unchanged: Unchanged[] = [{ path: CONFIG_FILE, sha256: sha256Hex(configText) }];
   const contents = new Map<string, NewContent>();
   const entries = new Map(manifest.files.map((entry) => [entry.path, entry]));
   const replace = (file: ProjectFile, before: string | null) => {
@@ -228,9 +233,11 @@ export async function planUpdate(
     const sha256 = now.kind === "file" ? now.sha256 : undefined;
     if (wanted === undefined && now.kind === "missing") {
       entries.delete(entry.path);
+      unchanged.push({ path: entry.path, sha256: null });
       steps.push({ path: entry.path, step: "record" });
     } else if (wanted !== undefined && sha256 === wanted.sha256) {
       entries.set(entry.path, entryFor(wanted, "managed"));
+      unchanged.push({ path: entry.path, sha256: wanted.sha256 });
       steps.push({ path: entry.path, step: "record" });
     } else if (sha256 !== entry.sha256) {
       steps.push({
@@ -280,7 +287,7 @@ export async function planUpdate(
   const result = {
     directory,
     name: config.name,
-    unchanged: [{ path: CONFIG_FILE, sha256: sha256Hex(configText) }],
+    unchanged,
     files: steps.sort((a, b) => a.path.localeCompare(b.path)),
     plugins,
   };
