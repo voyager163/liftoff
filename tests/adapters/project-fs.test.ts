@@ -441,6 +441,37 @@ describe("ASSESS-002 listing a directory follows no link and stays within its li
     }
   });
 
+  it("refuses a project directory that is a link, or is replaced by one while listed", async () => {
+    write("real/x", "");
+    symlinkSync(path.join(work, "real"), path.join(work, "linked"), "junction");
+    const linked = path.join(work, "linked");
+    expect(await fs.listWithin(linked, ".", 10)).toEqual({ kind: "other", via: "." });
+    expect(await fs.readWithin(linked, "x", 10)).toEqual({ kind: "other", via: "." });
+    expect(await fs.hashWithin(linked, "x", 10)).toEqual({ kind: "other", via: "." });
+    expect(await fs.listWithin(path.join(work, "real/x"), ".", 10)).toEqual({
+      kind: "other",
+      via: ".",
+    });
+    expect(await fs.listWithin(path.join(work, "gone"), ".", 10)).toEqual({ kind: "missing" });
+
+    const outside = mkdtempSync(path.join(tmpdir(), "liftoff-fs-outside-"));
+    try {
+      writeFileSync(path.join(outside, "theirs.txt"), "");
+      const project = path.join(work, "real");
+      const swapping: ListCalls = {
+        lstat: (target) => lstat(target, { bigint: true }),
+        opendir: async (target) => {
+          renameSync(project, path.join(work, "moved"));
+          symlinkSync(outside, project, "junction");
+          return opendir(target);
+        },
+      };
+      expect(await listWithin(project, ".", 10, swapping)).toEqual({ kind: "other", via: "." });
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it("tells a directory it may not read from one that failed", async () => {
     write("dir/x", "");
     const failing = (code: string): ListCalls => ({

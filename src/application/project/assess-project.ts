@@ -65,6 +65,9 @@ export async function assessProject(
   if (top.kind === "inaccessible")
     throw new AssessError(`${directory} cannot be read by this user`);
   if (top.kind !== "directory") throw new AssessError(`${directory} is not a directory`);
+  // Every listing and read checks the directory is still itself; this also
+  // catches it being replaced between them.
+  const identity = await fs.directoryIdentity(directory);
   const git = ["file", "directory"].includes((await fs.entry(path.join(directory, ".git"))).kind);
   if (!git && !options.named) {
     throw new AssessError(
@@ -192,6 +195,9 @@ export async function assessProject(
           findings,
           ...(validation.config ? { governance: validation.config.governance } : {}),
         };
+  if (identity === undefined || (await fs.directoryIdentity(directory)) !== identity) {
+    throw new AssessError(`${directory} was replaced while it was being assessed; assess it again`);
+  }
   const github: GitHubState = options.live ? await options.live() : { kind: "not-requested" };
   const assessment = assess(
     { entries, listed, declarations: texts, gaps },

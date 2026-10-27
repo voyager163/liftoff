@@ -199,7 +199,10 @@ Verification: test
 
 ## ASSESS-002 The walk is bounded and follows no link
 
-The assessment walks the project breadth first, sorted by name, and stops
+The project directory itself must be a directory, not a link, and must stay
+the same directory throughout: every listing and read checks it, and an
+assessment during which it was replaced is refused. The assessment walks
+the project breadth first, sorted by name, and stops
 at 50,000 entries, 10,000 entries in one directory, 12 directories deep,
 300 declarations read and 512 KiB per declaration. It never follows a link:
 a link, or a directory that changes while it is listed, is not walked.
@@ -239,8 +242,17 @@ inaccessible, never noncompliant. In a directory that is not the root of a
 Git repository, what GitHub, coding agents and Liftoff look for at the root
 (workflows, governance files, `AGENTS.md`, review skills and
 `liftoff.yaml`) is unknown when it is not found, since the root may have
-it. A member of an npm or uv workspace may have its lock file at the
-workspace's root. Each finding lists the paths it rests on
+it. A member of an npm or uv workspace, by the workspace's member and
+exclusion globs, may have its lock file at the workspace's root, and a
+workspace's root may itself be an application. A `pyproject.toml` that is
+not valid TOML is unknown, whatever it names. A coverage threshold counts
+only when it is configured: `fail_under` or `--cov-fail-under` above 0, or a
+non-empty `thresholds` or `coverageThreshold` object, never a mention in a
+description or a comment; one set in code that cannot be read statically is
+unknown. OpenTofu root modules make one part per kind of provider their
+lock files lock, so Azure and another cloud are separate parts; a root
+module whose lock file could not be read, or that has none, is unknown,
+never unsupported. Each finding lists the paths it rests on
 and whether each was seen by name, read, or read from GitHub. The same
 project gives the same report, unless a directory has more entries than the
 limit, when which of them are listed is up to the file system.
@@ -279,8 +291,10 @@ Verification: test
 
 With `--live`, the assessment also reads the repository's governance on
 GitHub through the same read-only path as `liftoff governance assess`, with
-the person's GitHub CLI login, after they agree or with `--use-gh`. Each
-governance checkpoint becomes a finding. A repository GitHub refuses to
+the person's GitHub CLI login, after they agree or with `--use-gh`. That path
+reads the committed rulesets and workflows within limits and through no
+link, and checks each ruleset has the fields it uses. Each governance
+checkpoint becomes a finding. A repository GitHub refuses to
 show is inaccessible, and any other failure is unknown; the local
 assessment is still reported. `--repo` and `--use-gh` are refused without
 `--live`.

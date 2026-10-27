@@ -223,12 +223,16 @@ export async function listWithin(
   const parts = relative === "." ? [] : relative.split("/");
   // A path that cannot be inspected is in a directory this user may not
   // search: that directory is the one reported.
-  const container = (depth: number) => parts.slice(0, depth - 1).join("/") || ".";
+  const container = (depth: number) => parts.slice(0, Math.max(depth - 1, 0)).join("/") || ".";
   const inspected: {
     readonly path: string;
     readonly depth: number;
     readonly stats: BigIntStats;
   }[] = [];
+  // The directory itself is inspected too: it may be replaced by a link.
+  const base = await inspectBase(calls, directory);
+  if (base.kind !== "directory") return base;
+  inspected.push({ path: directory, depth: 0, stats: base.stats });
   for (let depth = 1; depth <= parts.length; depth++) {
     const target = path.join(directory, ...parts.slice(0, depth));
     const seen = await inspect(calls, target);
@@ -271,7 +275,7 @@ export async function listWithin(
     const now = await inspect(calls, again);
     if (now === "inaccessible") return { kind: "inaccessible", via: container(depth) };
     if (now === "missing" || !now.isDirectory() || !sameFile(now, stats)) {
-      return { kind: "other", via: parts.slice(0, depth).join("/") };
+      return { kind: "other", via: parts.slice(0, depth).join("/") || "." };
     }
   }
   entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -452,9 +456,13 @@ async function openWithin(
   const parts = relative.split("/");
   // A path that cannot be inspected is in a directory this user may not
   // search: that directory is the one reported.
-  const container = (depth: number) => parts.slice(0, depth - 1).join("/") || ".";
+  const container = (depth: number) => parts.slice(0, Math.max(depth - 1, 0)).join("/") || ".";
   const parents: { readonly path: string; readonly depth: number; readonly stats: BigIntStats }[] =
     [];
+  // The directory itself is inspected too: it may be replaced by a link.
+  const base = await inspectBase(calls, directory);
+  if (base.kind !== "directory") return base;
+  parents.push({ path: directory, depth: 0, stats: base.stats });
   for (let depth = 1; depth < parts.length; depth++) {
     const target = path.join(directory, ...parts.slice(0, depth));
     const seen = await inspect(calls, target);
@@ -497,7 +505,7 @@ async function openWithin(
       if (now === "inaccessible")
         return { kind: "inaccessible" as const, via: container(parent.depth) };
       if (now === "missing" || !now.isDirectory() || !sameFile(now, parent.stats)) {
-        return { kind: "other" as const, via: parts.slice(0, parent.depth).join("/") };
+        return { kind: "other" as const, via: parts.slice(0, parent.depth).join("/") || "." };
       }
     }
     const now = await inspect(calls, file);
@@ -516,6 +524,24 @@ async function openWithin(
     await handle.close();
     throw error;
   }
+}
+
+/**
+ * The directory a path is read under: it must itself be a directory, not a
+ * link to one, or what is read under it may be somewhere else entirely.
+ */
+async function inspectBase(
+  calls: Pick<ReadCalls, "lstat">,
+  directory: string,
+): Promise<
+  | { readonly kind: "directory"; readonly stats: BigIntStats }
+  | { readonly kind: "missing" }
+  | { readonly kind: "other" | "inaccessible"; readonly via: string }
+> {
+  const seen = await inspect(calls, directory);
+  if (seen === "missing") return { kind: "missing" };
+  if (seen === "inaccessible") return { kind: "inaccessible", via: "." };
+  return seen.isDirectory() ? { kind: "directory", stats: seen } : { kind: "other", via: "." };
 }
 
 async function inspect(

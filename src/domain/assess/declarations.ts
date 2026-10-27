@@ -1,3 +1,4 @@
+import { parse as parseToml } from "smol-toml";
 import { parse } from "yaml";
 
 /**
@@ -9,107 +10,205 @@ import { parse } from "yaml";
 /** A Python package name as pip compares them. */
 const pythonName = (name: string) => name.toLowerCase().replace(/[-_.]+/g, "-");
 
-/** Strips a TOML comment, leaving `#` inside a quoted string alone. */
-function withoutComment(line: string): string {
-  let quote: string | undefined;
-  for (let index = 0; index < line.length; index++) {
-    const character = line[index];
-    if (quote !== undefined) {
-      if (character === "\\" && quote === '"') index++;
-      else if (character === quote) quote = undefined;
-    } else if (character === '"' || character === "'") {
-      quote = character;
-    } else if (character === "#") {
-      return line.slice(0, index);
-    }
-  }
-  return line;
-}
-
-/** The quoted strings in some TOML. */
-const quoted = (text: string) =>
-  [...text.matchAll(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g)].map((match) => match[1] ?? match[2] ?? "");
-
 /** The name a PEP 508 requirement, such as "fastapi[standard]>=0.115", starts with. */
 const requirementName = (requirement: string) =>
   /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(requirement)?.[1];
+
+type Table = Readonly<Record<string, unknown>>;
+
+/** A value as a table, or undefined when it is anything else. */
+const table = (value: unknown): Table | undefined =>
+  typeof value === "object" && value !== null && !Array.isArray(value) && !(value instanceof Date)
+    ? (value as Table)
+    : undefined;
+
+/** A value's strings, when it is an array; anything else in it is skipped. */
+const strings = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+/** A positive threshold, as a number or as text. */
+const positive = (value: unknown) => Number(value) > 0;
+
+/** Whether pytest options, as text or a list, set a coverage threshold above 0. */
+const failsUnderCoverage = (options: unknown) =>
+  /--cov-fail-under[= ]\s*0*[1-9]/.test(
+    Array.isArray(options) ? options.join(" ") : String(options ?? ""),
+  );
+
+/** Member and excluded directories of a workspace, as globs relative to its root. */
+export interface Workspace {
+  readonly members: readonly string[];
+  readonly exclude: readonly string[];
+}
 
 export interface PythonProject {
   /** Package names, as pip compares them, from every dependency list. */
   readonly dependencies: ReadonlySet<string>;
   readonly requiresPython: boolean;
-  /** Whether it is the root of a uv workspace, which locks its members. */
-  readonly workspace: boolean;
+  /** The uv workspace it is the root of, which locks its members. */
+  readonly workspace?: Workspace;
+  /** Whether coverage below a threshold fails: fail_under, or pytest's --cov-fail-under. */
+  readonly coverageGate: boolean;
 }
 
 /**
- * Reads a pyproject.toml's dependency lists: `[project]` dependencies,
- * optional dependencies, dependency groups, uv's development dependencies
- * and Poetry's dependency tables.
+ * Reads a pyproject.toml, or undefined when it is not valid TOML: its
+ * `[project]` dependencies, optional dependencies, dependency groups, uv's
+ * development dependencies and Poetry's dependency tables.
  */
-export function readPyproject(text: string): PythonProject {
+export function readPyproject(text: string): PythonProject | undefined {
+  let document: Table;
+  try {
+    document = parseToml(text);
+  } catch {
+    return undefined;
+  }
+  const project = table(document.project) ?? {};
+  const tool = table(document.tool) ?? {};
+  const uv = table(tool.uv) ?? {};
+  const poetry = table(tool.poetry) ?? {};
+  const requirements = [
+    ...strings(project.dependencies),
+    ...Object.values(table(project["optional-dependencies"]) ?? {}).flatMap(strings),
+    ...Object.values(table(document["dependency-groups"]) ?? {}).flatMap(strings),
+    ...strings(uv["dev-dependencies"]),
+  ];
+  const poetryTables = [
+    table(poetry.dependencies),
+    table(poetry["dev-dependencies"]),
+    ...Object.values(table(poetry.group) ?? {}).map((group) => table(table(group)?.dependencies)),
+  ];
   const dependencies = new Set<string>();
-  let section = "";
-  let array: { key: string; text: string; depth: number } | undefined;
-  const lists = (key: string) =>
-    (section === "project" && key === "dependencies") ||
-    section === "project.optional-dependencies" ||
-    section === "dependency-groups" ||
-    (section === "tool.uv" && key === "dev-dependencies");
-  const tables = () => /^tool\.poetry\.(.+\.)?(dev-)?dependencies$/.test(section);
-  let requiresPython = false;
-  let workspace = false;
-  for (const raw of text.split(/\r?\n/)) {
-    const line = withoutComment(raw);
-    if (array !== undefined) {
-      array.text += `\n${line}`;
-      array.depth += (line.match(/\[/g) ?? []).length - (line.match(/\]/g) ?? []).length;
-      if (array.depth <= 0) {
-        for (const value of quoted(array.text)) {
-          const name = requirementName(value);
-          if (name) dependencies.add(pythonName(name));
-        }
-        array = undefined;
-      }
-      continue;
-    }
-    const header = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*$/.exec(line);
-    if (header) {
-      section = (header[1] ?? "").replace(/["'\s]/g, "");
-      if (section === "tool.uv.workspace") workspace = true;
-      continue;
-    }
-    const assignment = /^\s*("[^"]*"|'[^']*'|[A-Za-z0-9_.-]+)\s*=\s*(.*)$/.exec(line);
-    if (!assignment) continue;
-    const key = (assignment[1] ?? "").replace(/^["']|["']$/g, "");
-    const value = assignment[2] ?? "";
-    if (section === "project" && key === "requires-python") requiresPython = true;
-    if (tables() && key.toLowerCase() === "python") {
-      requiresPython = true;
-    } else if (tables()) {
-      dependencies.add(pythonName(key));
-    } else if (lists(key) && value.trimStart().startsWith("[")) {
-      const depth = (value.match(/\[/g) ?? []).length - (value.match(/\]/g) ?? []).length;
-      array = { key, text: value, depth };
-      if (depth <= 0) {
-        for (const quotedValue of quoted(value)) {
-          const name = requirementName(quotedValue);
-          if (name) dependencies.add(pythonName(name));
-        }
-        array = undefined;
-      }
+  for (const requirement of requirements) {
+    const name = requirementName(requirement);
+    if (name) dependencies.add(pythonName(name));
+  }
+  for (const names of poetryTables) {
+    for (const name of Object.keys(names ?? {})) {
+      if (name.toLowerCase() !== "python") dependencies.add(pythonName(name));
     }
   }
-  return { dependencies, requiresPython, workspace };
+  const workspace = table(uv.workspace);
+  const coverage = table(table(tool.coverage)?.report);
+  const pytest = table(table(tool.pytest)?.ini_options);
+  return {
+    dependencies,
+    requiresPython:
+      typeof project["requires-python"] === "string" ||
+      typeof table(poetry.dependencies)?.python === "string",
+    ...(workspace
+      ? { workspace: { members: strings(workspace.members), exclude: strings(workspace.exclude) } }
+      : {}),
+    coverageGate: positive(coverage?.fail_under) || failsUnderCoverage(pytest?.addopts),
+  };
 }
 
 export const hasPython = (project: PythonProject, ...names: readonly string[]): boolean =>
   names.some((name) => project.dependencies.has(pythonName(name)));
 
+/**
+ * The sections of an INI file, such as setup.cfg, each with its keys. An
+ * indented line continues the value before it.
+ */
+export function readIni(text: string): ReadonlyMap<string, ReadonlyMap<string, string>> {
+  const sections = new Map<string, Map<string, string>>();
+  let section: Map<string, string> | undefined;
+  let key: string | undefined;
+  for (const line of text.split(/\r?\n/)) {
+    if (/^\s*([#;]|$)/.test(line)) continue;
+    const header = /^\s*\[([^\]]+)\]\s*$/.exec(line);
+    if (header) {
+      section = new Map();
+      sections.set((header[1] ?? "").trim(), section);
+      key = undefined;
+    } else if (/^\s/.test(line) && section !== undefined && key !== undefined) {
+      section.set(key, `${section.get(key) ?? ""} ${line.trim()}`);
+    } else {
+      const pair = /^([^=:]+?)\s*[=:]\s*(.*)$/.exec(line);
+      if (pair && section !== undefined) {
+        key = (pair[1] ?? "").trim();
+        section.set(key, (pair[2] ?? "").trim());
+      }
+    }
+  }
+  return sections;
+}
+
+/**
+ * Whether an INI file Python's tools read sets a coverage threshold above 0:
+ * coverage's fail_under, or pytest's --cov-fail-under.
+ */
+export function iniCoverageGate(file: string, text: string): boolean {
+  const sections = readIni(text);
+  const value = (section: string, key: string) => sections.get(section)?.get(key);
+  switch (file) {
+    case ".coveragerc":
+      return positive(value("report", "fail_under"));
+    case "pytest.ini":
+      return failsUnderCoverage(value("pytest", "addopts"));
+    case "setup.cfg":
+      return (
+        positive(value("coverage:report", "fail_under")) ||
+        failsUnderCoverage(value("tool:pytest", "addopts"))
+      );
+    case "tox.ini":
+      return (
+        positive(value("coverage:report", "fail_under")) ||
+        failsUnderCoverage(value("pytest", "addopts"))
+      );
+    default:
+      return false;
+  }
+}
+
+/**
+ * The shape of some JavaScript or TypeScript: without its comments, and with
+ * every string emptied except a quoted key, which keeps its name. What is
+ * left is only what the code says, not what its text mentions.
+ */
+function codeShape(code: string): string {
+  let out = "";
+  for (let index = 0; index < code.length; index++) {
+    const character = code[index] ?? "";
+    if (character === '"' || character === "'" || character === "`") {
+      let end = index + 1;
+      while (end < code.length && code[end] !== character) end += code[end] === "\\" ? 2 : 1;
+      const key = character !== "`" && /^\s*:/.test(code.slice(end + 1));
+      out += key ? code.slice(index + 1, end) : '""';
+      index = end;
+    } else if (code.startsWith("//", index)) {
+      const end = code.indexOf("\n", index);
+      index = end === -1 ? code.length : end - 1;
+    } else if (code.startsWith("/*", index)) {
+      const end = code.indexOf("*/", index + 2);
+      index = end === -1 ? code.length : end + 1;
+    } else {
+      out += character;
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether a Vitest, Vite or Jest configuration, which is code, sets coverage
+ * thresholds: "declared" when it gives a non-empty object literal for
+ * `thresholds` or `coverageThreshold`; "unclear" when it gives one some other
+ * way, such as from a variable; "none" when it gives neither, or only `{}`.
+ */
+export function scriptCoverage(code: string): "declared" | "unclear" | "none" {
+  const shape = codeShape(code);
+  if (/\b(thresholds|coverageThreshold)\s*:\s*\{\s*[^\s}]/.test(shape)) return "declared";
+  const named = [...shape.matchAll(/\b(thresholds|coverageThreshold)\b(\s*:\s*\{\s*\})?/g)];
+  return named.some((match) => match[2] === undefined) ? "unclear" : "none";
+}
+
 export interface NodePackage {
   readonly dependencies: ReadonlySet<string>;
   readonly engine: boolean;
-  readonly workspaces: boolean;
+  /** The npm workspace it is the root of, which locks its members. */
+  readonly workspace?: Workspace;
+  /** Whether Jest's configuration in it sets a coverage threshold. */
+  readonly coverageGate: boolean;
 }
 
 /** Reads a package.json, or undefined when it is not a JSON object. */
@@ -120,19 +219,28 @@ export function readPackageJson(text: string): NodePackage | undefined {
   } catch {
     return undefined;
   }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const json = value as Record<string, unknown>;
-  const keys = (field: string) => {
-    const object = json[field];
-    return typeof object === "object" && object !== null && !Array.isArray(object)
-      ? Object.keys(object)
-      : [];
-  };
-  const engines = json.engines as Record<string, unknown> | undefined;
+  const json = table(value);
+  if (json === undefined) return undefined;
+  const keys = (field: string) => Object.keys(table(json[field]) ?? {});
+  // npm takes a list of globs, or Yarn's { packages } form; "!" excludes.
+  const patterns = Array.isArray(json.workspaces)
+    ? strings(json.workspaces)
+    : strings(table(json.workspaces)?.packages);
+  const threshold = table(table(json.jest)?.coverageThreshold);
   return {
     dependencies: new Set([...keys("dependencies"), ...keys("devDependencies")]),
-    engine: typeof engines === "object" && engines !== null && typeof engines.node === "string",
-    workspaces: json.workspaces !== undefined,
+    engine: typeof table(json.engines)?.node === "string",
+    ...(json.workspaces === undefined
+      ? {}
+      : {
+          workspace: {
+            members: patterns.filter((pattern) => !pattern.startsWith("!")),
+            exclude: patterns
+              .filter((pattern) => pattern.startsWith("!"))
+              .map((pattern) => pattern.slice(1)),
+          },
+        }),
+    coverageGate: threshold !== undefined && Object.keys(threshold).length > 0,
   };
 }
 

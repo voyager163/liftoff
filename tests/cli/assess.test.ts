@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -187,12 +187,46 @@ describe("ASSESS-005 live assessment reads GitHub only when asked and allowed", 
     expect(report.findings.some((finding) => finding.check === "docs.readme")).toBe(true);
   });
 
-  it("reports any other failure to read GitHub as unknown", async () => {
-    writeFileSync(path.join(work, "demo/.github/rulesets/broken.json"), "{");
-    const { out } = await exec(["--live", "--use-gh", "--json"]);
+  it.each([
+    ["is not valid JSON", "{"],
+    ["is not a ruleset", "{}"],
+  ])("keeps the local report when a ruleset %s", async (problem, text) => {
+    writeFileSync(path.join(work, "demo/.github/rulesets/broken.json"), text);
+    const { code, out } = await exec(["--live", "--use-gh", "--json"]);
+    expect(code).toBe(3);
     const report = JSON.parse(out) as ProjectAssessment;
     expect(report.findings).toContainEqual(
-      expect.objectContaining({ check: "github.repository", status: "unknown" }),
+      expect.objectContaining({
+        check: "github.repository",
+        status: "unknown",
+        message: expect.stringContaining(problem),
+      }),
     );
+    expect(report.findings.some((finding) => finding.check === "docs.readme")).toBe(true);
+  });
+
+  it("reads no ruleset through a link, live or not", async () => {
+    const outside = mkdtempSync(path.join(tmpdir(), "liftoff-assess-outside-"));
+    try {
+      writeFileSync(path.join(outside, "theirs.json"), '{"name": "theirs"}');
+      const rulesets = path.join(work, "demo/.github/rulesets");
+      rmSync(rulesets, { recursive: true });
+      symlinkSync(outside, rulesets, "junction");
+      const { out } = await exec(["--live", "--use-gh", "--json"]);
+      const report = JSON.parse(out) as ProjectAssessment;
+      expect(report.findings).toContainEqual(
+        expect.objectContaining({
+          check: "github.repository",
+          status: "unknown",
+          message: expect.stringContaining(".github/rulesets is not a directory Liftoff can read"),
+        }),
+      );
+      expect(report.gaps).toContainEqual(
+        expect.objectContaining({ kind: "link", path: ".github/rulesets" }),
+      );
+      expect(out).not.toContain("theirs");
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });

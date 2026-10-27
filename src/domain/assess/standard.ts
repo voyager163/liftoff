@@ -1,10 +1,12 @@
 import path from "node:path";
+import picomatch from "picomatch";
 import type { Checkpoint } from "../governance/checkpoints.ts";
 import type { LegacyInventory } from "../legacy/inventory.ts";
 import {
   composeImages,
   type GoModule,
   hasPython,
+  iniCoverageGate,
   lockedProviders,
   type NodePackage,
   type PythonProject,
@@ -14,7 +16,9 @@ import {
   readPyproject,
   readWorkflow,
   requiresGo,
+  scriptCoverage,
   type Workflow,
+  type Workspace,
 } from "./declarations.ts";
 import {
   type Declaration,
@@ -260,7 +264,10 @@ interface Detected {
   readonly node: ReadonlyMap<string, NodePackage>;
   readonly go: ReadonlyMap<string, GoModule>;
   /** Roots of npm and uv workspaces, which lock their members' dependencies. */
-  readonly workspaces: { readonly python: ReadonlySet<string>; readonly node: ReadonlySet<string> };
+  readonly workspaces: {
+    readonly python: ReadonlyMap<string, Workspace>;
+    readonly node: ReadonlyMap<string, Workspace>;
+  };
 }
 
 /** The project's applications, frontends and infrastructure. */
@@ -270,7 +277,7 @@ export function detectParts(tree: Tree): Detected {
   const python = new Map<string, PythonProject>();
   const node = new Map<string, NodePackage>();
   const go = new Map<string, GoModule>();
-  const workspaces = { python: new Set<string>(), node: new Set<string>() };
+  const workspaces = { python: new Map<string, Workspace>(), node: new Map<string, Workspace>() };
   const files = [...tree.entries]
     .filter(([file, kind]) => kind === "file" && !file.startsWith(".github/"))
     .map(([file]) => file);
@@ -305,7 +312,7 @@ export function detectParts(tree: Tree): Detected {
         continue;
       }
       python.set(directory, project.value);
-      if (project.value.workspace) workspaces.python.add(directory);
+      if (project.value.workspace) workspaces.python.set(directory, project.value.workspace);
       if (hasPython(project.value, "fastapi")) {
         part(
           "backend",
@@ -329,14 +336,13 @@ export function detectParts(tree: Tree): Detected {
         cannotRead(file, json);
         continue;
       }
-      // A workspace root only lists its packages, which are found on their own.
-      if (json.value.workspaces) {
-        workspaces.node.add(directory);
-        continue;
-      }
+      if (json.value.workspace) workspaces.node.set(directory, json.value.workspace);
       node.set(directory, json.value);
       const has = (...names: string[]) =>
         names.some((dependency) => json.value.dependencies.has(dependency));
+      // A workspace root may be an application too, or only gather its members.
+      const framework = has("fastify", "vue", ...OTHER_FRONTENDS, ...OTHER_NODE_APIS);
+      if (json.value.workspace && !framework) continue;
       if (has("fastify")) part("backend", "node-fastify", true);
       else if (has("vue")) part("frontend", "vue", true);
       else if (has(...OTHER_FRONTENDS)) {
@@ -365,40 +371,125 @@ export function detectParts(tree: Tree): Detected {
   }
 
   if (terraform.size > 0) {
-    const roots = [...terraform].sort();
-    let common = roots[0]?.split("/") ?? [];
-    for (const root of roots) {
-      const segments = root.split("/");
-      let shared = 0;
-      while (shared < common.length && common[shared] === segments[shared]) shared++;
-      common = common.slice(0, shared);
-    }
-    const directory = common.join("/") || ".";
-    const locks = files.filter(
-      (file) => base(file) === ".terraform.lock.hcl" && terraform.has(parentOf(file)),
-    );
-    const providers = new Set<string>();
-    for (const lock of locks) {
-      const text = parsed(tree, lock, (value) => value, "text");
-      if ("value" in text)
-        for (const provider of lockedProviders(text.value)) providers.add(provider);
-    }
-    const evidence = locks.length > 0 ? locks.map(read) : roots.map((root) => listed(root));
-    const azure = [...providers].some((provider) => provider.endsWith("/azurerm"));
-    parts.push({
-      component: "infrastructure",
-      path: directory,
-      stack: azure
-        ? "azure"
-        : providers.size > 0
-          ? `OpenTofu or Terraform with ${[...providers].sort().join(", ")}`
-          : "OpenTofu or Terraform with no provider locked",
-      supported: azure,
-      evidence,
-    });
+    const infrastructure = infrastructureParts(tree, [...terraform].sort());
+    parts.push(...infrastructure.parts);
+    findings.push(...infrastructure.findings);
   }
   parts.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.stack < b.stack ? -1 : 1));
   return { parts, findings, python, node, go, workspaces };
+}
+
+/** The directory every one of several is in; "." when they share none. */
+function commonDirectory(directories: readonly string[]): string {
+  let common = directories[0]?.split("/") ?? [];
+  for (const directory of directories) {
+    const segments = directory.split("/");
+    let shared = 0;
+    while (shared < common.length && common[shared] === segments[shared]) shared++;
+    common = common.slice(0, shared);
+  }
+  return common.join("/") || ".";
+}
+
+const isWithin = (directory: string, root: string) =>
+  root === "." || directory === root || directory.startsWith(`${root}/`);
+
+/**
+ * OpenTofu or Terraform, as parts: each root module (a directory of `.tf`
+ * files outside `modules/`) is classified by the providers its lock file
+ * locks, and roots of one kind make one part. A root whose lock file could
+ * not be read, or that has none, says nothing about its cloud: it belongs to
+ * the Azure part when it is within it, and is otherwise unknown.
+ */
+function infrastructureParts(
+  tree: Tree,
+  directories: readonly string[],
+): { parts: Part[]; findings: AssessmentFinding[] } {
+  const modules = directories.filter((directory) => !directory.split("/").includes("modules"));
+  const roots = modules.length > 0 ? modules : directories;
+  const byProviders = new Map<string, string[]>();
+  const evidence = new Map<string, Evidence>();
+  const unlocked: string[] = [];
+  const unread: { root: string; status: "inaccessible" | "unknown"; why: string }[] = [];
+  for (const root of roots) {
+    const lock = presence(tree, within(root, ".terraform.lock.hcl"));
+    if (lock.found === false) {
+      unlocked.push(root);
+      continue;
+    }
+    if (lock.found === "unknown") {
+      unread.push({ root, status: lock.status, why: lock.why });
+      continue;
+    }
+    const text = parsed(tree, lock.path, (value) => value, "text");
+    if ("status" in text) {
+      unread.push({ root, status: text.status, why: text.reason });
+      continue;
+    }
+    const providers = lockedProviders(text.value).sort();
+    if (providers.length === 0) {
+      unlocked.push(root);
+      continue;
+    }
+    evidence.set(root, read(lock.path));
+    const kind = providers.some((provider) => provider.endsWith("/azurerm"))
+      ? "azure"
+      : providers.join(", ");
+    byProviders.set(kind, [...(byProviders.get(kind) ?? []), root]);
+  }
+  const parts: Part[] = [];
+  const findings: AssessmentFinding[] = [];
+  const azure = byProviders.get("azure");
+  // Modules belong to the part whose top-level directory they are in.
+  const top = (directory: string) => directory.split("/")[0];
+  const withModules = (group: readonly string[]) =>
+    commonDirectory([
+      ...group,
+      ...directories.filter(
+        (directory) =>
+          !roots.includes(directory) && group.some((root) => top(root) === top(directory)),
+      ),
+    ]);
+  const azureAt = azure ? withModules(azure) : undefined;
+  for (const [kind, group] of byProviders) {
+    parts.push({
+      component: "infrastructure",
+      path: withModules(group),
+      stack: kind === "azure" ? "azure" : `OpenTofu or Terraform with ${kind}`,
+      supported: kind === "azure",
+      evidence: group.map((root) => evidence.get(root) ?? listed(root)),
+    });
+  }
+  // Within the Azure part, its provider-lock check reports these.
+  const outside = (root: string) => azureAt === undefined || !isWithin(root, azureAt);
+  for (const { root, status, why } of unread.filter(({ root }) => outside(root))) {
+    findings.push({
+      check: "structure.part",
+      area: "structure",
+      status,
+      message: `could not tell which cloud the infrastructure at ${root} is for: ${why}`,
+      subject: root,
+      evidence: [listed(root)],
+      next: accessNext(status),
+    });
+  }
+  const loose = unlocked.filter(outside);
+  if (loose.length > 0) {
+    const at = commonDirectory(loose);
+    findings.push({
+      check: "structure.part",
+      area: "structure",
+      status: "unknown",
+      message: `OpenTofu or Terraform at ${at} locks no provider, so which cloud it is for cannot be told`,
+      subject: at,
+      evidence: loose.map(listed),
+      next: {
+        category: "project",
+        text: "Commit each root module's .terraform.lock.hcl (tofu init writes it).",
+      },
+    });
+  }
+  return { parts, findings };
 }
 
 /** The development workflows the project uses. */
@@ -446,6 +537,20 @@ const LOCKFILES = {
   go: { standard: "go.sum", others: [], next: "Record module checksums with `go mod tidy`." },
 } as const;
 
+/** Whether a directory is one of a workspace's members, by its globs. */
+function isMember(directory: string, root: string, workspace: Workspace): boolean {
+  const relative = root === "." ? directory : directory.slice(root.length + 1);
+  const globs = (patterns: readonly string[]) =>
+    patterns.map((pattern) => pattern.replace(/^\.\//, "").replace(/\/+$/, "")).filter(Boolean);
+  const members = globs(workspace.members);
+  const excluded = globs(workspace.exclude);
+  return (
+    members.length > 0 &&
+    picomatch(members)(relative) &&
+    !(excluded.length > 0 && picomatch(excluded)(relative))
+  );
+}
+
 /** The directories above one, nearest first, up to the project itself. */
 function ancestors(directory: string): string[] {
   const above: string[] = [];
@@ -468,9 +573,10 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
   // A workspace member's dependencies are locked at the workspace's root.
   const lockedAt = [
     at,
-    ...ancestors(at).filter(
-      (directory) => kind !== "go" && detected.workspaces[kind].has(directory),
-    ),
+    ...ancestors(at).filter((root) => {
+      const workspace = kind === "go" ? undefined : detected.workspaces[kind].get(root);
+      return workspace !== undefined && isMember(at, root, workspace);
+    }),
   ];
   const locked = firstPresent(
     tree,
@@ -589,15 +695,18 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
   return findings;
 }
 
+/** What a configuration file says about a coverage threshold. */
+type Verdict = "declared" | "unclear" | "none";
+
 /**
- * Where a coverage threshold is declared, read from the first of `files` that
- * declares one; or why that cannot be told; or undefined when every one of
- * them was seen and none declares one.
+ * The first of `files` that declares a coverage threshold, as evidence; or
+ * why that cannot be told; or undefined when every one of them was seen and
+ * none declares one.
  */
 function declaredIn(
   tree: Tree,
   files: readonly string[],
-  pattern: RegExp,
+  verdict: (name: string, text: string) => Verdict,
 ):
   | { readonly evidence: Evidence }
   | { readonly status: "inaccessible" | "unknown"; readonly why: string }
@@ -611,8 +720,18 @@ function declaredIn(
       continue;
     }
     const text = parsed(tree, there.path, (value) => value, "text");
-    if ("status" in text) unknown ??= { status: text.status, why: text.reason };
-    else if (pattern.test(text.value)) return { evidence: read(there.path) };
+    if ("status" in text) {
+      unknown ??= { status: text.status, why: text.reason };
+      continue;
+    }
+    const said = verdict(base(there.path), text.value);
+    if (said === "declared") return { evidence: read(there.path) };
+    if (said === "unclear") {
+      unknown ??= {
+        status: "unknown",
+        why: `${there.path} is not valid, or sets coverage in a way that is not read`,
+      };
+    }
   }
   return unknown;
 }
@@ -626,7 +745,11 @@ const scripts = (...names: string[]) =>
 const COVERAGE = {
   python: {
     files: ["pyproject.toml", ".coveragerc", "setup.cfg", "tox.ini", "pytest.ini"],
-    pattern: /(^|\n)\s*fail_under\s*=|--cov-fail-under/,
+    verdict: (name: string, text: string): Verdict => {
+      if (name !== "pyproject.toml") return iniCoverageGate(name, text) ? "declared" : "none";
+      const project = readPyproject(text);
+      return project === undefined ? "unclear" : project.coverageGate ? "declared" : "none";
+    },
     where: "pyproject.toml, .coveragerc, setup.cfg, tox.ini or pytest.ini",
     next: "Set fail_under under [tool.coverage.report] in pyproject.toml.",
   },
@@ -636,7 +759,14 @@ const COVERAGE = {
       "jest.config.json",
       "package.json",
     ],
-    pattern: /\bthresholds\b|\bcoverageThreshold\b/,
+    verdict: (name: string, text: string): Verdict => {
+      if (name.endsWith(".json")) {
+        // jest.config.json holds what package.json's "jest" key does.
+        const json = readPackageJson(name === "package.json" ? text : `{"jest":${text}}`);
+        return json === undefined ? "unclear" : json.coverageGate ? "declared" : "none";
+      }
+      return scriptCoverage(text);
+    },
     where: "a Vitest, Vite or Jest configuration or package.json",
     next: "Set coverage thresholds in vitest.config.ts.",
   },
@@ -657,7 +787,7 @@ function coverageGate(tree: Tree, part: Part, subject: string): AssessmentFindin
       : declaredIn(
           tree,
           COVERAGE[kind].files.map((file) => within(at, file)),
-          COVERAGE[kind].pattern,
+          COVERAGE[kind].verdict,
         );
   if (found !== undefined && "evidence" in found) {
     return {

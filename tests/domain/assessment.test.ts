@@ -150,7 +150,7 @@ hypothesis = "*"
 [tool.coverage.report]
 fail_under = 80
 `);
-    expect([...project.dependencies].sort()).toEqual([
+    expect([...(project?.dependencies ?? [])].sort()).toEqual([
       "fastapi",
       "hypothesis",
       "mkdocs",
@@ -160,17 +160,28 @@ fail_under = 80
       "pytest-cov",
       "ruff",
     ]);
-    expect(project.requiresPython).toBe(true);
-    expect(project.workspace).toBe(false);
+    expect(project).toMatchObject({ requiresPython: true, coverageGate: true });
+    expect(project?.workspace).toBeUndefined();
     expect(readPyproject("[project]\ndependencies = []\n")).toMatchObject({
       requiresPython: false,
-      workspace: false,
+      coverageGate: false,
     });
     expect(readPyproject('[tool.poetry.dependencies]\npython = "^3.12"\n')).toMatchObject({
       requiresPython: true,
       dependencies: new Set(),
     });
-    expect(readPyproject('[tool.uv.workspace]\nmembers = ["api"]\n').workspace).toBe(true);
+    expect(
+      readPyproject('[tool.uv.workspace]\nmembers = ["packages/*"]\nexclude = ["packages/old"]\n')
+        ?.workspace,
+    ).toEqual({ members: ["packages/*"], exclude: ["packages/old"] });
+    expect(readPyproject("[tool.coverage.report]\nfail_under = 0\n")?.coverageGate).toBe(false);
+    expect(
+      readPyproject('[tool.pytest.ini_options]\naddopts = ["--cov", "--cov-fail-under=80"]\n')
+        ?.coverageGate,
+    ).toBe(true);
+    // Not TOML, even with a dependency that would otherwise be read.
+    expect(readPyproject('[project]\ndependencies = ["fastapi"]\nbroken = [\n')).toBeUndefined();
+    expect(readPyproject("not = toml = at all")).toBeUndefined();
   });
 
   it("reads a package.json, or refuses what is not a JSON object", () => {
@@ -187,11 +198,19 @@ fail_under = 80
       }),
     );
     expect([...(json?.dependencies ?? [])]).toEqual(["fastify", "vitest"]);
-    expect(json).toMatchObject({ engine: true, workspaces: true });
-    expect(readPackageJson('{"dependencies": []}')).toMatchObject({
-      engine: false,
-      workspaces: false,
+    expect(json).toMatchObject({
+      engine: true,
+      workspace: { members: ["packages/*"], exclude: [] },
+      coverageGate: true,
     });
+    expect(readPackageJson('{"dependencies": [], "jest": {"coverageThreshold": {}}}')).toEqual({
+      dependencies: new Set(),
+      engine: false,
+      coverageGate: false,
+    });
+    expect(
+      readPackageJson('{"workspaces": {"packages": ["apps/*", "!apps/legacy"]}}')?.workspace,
+    ).toEqual({ members: ["apps/*"], exclude: ["apps/legacy"] });
   });
 
   it("reads a go.mod's go version and requirements", () => {
@@ -427,7 +446,8 @@ describe("ASSESS-003 the standard's checks", () => {
     expect(
       infrastructure({ "infra/dev/.terraform.lock.hcl": lock, "infra/prod/main.tf": "" }),
     ).toContain("noncompliant infrastructure.provider-lock infrastructure at infra");
-    expect(infrastructure({})).toContain("unsupported structure.part infra");
+    // With no lock, which cloud it is for cannot be told.
+    expect(infrastructure({})).toContain("unknown structure.part infra/dev");
   });
 
   it("checks review skills for each coding-agent host, and nothing without one", () => {
@@ -518,11 +538,15 @@ describe("ASSESS-003 what the walk did not see is never a difference", () => {
       lines(
         run(tree({ "package.json": JSON.stringify({ dependencies: { fastify: "5" } }), ...files })),
       );
-    expect(node({ "jest.config.js": "module.exports = { coverageThreshold: {} };" })).toContain(
-      "compliant tests.coverage-gate backend at .",
-    );
     expect(
-      node({ "vite.config.ts": "export default { test: { coverage: { thresholds: {} } } };" }),
+      node({
+        "jest.config.js": "module.exports = { coverageThreshold: { global: { lines: 80 } } };",
+      }),
+    ).toContain("compliant tests.coverage-gate backend at .");
+    expect(
+      node({
+        "vite.config.ts": "export default { test: { coverage: { thresholds: { lines: 80 } } } };",
+      }),
     ).toContain("compliant tests.coverage-gate backend at .");
     expect(
       lines(
@@ -571,7 +595,9 @@ describe("ASSESS-003 what the walk did not see is never a difference", () => {
     const found = lines(run(partial));
     expect(found).toEqual(
       expect.arrayContaining([
-        "unknown infrastructure.provider-lock infrastructure at infra",
+        // prod's lock was not seen, so neither its cloud nor dev's part's locks are known.
+        "unknown structure.part infra/prod",
+        "unknown infrastructure.provider-lock infrastructure at infra/dev",
         "unknown tests.coverage-gate frontend at web",
         "unknown dependencies.lockfile frontend at web",
         "compliant build.container frontend at web",
@@ -624,6 +650,163 @@ describe("ASSESS-003 what the walk did not see is never a difference", () => {
       expect.objectContaining({
         text: "Assess the root of the Git repository for what applies to the whole repository.",
       }),
+    );
+  });
+});
+
+describe("ASSESS-003 what is found is only what the declarations say", () => {
+  it("is unknown about a pyproject.toml that is not TOML, whatever it names", () => {
+    const broken = run(
+      tree({ "pyproject.toml": '[project]\ndependencies = ["fastapi"]\nbroken = [\n' }),
+    );
+    expect(broken.parts).toEqual([]);
+    expect(lines(broken)).toContain("unknown structure.part .");
+  });
+
+  it("finds an application at a workspace's root as well as in its members", () => {
+    const project = run(
+      tree({
+        "package.json": JSON.stringify({
+          workspaces: ["packages/*"],
+          dependencies: { fastify: "5" },
+        }),
+        "package-lock.json": "",
+        "packages/web/package.json": JSON.stringify({ dependencies: { vue: "3" } }),
+        "services/api/package.json": JSON.stringify({ dependencies: { fastify: "5" } }),
+      }),
+    );
+    expect(project.parts.map((part) => `${part.component} ${part.stack} at ${part.path}`)).toEqual([
+      "backend node-fastify at .",
+      "frontend vue at packages/web",
+      "backend node-fastify at services/api",
+    ]);
+    // Only a member is locked by the workspace's lock file.
+    expect(lines(project)).toEqual(
+      expect.arrayContaining([
+        "compliant dependencies.lockfile backend at .",
+        "compliant dependencies.lockfile frontend at packages/web",
+        "noncompliant dependencies.lockfile backend at services/api",
+      ]),
+    );
+    const uv = run(
+      tree({
+        "pyproject.toml": '[tool.uv.workspace]\nmembers = ["libs/*"]\nexclude = ["libs/old"]\n',
+        "uv.lock": "",
+        "libs/api/pyproject.toml": FASTAPI,
+        "libs/old/pyproject.toml": FASTAPI,
+      }),
+    );
+    expect(lines(uv)).toEqual(
+      expect.arrayContaining([
+        "compliant dependencies.lockfile backend at libs/api",
+        "noncompliant dependencies.lockfile backend at libs/old",
+      ]),
+    );
+  });
+
+  it("never calls a lock file it could not read unsupported", () => {
+    const azure = 'provider "registry.opentofu.org/hashicorp/azurerm" {\n}\n';
+    const infra = (declaration: Declaration | undefined) =>
+      lines(
+        run(
+          tree(
+            { "infra/main.tf": "" },
+            declaration === undefined
+              ? { other: [], unlisted: [] }
+              : { unread: { "infra/.terraform.lock.hcl": declaration } },
+          ),
+        ),
+      );
+    expect(infra({ status: "inaccessible", reason: "closed to this user" })).toContain(
+      "inaccessible structure.part infra",
+    );
+    expect(infra({ status: "unknown", reason: "over 512 KiB, so not read" })).toContain(
+      "unknown structure.part infra",
+    );
+    const unread = tree({ "infra/main.tf": "", "infra/.terraform.lock.hcl": azure });
+    const notRead = { ...unread, declarations: new Map() };
+    expect(lines(run(notRead))).toContain("unknown structure.part infra");
+    expect(lines(run(unread))).toContain("compliant structure.part infra");
+  });
+
+  it("keeps independent infrastructure apart by the providers each locks", () => {
+    const lock = (provider: string) =>
+      `provider "registry.opentofu.org/hashicorp/${provider}" {\n}\n`;
+    const project = run(
+      tree({
+        "azure/main.tf": "",
+        "azure/.terraform.lock.hcl": lock("azurerm"),
+        "aws/main.tf": "",
+        "aws/.terraform.lock.hcl": lock("aws"),
+      }),
+    );
+    expect(project.parts.map((part) => `${part.stack} at ${part.path} ${part.supported}`)).toEqual([
+      "OpenTofu or Terraform with hashicorp/aws at aws false",
+      "azure at azure true",
+    ]);
+    expect(
+      project.findings
+        .filter((finding) => finding.check === "infrastructure.provider-lock")
+        .map((finding) => finding.subject),
+    ).toEqual(["infrastructure at azure"]);
+  });
+
+  it("takes only a configured threshold as a coverage gate", () => {
+    const node = (files: Record<string, string>) =>
+      lines(
+        run(tree({ "package.json": JSON.stringify({ dependencies: { fastify: "5" } }), ...files })),
+      );
+    const gate = "compliant tests.coverage-gate backend at .";
+    expect(
+      lines(
+        run(
+          tree({
+            "package.json": JSON.stringify({
+              description: "Service for managing thresholds",
+              dependencies: { fastify: "5" },
+            }),
+          }),
+        ),
+      ),
+    ).toContain("noncompliant tests.coverage-gate backend at .");
+    expect(
+      node({ "vitest.config.ts": "// thresholds: { lines: 80 }\nexport default {};" }),
+    ).toContain("noncompliant tests.coverage-gate backend at .");
+    expect(
+      node({ "vitest.config.ts": "export default { test: { coverage: { thresholds: {} } } };" }),
+    ).toContain("noncompliant tests.coverage-gate backend at .");
+    expect(node({ "vitest.config.ts": 'const note = "thresholds: { lines: 80 }";' })).toContain(
+      "noncompliant tests.coverage-gate backend at .",
+    );
+    expect(
+      node({
+        "vitest.config.ts": 'export default { "coverageThreshold": { "global": { lines: 80 } } };',
+      }),
+    ).toContain(gate);
+    expect(
+      node({
+        "vitest.config.ts": "export default { test: { coverage: { thresholds: shared } } };",
+      }),
+    ).toContain("unknown tests.coverage-gate backend at .");
+    expect(
+      node({
+        "vitest.config.ts": "export default { test: { coverage: { thresholds: { lines: 80 } } } };",
+      }),
+    ).toContain(gate);
+    expect(
+      node({ "jest.config.json": '{"coverageThreshold": {"global": {"lines": 80}}}' }),
+    ).toContain(gate);
+    expect(node({ "jest.config.json": "{ nope" })).toContain(
+      "unknown tests.coverage-gate backend at .",
+    );
+    const python = (files: Record<string, string>) =>
+      lines(run(tree({ "pyproject.toml": FASTAPI, ...files })));
+    expect(python({ ".coveragerc": "[report]\n# fail_under = 90\nfail_under = 0\n" })).toContain(
+      "noncompliant tests.coverage-gate backend at .",
+    );
+    expect(python({ "setup.cfg": "[coverage:report]\nfail_under =\n  85\n" })).toContain(gate);
+    expect(python({ "tox.ini": "[pytest]\naddopts = --cov --cov-fail-under 90\n" })).toContain(
+      gate,
     );
   });
 });

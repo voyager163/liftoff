@@ -18,7 +18,8 @@ name it with `--dir`, and never your home directory or the root of the disk.
 
 ## What it looks at
 
-It walks the project breadth first and never follows a link. It skips
+It walks the project breadth first and never follows a link; the project
+directory itself must not be a link either. It skips
 installed dependencies, caches and build output such as `node_modules`,
 `.venv`, `dist`, `build`, `target` and `.git`, and stops at 50,000 entries,
 10,000 in one directory, or 12 directories deep.
@@ -72,8 +73,11 @@ The checks cover:
   `REVIEW.md`, `GOVERNANCE.md` and Dependabot.
 - **Infrastructure and docs:** locked OpenTofu providers, and `README.md`.
 
-A member of an npm or uv workspace may have its lock file at the
-workspace's root. When you assess a directory that is not the root of a Git
+A member of an npm or uv workspace, by the workspace's globs, may have its
+lock file at the workspace's root. A coverage threshold counts only when it
+is configured, not when a description or comment mentions one. OpenTofu
+root modules are grouped by the providers their lock files lock, so Azure
+and another cloud are separate parts. When you assess a directory that is not the root of a Git
 repository, such as one service in a monorepo, what GitHub and coding agents
 look for at the root (workflows, governance files, `AGENTS.md` and review
 skills) is unknown rather than missing when it is not there, since the root

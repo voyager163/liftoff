@@ -152,7 +152,7 @@ describe("ASSESS-001 assessing a project changes nothing and runs nothing", () =
     const calls: { method: string; file: string }[] = [];
     // Every way to look at the project that follows no link; nothing else,
     // and nothing that writes.
-    const READS = new Set(["entry", "listWithin", "readWithin", "hashWithin"]);
+    const READS = new Set(["entry", "directoryIdentity", "listWithin", "readWithin", "hashWithin"]);
     const spy = new Proxy(fs, {
       get(target, property, receiver) {
         const value = Reflect.get(target, property, receiver);
@@ -161,7 +161,7 @@ describe("ASSESS-001 assessing a project changes nothing and runs nothing", () =
         return (...args: unknown[]) => {
           if (!READS.has(method)) throw new Error(`assess called ${method}`);
           const file =
-            method === "entry"
+            method === "entry" || method === "directoryIdentity"
               ? path.relative(work, String(args[0])).split(path.sep).join("/")
               : String(args[1]);
           calls.push({ method, file });
@@ -213,6 +213,15 @@ describe("ASSESS-001 assessing a project changes nothing and runs nothing", () =
     await expect(
       assessProject(fs, path.join(work, "missing"), { named: true, refused: [] }),
     ).rejects.toThrow(/does not exist/);
+  });
+
+  it("refuses a project directory replaced while it is assessed", async () => {
+    repository();
+    let calls = 0;
+    const replaced: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      directoryIdentity: async () => `identity ${calls++}`,
+    });
+    await expect(run({}, replaced)).rejects.toThrow(/was replaced while it was being assessed/);
   });
 
   it("calls nothing but reads when GitHub is not asked for", async () => {

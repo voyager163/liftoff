@@ -8,6 +8,7 @@ import {
   type ProjectAssessment,
 } from "../../application/project/assess-project.ts";
 import type { GitHubState } from "../../domain/assess/standard.ts";
+import { GovernanceStateError } from "../../domain/governance/state.ts";
 import type { CommandSpec } from "../command.ts";
 import { UsageError } from "../outcome.ts";
 import {
@@ -168,7 +169,8 @@ async function readGitHub(
     const { checkpoints } = await assessGovernance(ports, directory, repository);
     return { kind: "read", repository, checkpoints };
   } catch (error) {
-    if (error instanceof GovernanceError) {
+    // The committed governance files or the recorded state could not be used.
+    if (error instanceof GovernanceError || error instanceof GovernanceStateError) {
       return { kind: "failed", repository, status: "unknown", reason: error.message };
     }
     // A request GitHub answered with an error, or that did not reach it.
