@@ -7,7 +7,7 @@ script or tool, installs nothing, writes nothing into the project and, unless
 you add `--live`, contacts no network service.
 
 ```bash
-liftoff assess                     # the Git repository you are in
+liftoff assess                     # run from the root of a Git repository
 liftoff assess --dir ../service    # any directory, named explicitly
 liftoff assess --json              # one liftoff.assessment/v1 report
 liftoff assess --live --use-gh     # also read the repository on GitHub
@@ -18,8 +18,8 @@ name it with `--dir`, and never your home directory or the root of the disk.
 
 ## What it looks at
 
-It walks the project breadth first and never follows a link; the project
-directory itself must not be a link either. It skips
+It walks the project breadth first and never follows a link inside it; a
+link that names the project directory itself is followed once, first. It skips
 installed dependencies, caches and build output such as `node_modules`,
 `.venv`, `dist`, `build`, `target` and `.git`, and stops at 50,000 entries,
 10,000 in one directory, or 12 directories deep.
@@ -30,7 +30,9 @@ each:
 - `pyproject.toml`, `package.json` and `go.mod`;
 - Compose files and `.terraform.lock.hcl`;
 - where a coverage threshold may be set: Vitest, Vite and Jest
-  configuration, `.coveragerc`, `setup.cfg`, `tox.ini` and `pytest.ini`;
+  configuration, `pytest.toml`, `.coveragerc`, `setup.cfg`, `tox.ini` and
+  `pytest.ini`, in the part's directory or at the root of a workspace it is
+  in;
 - the workflows in `.github/workflows`.
 
 In a Liftoff project it also reads what `liftoff validate` reads. Every other

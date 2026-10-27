@@ -1,3 +1,5 @@
+import { realpath } from "node:fs/promises";
+import path from "node:path";
 import { PackageAssets } from "../../adapters/assets.ts";
 import { LocalInitializer } from "../../adapters/initializer.ts";
 import { LocalProjectFs } from "../../adapters/project-fs.ts";
@@ -22,3 +24,19 @@ export const defaultProjectPorts = (cwd: string): ProjectPorts => ({
   tools: new LocalTools(cwd),
   initializer: new LocalInitializer(),
 });
+
+/**
+ * The project directory a command line names, relative to `cwd`, with any
+ * link in its path followed once, here: every later read under it follows
+ * no link, so it must start from the real directory. A path that cannot be
+ * resolved, such as one that does not exist, is left for the command to
+ * report.
+ */
+export async function projectDirectory(cwd: string, named: string): Promise<string> {
+  const absolute = path.resolve(cwd, named);
+  try {
+    return await realpath(absolute);
+  } catch {
+    return absolute;
+  }
+}

@@ -94,7 +94,9 @@ export function readPyproject(text: string): PythonProject | undefined {
   }
   const workspace = table(uv.workspace);
   const coverage = table(table(tool.coverage)?.report);
-  const pytest = table(table(tool.pytest)?.ini_options);
+  // pytest 9 reads [tool.pytest] itself; older releases [tool.pytest.ini_options].
+  const pytest = table(tool.pytest);
+  const legacy = table(pytest?.ini_options);
   return {
     dependencies,
     requiresPython:
@@ -103,12 +105,27 @@ export function readPyproject(text: string): PythonProject | undefined {
     ...(workspace
       ? { workspace: { members: strings(workspace.members), exclude: strings(workspace.exclude) } }
       : {}),
-    coverageGate: positive(coverage?.fail_under) || failsUnderCoverage(pytest?.addopts),
+    coverageGate:
+      positive(coverage?.fail_under) ||
+      failsUnderCoverage(pytest?.addopts) ||
+      failsUnderCoverage(legacy?.addopts),
   };
 }
 
 export const hasPython = (project: PythonProject, ...names: readonly string[]): boolean =>
   names.some((name) => project.dependencies.has(pythonName(name)));
+
+/**
+ * Whether a pytest.toml or .pytest.toml sets a coverage threshold above 0
+ * in its [pytest] options, or undefined when it is not valid TOML.
+ */
+export function pytestTomlCoverageGate(text: string): boolean | undefined {
+  try {
+    return failsUnderCoverage(table(parseToml(text).pytest)?.addopts);
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * The sections of an INI file, such as setup.cfg, each with its keys. A

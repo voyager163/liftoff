@@ -545,6 +545,55 @@ describe("ASSESS-003 what the walk did not see is never a difference", () => {
     expect(lines(unrelated)).toContain("noncompliant dependencies.lockfile backend at api");
   });
 
+  it("finds tests where Jest and the Node.js test runner look", () => {
+    const node = (file: string) =>
+      lines(
+        run(
+          tree({
+            "api/package.json": JSON.stringify({ dependencies: { fastify: "5" } }),
+            [file]: "",
+          }),
+        ),
+      );
+    for (const file of [
+      "api/__tests__/app.js",
+      "api/test/app.mjs",
+      "api/src/app-test.ts",
+      "api/src/app_test.js",
+      "api/src/test-app.cjs",
+      "api/test.js",
+      "api/src/app.spec.tsx",
+    ]) {
+      expect(node(file), file).toContain("compliant tests.present backend at api");
+    }
+    expect(node("api/src/latest.js")).toContain("noncompliant tests.present backend at api");
+  });
+
+  it("finds coverage settings at the root of a workspace the part is in", () => {
+    const npm = lines(
+      run(
+        tree({
+          "package.json": JSON.stringify({ workspaces: ["packages/*"] }),
+          "package-lock.json": "",
+          "vitest.config.ts":
+            "export default { test: { projects: ['packages/*'], coverage: { thresholds: { lines: 80 } } } };",
+          "packages/api/package.json": JSON.stringify({ dependencies: { fastify: "5" } }),
+        }),
+      ),
+    );
+    expect(npm).toContain("compliant tests.coverage-gate backend at packages/api");
+    const uv = lines(
+      run(
+        tree({
+          "pyproject.toml":
+            '[tool.uv.workspace]\nmembers = ["api"]\n\n[tool.coverage.report]\nfail_under = 85\n',
+          "api/pyproject.toml": FASTAPI,
+        }),
+      ),
+    );
+    expect(uv).toContain("compliant tests.coverage-gate backend at api");
+  });
+
   it("finds a coverage threshold wherever the tools read one", () => {
     const python = (files: Record<string, string>) =>
       lines(run(tree({ "pyproject.toml": FASTAPI, ...files })));
@@ -881,6 +930,22 @@ describe("ASSESS-003 what is found is only what the declarations say", () => {
     expect(python({ "tox.ini": "[pytest]\naddopts = --cov --cov-fail-under 90\n" })).toContain(
       gate,
     );
+    // pytest 9 reads its own TOML settings.
+    expect(
+      lines(
+        run(
+          tree({
+            "pyproject.toml": `${FASTAPI}\n[tool.pytest]\naddopts = ["--cov=app", "--cov-fail-under=80"]\n`,
+          }),
+        ),
+      ),
+    ).toContain(gate);
+    expect(python({ "pytest.toml": '[pytest]\naddopts = ["--cov-fail-under=80"]\n' })).toContain(
+      gate,
+    );
+    expect(python({ ".pytest.toml": "[pytest\n" })).toContain(
+      "unknown tests.coverage-gate backend at .",
+    );
     expect(
       python({ ".coveragerc": "[report]\n    precision = 2\n    fail_under = 85\n" }),
     ).toContain(gate);
@@ -905,6 +970,7 @@ jobs:
     steps:
       - uses: ${PINNED}
       - uses: github/codeql-action/init@0123456789abcdef0123456789abcdef01234567
+      - uses: github/codeql-action/analyze@0123456789abcdef0123456789abcdef01234567
       - uses: actions/dependency-review-action@0123456789abcdef0123456789abcdef01234567
 `;
 
@@ -919,6 +985,26 @@ jobs:
     ]) {
       expect(project).toContain(`compliant ${check}`);
     }
+  });
+
+  it("takes only an analysis for a CodeQL scan, not an upload of another tool's results", () => {
+    const scorecard = `
+on: pull_request
+jobs:
+  analysis:
+    steps:
+      - uses: ossf/scorecard-action@0123456789abcdef0123456789abcdef01234567
+      - uses: github/codeql-action/upload-sarif@0123456789abcdef0123456789abcdef01234567
+`;
+    expect(lines(run(tree({ ".github/workflows/scorecard.yml": scorecard })))).toContain(
+      "noncompliant ci.codeql",
+    );
+  });
+
+  it("finds rulesets in directories under .github/rulesets", () => {
+    expect(lines(run(tree({ ".github/rulesets/branches/main.json": "{}" })))).toContain(
+      "compliant governance.rulesets",
+    );
   });
 
   it("names unpinned actions, and is unknown where a workflow could not be read", () => {

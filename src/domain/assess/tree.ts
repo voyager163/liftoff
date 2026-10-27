@@ -93,6 +93,8 @@ export function isDeclaration(file: string): boolean {
       "setup.cfg",
       "tox.ini",
       "pytest.ini",
+      "pytest.toml",
+      ".pytest.toml",
     ].includes(name) || /^(vitest|vite|jest)\.config\.([cm]?[jt]s|json)$/.test(name)
   );
 }

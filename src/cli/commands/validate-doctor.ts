@@ -1,8 +1,7 @@
-import path from "node:path";
 import { runDoctor } from "../../application/project/doctor.ts";
 import { validateProject } from "../../application/project/validate-project.ts";
 import type { CommandSpec } from "../command.ts";
-import { defaultProjectPorts, type ProjectPorts } from "./project-ports.ts";
+import { defaultProjectPorts, type ProjectPorts, projectDirectory } from "./project-ports.ts";
 
 const DIR = {
   type: "string",
@@ -24,7 +23,7 @@ export function makeValidateCommand(
     options: { dir: DIR },
     examples: ["liftoff validate", "liftoff validate --dir demo --json"],
     async run(args, { io }) {
-      const directory = path.resolve(io.cwd, args.options.dir as string);
+      const directory = await projectDirectory(io.cwd, args.options.dir as string);
       const result = await validateProject(portsFor(io.cwd).fs, directory);
       const problems = result.findings.filter((finding) => finding.severity !== "info");
       const lines = result.findings.map(
@@ -58,7 +57,7 @@ export function makeDoctorCommand(
     options: { dir: DIR },
     examples: ["liftoff doctor", "liftoff doctor --dir demo --json"],
     async run(args, { io }) {
-      const directory = path.resolve(io.cwd, args.options.dir as string);
+      const directory = await projectDirectory(io.cwd, args.options.dir as string);
       const result = await runDoctor(portsFor(io.cwd), directory);
       const mark = {
         ok: "ok",

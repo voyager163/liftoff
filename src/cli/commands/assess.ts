@@ -1,5 +1,4 @@
 import os from "node:os";
-import path from "node:path";
 import { GitHubApiError } from "../../adapters/gh.ts";
 import { assessGovernance, GovernanceError } from "../../application/governance/assess.ts";
 import {
@@ -16,6 +15,7 @@ import {
   type GovernancePorts,
   repositoryWithConsent,
 } from "./governance.ts";
+import { projectDirectory } from "./project-ports.ts";
 
 /** How many gaps the text lists; the JSON report has every one. */
 const SHOWN_GAPS = 20;
@@ -126,7 +126,7 @@ export function makeAssessCommand(
       "liftoff assess --live --use-gh",
     ],
     async run(args, { io, version }) {
-      const directory = path.resolve(io.cwd, args.options.dir as string);
+      const directory = await projectDirectory(io.cwd, args.options.dir as string);
       const live = args.options.live === true;
       if (!live && (args.given.has("repo") || args.given.has("use-gh"))) {
         throw new UsageError("--repo and --use-gh go with --live");
@@ -140,7 +140,7 @@ export function makeAssessCommand(
       try {
         assessment = await assessProject(ports.fs, directory, {
           named: args.given.has("dir"),
-          refused: [home],
+          refused: [await projectDirectory(io.cwd, home)],
           ...(repository === undefined
             ? {}
             : { live: () => readGitHub(ports, directory, repository) }),

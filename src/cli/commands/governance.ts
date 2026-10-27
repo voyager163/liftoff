@@ -9,6 +9,7 @@ import type { GitHubApiPort, ProjectFsPort } from "../../application/ports.ts";
 import type { Action, Checkpoint } from "../../domain/governance/checkpoints.ts";
 import type { CommandSpec, Io, ParsedArgs } from "../command.ts";
 import { UsageError } from "../outcome.ts";
+import { projectDirectory } from "./project-ports.ts";
 
 export interface GovernancePorts {
   fs: ProjectFsPort;
@@ -126,7 +127,7 @@ export function makeGovernanceStatusCommand(
     options: { dir: DIR },
     examples: ["liftoff governance status", "liftoff governance status --dir demo --json"],
     async run(args, { io }) {
-      const directory = path.resolve(io.cwd, args.options.dir as string);
+      const directory = await projectDirectory(io.cwd, args.options.dir as string);
       const state = await readGovernanceState(portsFor(io.cwd).fs, directory);
       if (state === undefined) {
         return {
@@ -180,7 +181,7 @@ export function makeGovernanceAssessCommand(
     ],
     async run(args, { io }) {
       const ports = portsFor(io.cwd);
-      const directory = path.resolve(io.cwd, args.options.dir as string);
+      const directory = await projectDirectory(io.cwd, args.options.dir as string);
       const repository = await repositoryWithConsent(args, io, ports.github, directory);
       const assessment = await assessGovernance(ports, directory, repository);
       const ready = assessment.checkpoints.every((checkpoint) => checkpoint.status === "done");
@@ -220,7 +221,7 @@ export function makeGovernancePlanCommand(
     ],
     async run(args, { io }) {
       const ports = portsFor(io.cwd);
-      const directory = path.resolve(io.cwd, args.options.dir as string);
+      const directory = await projectDirectory(io.cwd, args.options.dir as string);
       const repository = await repositoryWithConsent(args, io, ports.github, directory);
       const assessment = await assessGovernance(ports, directory, repository);
       const next = assessment.checkpoints.find((checkpoint) => checkpoint.status === "next");
@@ -310,7 +311,7 @@ export function makeGovernanceApplyNextCommand(
     ],
     async run(args, { io }) {
       const ports = portsFor(io.cwd);
-      const directory = path.resolve(io.cwd, args.options.dir as string);
+      const directory = await projectDirectory(io.cwd, args.options.dir as string);
       const repository = await repositoryWithConsent(args, io, ports.github, directory);
       const planFile = args.options.plan as string | undefined;
       const planned =
@@ -381,7 +382,7 @@ export function makeGovernanceResumeCommand(
     examples: ["liftoff governance resume", "liftoff governance resume --use-gh --yes"],
     async run(args, { io }) {
       const ports = portsFor(io.cwd);
-      const directory = path.resolve(io.cwd, args.options.dir as string);
+      const directory = await projectDirectory(io.cwd, args.options.dir as string);
       const repository = await repositoryWithConsent(args, io, ports.github, directory);
       const result = await resume(ports, directory, repository, {
         now: () => new Date().toISOString(),
@@ -447,7 +448,7 @@ export function makeGovernanceVerifyCommand(
     examples: ["liftoff governance verify", "liftoff governance verify --prove"],
     async run(args, { io }) {
       const ports = portsFor(io.cwd);
-      const directory = path.resolve(io.cwd, args.options.dir as string);
+      const directory = await projectDirectory(io.cwd, args.options.dir as string);
       const repository = await repositoryWithConsent(args, io, ports.github, directory);
       const prove = args.options.prove === true;
       if (prove && args.options.yes !== true && !io.interactive) {

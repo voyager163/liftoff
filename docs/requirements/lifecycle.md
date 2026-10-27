@@ -184,7 +184,7 @@ credentials and, without `--live`, contacts no network service.
 
 It reads only the declarations it interprets: `pyproject.toml`,
 `package.json`, `go.mod`, Compose files, Vitest, Vite and Jest
-configuration, `.coveragerc`, `setup.cfg`, `tox.ini`, `pytest.ini`,
+configuration, `pytest.toml`, `.coveragerc`, `setup.cfg`, `tox.ini`, `pytest.ini`,
 `.terraform.lock.hcl` and the workflows in `.github/workflows`, plus what
 `liftoff validate` reads in a Liftoff project, without following a link to
 any of them. Every other file is seen by name only. Files that may hold secrets or state, such as `.env`,
@@ -199,9 +199,10 @@ Verification: test
 
 ## ASSESS-002 The walk is bounded and follows no link
 
-The project directory itself must be a directory, not a link, and must stay
-the same directory throughout: every listing and read checks it, and an
-assessment during which it was replaced is refused. The assessment walks
+A link in the path that names the project directory is followed once, before
+anything is read; from then on the project directory must stay the same
+directory: every listing and read checks it, and an assessment during which
+it was replaced is refused. The assessment walks
 the project breadth first, sorted by name, and stops
 at 50,000 entries, 10,000 entries in one directory, 12 directories deep,
 300 declarations read and 512 KiB per declaration. It never follows a link:
@@ -244,7 +245,8 @@ Git repository, what GitHub, coding agents and Liftoff look for at the root
 `liftoff.yaml`) is unknown when it is not found, since the root may have
 it. A member of an npm or uv workspace, by the workspace's member and
 exclusion globs, may have its lock file at the workspace's root, and a
-workspace's root may itself be an application. A `pyproject.toml` that is
+workspace's root may itself be an application. Coverage settings may also
+be at the root of a workspace the part is in. A `pyproject.toml` that is
 not valid TOML is unknown, whatever it names. A coverage threshold counts
 only when it is configured: `fail_under` or `--cov-fail-under` above 0, or a
 non-empty `thresholds` or `coverageThreshold` object, never a mention in a

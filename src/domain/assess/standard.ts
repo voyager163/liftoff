@@ -11,6 +11,7 @@ import {
   type NodePackage,
   type PythonProject,
   pinned,
+  pytestTomlCoverageGate,
   readGoMod,
   readPackageJson,
   readPyproject,
@@ -538,6 +539,20 @@ const LOCKFILES = {
   go: { standard: "go.sum", others: [], next: "Record module checksums with `go mod tidy`." },
 } as const;
 
+/**
+ * A part's directory, then the roots of the workspaces it is a member of,
+ * nearest first: where its lock file and shared settings may be.
+ */
+function withWorkspaces(at: string, kind: "python" | "node" | "go", detected: Detected): string[] {
+  return [
+    at,
+    ...ancestors(at).filter((root) => {
+      const workspace = kind === "go" ? undefined : detected.workspaces[kind].get(root);
+      return workspace !== undefined && isMember(at, root, workspace);
+    }),
+  ];
+}
+
 /** Whether a directory is one of a workspace's members, by its globs. */
 function isMember(directory: string, root: string, workspace: Workspace): boolean {
   const relative = root === "." ? directory : directory.slice(root.length + 1);
@@ -572,13 +587,7 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
   const subject = `${part.component} at ${at}`;
   const lock = LOCKFILES[kind];
   // A workspace member's dependencies are locked at the workspace's root.
-  const lockedAt = [
-    at,
-    ...ancestors(at).filter((root) => {
-      const workspace = kind === "go" ? undefined : detected.workspaces[kind].get(root);
-      return workspace !== undefined && isMember(at, root, workspace);
-    }),
-  ];
+  const lockedAt = withWorkspaces(at, kind, detected);
   const locked = firstFile(
     tree,
     lockedAt.map((directory) => within(directory, lock.standard)),
@@ -652,11 +661,13 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
         ),
   );
 
+  // The files each ecosystem's usual runners collect: pytest's; Vitest's,
+  // Jest's (with __tests__/) and the Node.js test runner's; and go test's.
   const testPattern =
     kind === "python"
       ? /(^|\/)(test_[^/]*|[^/]*_test)\.py$/
       : kind === "node"
-        ? /\.(test|spec)\.[cm]?[jt]sx?$/
+        ? /([._-](test|spec)\.|(^|\/)(test-[^/]*|test)\.|(^|\/)(__tests__|test)\/.*\.)[cm]?[jt]sx?$/
         : /_test\.go$/;
   const tests = filesUnder(tree, at, (file) => testPattern.test(file));
   findings.push(
@@ -679,7 +690,7 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
         ),
   );
 
-  findings.push(coverageGate(tree, part, subject));
+  findings.push(coverageGate(tree, part, subject, withWorkspaces(at, kind, detected)));
 
   findings.push(
     expect(
@@ -745,13 +756,25 @@ const scripts = (...names: string[]) =>
 
 const COVERAGE = {
   python: {
-    files: ["pyproject.toml", ".coveragerc", "setup.cfg", "tox.ini", "pytest.ini"],
+    files: [
+      "pyproject.toml",
+      "pytest.toml",
+      ".pytest.toml",
+      ".coveragerc",
+      "setup.cfg",
+      "tox.ini",
+      "pytest.ini",
+    ],
     verdict: (name: string, text: string): Verdict => {
+      if (name === "pytest.toml" || name === ".pytest.toml") {
+        const gate = pytestTomlCoverageGate(text);
+        return gate === undefined ? "unclear" : gate ? "declared" : "none";
+      }
       if (name !== "pyproject.toml") return iniCoverageGate(name, text) ? "declared" : "none";
       const project = readPyproject(text);
       return project === undefined ? "unclear" : project.coverageGate ? "declared" : "none";
     },
-    where: "pyproject.toml, .coveragerc, setup.cfg, tox.ini or pytest.ini",
+    where: "pyproject.toml, pytest.toml, .coveragerc, setup.cfg, tox.ini or pytest.ini",
     next: "Set fail_under under [tool.coverage.report] in pyproject.toml.",
   },
   node: {
@@ -773,7 +796,13 @@ const COVERAGE = {
   },
 } as const;
 
-function coverageGate(tree: Tree, part: Part, subject: string): AssessmentFinding {
+/** Whether the tests fail below a coverage threshold, set in the part or a workspace it is in. */
+function coverageGate(
+  tree: Tree,
+  part: Part,
+  subject: string,
+  directories: readonly string[],
+): AssessmentFinding {
   const check = "tests.coverage-gate";
   const at = part.path;
   const kind = ecosystem(part);
@@ -787,7 +816,9 @@ function coverageGate(tree: Tree, part: Part, subject: string): AssessmentFindin
         })()
       : declaredIn(
           tree,
-          COVERAGE[kind].files.map((file) => within(at, file)),
+          directories.flatMap((directory) =>
+            COVERAGE[kind].files.map((file) => within(directory, file)),
+          ),
           COVERAGE[kind].verdict,
         );
   if (found !== undefined && "evidence" in found) {
@@ -1096,7 +1127,8 @@ function ciChecks(tree: Tree): AssessmentFinding[] {
     ),
     some(
       "ci.codeql",
-      (workflow) => workflow.uses.some((used) => used.startsWith("github/codeql-action/")),
+      // Uploading another tool's results is not a CodeQL scan.
+      (workflow) => workflow.uses.some((used) => used.startsWith("github/codeql-action/analyze")),
       "CodeQL scans the code",
       "no CodeQL scan",
       "Add a CodeQL workflow.",
@@ -1162,7 +1194,8 @@ function governanceChecks(tree: Tree, profile: string | undefined): AssessmentFi
   const rulesets = filesUnder(
     tree,
     ".github/rulesets",
-    (file) => file.endsWith(".json") && parentOf(file) === ".github/rulesets",
+    // Rulesets in directories under .github/rulesets are read as well.
+    (file) => file.endsWith(".json"),
   );
   const project = (text: string): NextAction => ({ category: "project", text });
   return [

@@ -6,8 +6,10 @@ import { LocalProjectFs } from "../../src/adapters/project-fs.ts";
 import type { GitHubApiPort } from "../../src/application/ports.ts";
 import type { ProjectAssessment } from "../../src/application/project/assess-project.ts";
 import { makeAssessCommand, renderProjectAssessment } from "../../src/cli/commands/assess.ts";
+import { makeGovernanceStatusCommand } from "../../src/cli/commands/governance.ts";
 import { makeInitCommand } from "../../src/cli/commands/plan-init.ts";
 import { defaultProjectPorts } from "../../src/cli/commands/project-ports.ts";
+import { makeValidateCommand } from "../../src/cli/commands/validate-doctor.ts";
 import { runCli } from "../../src/cli/run.ts";
 import {
   FakeGitHubApi,
@@ -132,6 +134,26 @@ describe("ASSESS-001 what is assessed", () => {
     const home = await exec(["--dir", "."], { home: path.join(work, "demo") });
     expect(home.code).toBe(2);
     expect(home.err).toContain("is not a project; assess a repository instead");
+  });
+});
+
+describe("ASSESS-002 a project directory named through a link", () => {
+  it("is followed once, for assess, validate and governance status", async () => {
+    symlinkSync(path.join(work, "demo"), path.join(work, "demo-link"), "junction");
+    const named = ["--dir", path.join(work, "demo-link"), "--json"];
+    const assessed = await exec(named);
+    expect(assessed.code).toBe(0);
+    expect(JSON.parse(assessed.out)).toMatchObject({ liftoff: "project", git: true });
+    const commands = [
+      makeValidateCommand(),
+      makeGovernanceStatusCommand(() => ({ fs: new LocalProjectFs(), github })),
+    ];
+    for (const command of [["validate"], ["governance", "status"]]) {
+      const io = captureIo(work);
+      expect(await runCli([...command, ...named], io, commands, "1.0.0"), command.join(" ")).toBe(
+        0,
+      );
+    }
   });
 });
 
