@@ -294,7 +294,16 @@ export async function recoverChanges(
     const changed: string[] = [];
     const conflicts: string[] = [];
     const waiting: string[] = [];
+    // Checked before every step, whatever it is, and before tidying up.
+    const stopIfCancelled = () => {
+      if (!signal?.aborted) return;
+      if (changed.length === 0) signal.throwIfAborted();
+      throw new ChangeStoppedError(
+        `recovery was cancelled after ${changed.length} file${changed.length === 1 ? "" : "s"}; run it again`,
+      );
+    };
     for (const step of recoverySteps(journal, current, mode)) {
+      stopIfCancelled();
       if (step.step === "done") continue;
       const change = journal.changes.find((entry) => entry.path === step.path);
       // Changes are ordered with liftoff.yaml and the manifest last.
@@ -305,12 +314,6 @@ export async function recoverChanges(
       if (step.step === "conflict" || change === undefined) {
         conflicts.push(step.path);
         continue;
-      }
-      if (signal?.aborted) {
-        if (changed.length === 0) signal.throwIfAborted();
-        throw new ChangeStoppedError(
-          `recovery was cancelled after ${changed.length} file${changed.length === 1 ? "" : "s"}; run it again`,
-        );
       }
       const source =
         step.wanted === null
@@ -334,6 +337,7 @@ export async function recoverChanges(
         conflicts.push(step.path);
       }
     }
+    stopIfCancelled();
     const complete = conflicts.length === 0 && waiting.length === 0;
     if (complete) {
       await fs.remove(path.join(root, ...CHANGE_JOURNAL_FILE.split("/")));

@@ -494,6 +494,58 @@ describe("UPDATE-004 an update that stops part way is finished or undone", () =>
     expect(finished.out).toContain("The update is finished: 1 file changed.");
   });
 
+  it("keeps the journal when recovery is cancelled with nothing left to change", async () => {
+    older();
+    const cancelling = (cancel: () => void) =>
+      Object.assign(Object.create(fs) as ProjectFsPort, {
+        createExclusive: async (lock: string, content: string) => {
+          cancel();
+          return fs.createExclusive(lock, content);
+        },
+      });
+    // Every file changes, but the journal cannot be removed.
+    const kept = Object.assign(Object.create(fs) as ProjectFsPort, {
+      remove: async (target: string) => {
+        if (target.endsWith("change-journal.json")) throw new Error("EIO: i/o error, unlink");
+        return fs.remove(target);
+      },
+    });
+    expect((await update(["--yes"], { port: kept })).code).toBe(5);
+    const journal = path.join(root(), ...CHANGE_JOURNAL_FILE.split("/"));
+    const cancelled = await update(["--recover", "finish", "--yes"], { port: cancelling });
+    expect(cancelled.code).toBe(4);
+    expect(existsSync(journal)).toBe(true);
+    expect(readdirSync(work).filter((name) => name.includes("liftoff-staging"))).toHaveLength(1);
+    const finished = await update(["--recover", "finish", "--yes"]);
+    expect(finished.code).toBe(0);
+    expect(finished.out).toContain("The update is finished: 0 files changed.");
+    expect(existsSync(journal)).toBe(false);
+  });
+
+  it("reports a failure after Ctrl+C as partial once recovery has changed a file", async () => {
+    olderTwo();
+    expect((await update(["--yes"], { port: stopping(1, "fail") })).code).toBe(5);
+    // The second file's copy fails just after Ctrl+C.
+    const failing = (cancel: () => void) => {
+      let copies = 0;
+      return Object.assign(Object.create(fs) as ProjectFsPort, {
+        copyFile: async (from: string, to: string) => {
+          copies += 1;
+          if (copies === 2) {
+            cancel();
+            throw new Error("ENOSPC: no space left on device, copyfile");
+          }
+          return fs.copyFile(from, to);
+        },
+      });
+    };
+    const stopped = await update(["--recover", "finish", "--yes"], { port: failing });
+    expect(stopped.code).toBe(5);
+    expect(stopped.out).toContain("Recovery stopped: ENOSPC");
+    expect(stopped.out).toContain("run liftoff update --recover finish again");
+    expect((await update(["--recover", "finish", "--yes"])).code).toBe(0);
+  });
+
   it("names what it could not remove once every file had changed", async () => {
     older();
     const port = Object.assign(Object.create(fs) as ProjectFsPort, {

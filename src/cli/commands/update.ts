@@ -400,12 +400,11 @@ async function recoverUpdate(
       signal: io.signal,
     });
   } catch (error) {
-    // A refusal, or a cancel before any file changed, changed nothing;
-    // anything else may have stopped it part way.
-    if (
-      !(error instanceof ChangeStoppedError) &&
-      (error instanceof ChangeError || io.signal.aborted)
-    ) {
+    // A refusal, or the cancel recovery raises before any file changed,
+    // changed nothing; anything else, even after Ctrl+C, may have stopped it
+    // part way.
+    const cancelled = io.signal.aborted && error === io.signal.reason;
+    if (!(error instanceof ChangeStoppedError) && (error instanceof ChangeError || cancelled)) {
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
