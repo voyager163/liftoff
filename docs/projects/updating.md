@@ -29,7 +29,9 @@ Files the project owns are never changed, even when this release's template
 for them changed: your source code, lock files, `.env.example`,
 infrastructure, rulesets, workflows Liftoff seeded for you to change, and
 `README.md`. Neither are files a specification framework owns, nor
-`liftoff.yaml`. No file changes owner in an update.
+`liftoff.yaml`. No file changes owner in an update. A managed file this
+release names in other letter case is held back for you to rename, since
+macOS and Windows treat the two names as one file.
 
 The manifest changes last, with the new hashes, this release's plugin
 versions and an `update` entry in its history.
@@ -84,7 +86,7 @@ meanwhile until you put it back.
 | 0 | Updated, or there was nothing to update |
 | 1 | Refused or failed; nothing was changed |
 | 2 | The command line was wrong, or `--yes` was needed |
-| 3 | `--check` found an update, or files were held back |
+| 3 | `--check` found an update, or files were held back or could not be added |
 | 4 | You answered no |
 | 5 | The update, or its recovery, stopped part way |
 | 6 | This release cannot update this project yet |

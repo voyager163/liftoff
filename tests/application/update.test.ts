@@ -199,6 +199,30 @@ describe("UPDATE-001 update changes only the files Liftoff manages", () => {
     ]);
   });
 
+  it("never changes liftoff.yaml, a file it now makes as the project's, or one listed in other letter case", async () => {
+    await generated();
+    const lower = (relative: string) => relative.replace("SKILL.md", "skill.md");
+    age((manifest) => {
+      entry(manifest, CONFIG_FILE).ownership = "managed";
+      // Listed in other letter case: as this release makes it, and older.
+      entry(manifest, VERIFY).path = lower(VERIFY);
+      entry(manifest, PR).path = lower(PR);
+      entry(manifest, lower(PR)).sha256 = sha("older pr\n");
+      Object.assign(entry(manifest, "README.md"), { path: "Readme.md", ownership: "managed" });
+    });
+    const before = snapshot();
+    const update = await plan();
+    expect(update.files).toEqual([
+      {
+        path: lower(PR),
+        step: "hold",
+        reason: `this release names it ${PR}, in other letter case; rename it to take this release's version`,
+      },
+    ]);
+    expect(update.plan).toBeUndefined();
+    expect(snapshot()).toEqual(before);
+  });
+
   it("has nothing to change in a project this release made", async () => {
     await generated();
     const update = await plan();

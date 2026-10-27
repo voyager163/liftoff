@@ -82,10 +82,18 @@ export interface UpdatePlan {
   readonly contents: ReadonlyMap<string, NewContent>;
 }
 
-/** Whether this release has anything for the project: a change, a new file, or a file held back. */
+/**
+ * Whether this release has anything for the project: a change, a new file
+ * offered, or a file it could not change or add, which needs the person.
+ */
 export const updateAvailable = (update: UpdatePlan): boolean =>
   update.plan !== undefined ||
-  update.files.some((file) => file.step === "offer" || file.step === "hold");
+  update.files.some((file) => file.step === "offer") ||
+  needsPerson(update);
+
+/** Whether a file was held back, or a new file could not be added. */
+export const needsPerson = (update: UpdatePlan): boolean =>
+  update.files.some((file) => file.step === "hold" || file.step === "occupied");
 
 /**
  * Plans bringing the files Liftoff manages in a project to what this release
@@ -166,10 +174,12 @@ export async function planUpdate(
     );
   }
 
+  // By name as macOS and Windows compare names, ignoring case.
+  const records = new Set([pathKey(CONFIG_FILE), pathKey(MANIFEST_FILE)]);
   const generated = new Map(
     files
-      .filter((file) => file.path !== CONFIG_FILE && file.path !== MANIFEST_FILE)
-      .map((file) => [file.path, file]),
+      .filter((file) => !records.has(pathKey(file.path)))
+      .map((file) => [pathKey(file.path), file]),
   );
   const steps: UpdateFile[] = [];
   const changes: FileChange[] = [];
@@ -193,13 +203,22 @@ export async function planUpdate(
   });
 
   for (const entry of manifest.files) {
-    if (entry.ownership !== "managed") continue;
-    const wanted = generated.get(entry.path);
+    // liftoff.yaml and the manifest are never changed as other files are.
+    if (entry.ownership !== "managed" || records.has(pathKey(entry.path))) continue;
+    const wanted = generated.get(pathKey(entry.path));
     // No file changes owner, and one this release does not change is left.
     if (
       wanted !== undefined &&
       (wanted.ownership !== "managed" || wanted.sha256 === entry.sha256)
     ) {
+      continue;
+    }
+    if (wanted !== undefined && wanted.path !== entry.path) {
+      steps.push({
+        path: entry.path,
+        step: "hold",
+        reason: `this release names it ${wanted.path}, in other letter case; rename it to take this release's version`,
+      });
       continue;
     }
     const now = await fs.hashWithin(directory, entry.path, MAX_CHANGED_BYTES);

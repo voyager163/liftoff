@@ -11,6 +11,7 @@ import {
   UNREADABLE_JOURNAL_ADVICE,
 } from "../../application/change/apply-changes.ts";
 import {
+  needsPerson,
   planFromSaved,
   planUpdate,
   type UpdateFile,
@@ -31,6 +32,12 @@ const OWNED = {
   seeded: "the project owns it",
   framework: "its framework owns it",
 } as const;
+
+/** What a plan changes: its files, then the manifest. */
+function changed(update: UpdatePlan): string {
+  const files = (update.plan?.changes.length ?? 1) - 1;
+  return files === 0 ? "the manifest" : `${files} file${files === 1 ? "" : "s"}, then the manifest`;
+}
 
 /** The plan, in the words the text shows it. */
 export function renderUpdate(update: UpdatePlan, version: string): string[] {
@@ -69,9 +76,8 @@ export function renderUpdate(update: UpdatePlan, version: string): string[] {
     lines.push("Left as they are:", ...held.map((file) => `  ${file.path}: ${file.reason ?? ""}`));
   }
   if (update.plan !== undefined) {
-    const files = update.plan.changes.length - 1;
     lines.push(
-      `Plan ${update.plan.hash.slice(0, 12)}: changes ${files} file${files === 1 ? "" : "s"}, then the manifest. Effects: modify-files (nothing is installed, run or sent anywhere).`,
+      `Plan ${update.plan.hash.slice(0, 12)}: changes ${changed(update)}. Effects: modify-files (nothing is installed, run or sent anywhere).`,
     );
   }
   return lines.map(shown);
@@ -251,24 +257,24 @@ export function makeUpdateCommand(
           text: `${lines.join("\n")}\n`,
         };
       }
-      const held = update.files.filter((file) => file.step === "hold").length > 0;
+      const held = needsPerson(update);
       if (update.plan === undefined) {
         return {
           outcome: held ? "attention" : "success",
           report: { ...reported(update), changed: false },
-          text: `${lines.join("\n")}\n`,
+          // Shown already with the question, and nothing chosen.
+          text: shownAlready ? "Nothing was changed.\n" : `${lines.join("\n")}\n`,
         };
       }
 
       if (!shownAlready) io.stderr(`${lines.join("\n")}\n`);
-      const files = update.plan.changes.length;
       if (!yes) {
         if (!io.interactive) {
           throw new UsageError(
             "update changes files; pass --yes to confirm when no one can answer a prompt",
           );
         }
-        if (!(await io.confirm(`Change ${files} files in ${shown(update.directory)}?`))) {
+        if (!(await io.confirm(`In ${shown(update.directory)}, change ${changed(update)}?`))) {
           return {
             outcome: "cancelled",
             report: { ...reported(update), changed: false },
@@ -281,13 +287,13 @@ export function makeUpdateCommand(
       } catch (error) {
         return stopped(error, ports, update);
       }
-      const done = `Updated ${update.name}: changed ${files - 1} file${files === 2 ? "" : "s"}, then the manifest.`;
+      const done = `Updated ${update.name}: changed ${changed(update)}.`;
       return {
         outcome: held ? "attention" : "success",
         report: {
           ...reported(update),
-          // What --check would now find: files held back, or new files not added.
-          available: update.files.some((file) => file.step === "hold" || file.step === "offer"),
+          // What --check would now find: files held back or not added, or new files offered.
+          available: held || update.files.some((file) => file.step === "offer"),
           changed: true,
         },
         text: held

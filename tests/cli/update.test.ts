@@ -113,14 +113,14 @@ describe("UPDATE-004 checking, previewing and approving an update", () => {
         choices: [{ value: ASSESS, description: "Liftoff keeps it current" }],
       }),
     ]);
-    expect(declined.questions).toEqual([`Change 2 files in ${root()}?`]);
+    expect(declined.questions).toEqual([`In ${root()}, change 1 file, then the manifest?`]);
     expect(declined.err.match(/Plan [0-9a-f]{12}/g)).toHaveLength(1);
     expect(declined.code).toBe(4);
     expect(declined.out).toBe("Nothing was changed.\n");
     expect(snapshot()).toEqual(before);
 
     const chosen = await update([], { answer: true, answers: { add: [ASSESS] } });
-    expect(chosen.questions).toEqual([`Change 3 files in ${root()}?`]);
+    expect(chosen.questions).toEqual([`In ${root()}, change 2 files, then the manifest?`]);
     expect(chosen.code).toBe(0);
     expect(chosen.out).toBe("Updated demo: changed 2 files, then the manifest.\n");
     expect(existsSync(path.join(root(), ...ASSESS.split("/")))).toBe(true);
@@ -228,6 +228,25 @@ describe("UPDATE-004 checking, previewing and approving an update", () => {
     const { code, err } = await update(["--check"]);
     expect(code).toBe(6);
     expect(err).toContain("rust-axum");
+  });
+
+  it("is not up to date while a new file cannot be added, and shows a declined plan once", async () => {
+    age((manifest) => {
+      manifest.files = manifest.files.filter((file) => file.path !== ASSESS);
+    });
+    const check = await update(["--check"]);
+    expect(check.code).toBe(3);
+    expect(check.out).toContain(
+      `Liftoff 1.0.0 has nothing to change by itself in demo in ${root()}.`,
+    );
+    expect(check.out).toContain(`  ${ASSESS}: a file is already there`);
+    expect(check.out).not.toContain("up to date");
+    rmSync(path.join(root(), ...ASSESS.split("/")));
+    const declined = await update([], { answer: true });
+    expect(declined.code).toBe(0);
+    expect(declined.out).toBe("Nothing was changed.\n");
+    expect(declined.err.match(/New files this release makes/g)).toHaveLength(1);
+    expect(declined.questions).toEqual([]);
   });
 
   it("escapes what would change how a terminal shows a line", () => {

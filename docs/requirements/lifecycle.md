@@ -317,9 +317,14 @@ this release changes:
   user or over 64 MiB, it is left as it is and named, with why, and its
   entry in the manifest stays as it was.
 
+Names are compared as macOS and Windows compare them, ignoring letter case
+and how an accented letter is encoded, so a managed file this release names
+in other letter case is held back for the person to rename, never removed.
+
 Files the project owns, such as its source, lock files, environment files,
 infrastructure and `README.md`, files a framework owns, and `liftoff.yaml`
-are never changed, whatever this release makes, and no file changes owner:
+are never changed, whatever this release makes or the manifest says of
+them, and no file changes owner:
 a managed file this release makes as the project's is left as it is. The
 manifest changes last, with this release's plugin versions and an `update`
 in its history; who generated the project stays as it was.
@@ -366,8 +371,9 @@ Verification: test
 ## UPDATE-004 Update checks, previews and applies exactly what was approved
 
 `liftoff update --check` changes nothing and exits 3 when this release has
-something for the project: a change, a file held back, or a new file
-offered; otherwise it exits 0. `--out <file>` saves the plan (CHANGE-001)
+something for the project: a change, a file held back, a new file offered,
+or a new file it could not add; otherwise it exits 0, and only then does it
+say the project is up to date. `--out <file>` saves the plan (CHANGE-001)
 and changes nothing. Otherwise update shows the plan and asks before
 changing anything; the default answer is no, and without a terminal it needs
 `--yes`. `--plan <file>` applies exactly a saved plan: the update is planned
@@ -375,7 +381,7 @@ again, with the same new files, and refused unless it is the same plan, made
 by this release. The files change as CHANGE-002 to CHANGE-004 say; an update
 that stops part way exits 5, and `liftoff update --recover finish` or
 `--recover undo` finishes or undoes it after asking. An update exits 3 when
-files were held back, and 0 otherwise.
+files were held back or new files could not be added, and 0 otherwise.
 
 - Given a saved plan, when a file it changes is edited before it is
   applied, then it is refused and nothing changes.
