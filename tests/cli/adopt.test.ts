@@ -112,7 +112,7 @@ describe("ADOPT-005 adopting from the command line", () => {
       ],
       [["--plan", "../plan.json", "--agents", "claude"], "--plan goes without --agents"],
       [["--check", "--agents", "gemini"], "gemini"],
-      [["--check", "--owners", "bad!login"], "an option is invalid: owners"],
+      [["--check", "--owners", "bad!login"], '--owners: "bad!login" is not a GitHub login'],
     ] as const) {
       const run = await adopt([...argv]);
       expect(run.code, argv.join(" ")).toBe(2);
@@ -122,6 +122,42 @@ describe("ADOPT-005 adopting from the command line", () => {
     const outside = await adopt(["--check"], { cwd: work });
     expect(outside.code).toBe(2);
     expect(outside.err).toContain("is not the root of a Git repository; name it with --dir");
+  });
+
+  it("refuses an option it cannot use before saying the project cannot be adopted", async () => {
+    write("orders/pyproject.toml", '[project]\nname = "orders"\ndependencies = ["fastapi"]\n');
+    expect((await adopt(["--check"])).code).toBe(3);
+    const ambiguous = await adopt(["--check", "--agents", "gemini"]);
+    expect(ambiguous.code).toBe(2);
+    expect(ambiguous.err).toContain('--agents: unknown agent "gemini"');
+    rmSync(at("pyproject.toml"));
+    rmSync(at("orders"), { recursive: true });
+    write("package.json", '{"dependencies":{"express":"^5.0.0"}}\n');
+    expect((await adopt(["--check"])).code).toBe(6);
+    expect((await adopt(["--check", "--owners", "bad!login"])).code).toBe(2);
+  });
+
+  it("finishes an adoption only while what it rests on is as it was", async () => {
+    let moves = 0;
+    const failing = Object.assign(Object.create(fs) as ProjectFsPort, {
+      moveFile: async (from: string, to: string) => {
+        moves += 1;
+        if (moves === 3) throw new Error("no space left on the disk");
+        return fs.moveFile(from, to);
+      },
+    });
+    expect((await adopt(["--yes"], { port: failing })).code).toBe(5);
+    write("pyproject.toml", '[project]\nname = "shop"\ndependencies = ["flask"]\n');
+    const refused = await adopt(["--recover", "finish", "--yes"]);
+    expect(refused.code).toBe(5);
+    expect(refused.out).toContain(
+      "put each back as it was, then run this again:\n  pyproject.toml\n",
+    );
+    expect(existsSync(at(CONFIG_FILE))).toBe(false);
+    expect(existsSync(at(CHANGE_JOURNAL_FILE))).toBe(true);
+    const undone = await adopt(["--recover", "undo", "--yes"]);
+    expect(undone.code).toBe(0);
+    expect(existsSync(at(CHANGE_JOURNAL_FILE))).toBe(false);
   });
 
   it("saves a plan and applies exactly that plan", async () => {

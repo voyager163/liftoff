@@ -6,6 +6,7 @@ import {
   type ChangePlan,
   pathsProblem,
 } from "../plan/change-plan.ts";
+import { repositoryPathProblem } from "../project/paths.ts";
 
 z.config(en());
 
@@ -35,6 +36,14 @@ const journalSchema = z.strictObject({
       executable: z.optional(z.boolean()),
     }),
   ),
+  /**
+   * The files the change rests on without changing them, as its plan lists
+   * them: finishing it needs each still as it was.
+   */
+  unchanged: z._default(
+    z.array(z.strictObject({ path: z.string(), sha256: z.nullable(sha256) })),
+    [],
+  ),
 });
 
 export type ChangeJournal = z.output<typeof journalSchema>;
@@ -57,6 +66,7 @@ export function journalFor(plan: ChangePlan, staging: string, started: string): 
       after: change.after,
       ...(change.executable === undefined ? {} : { executable: change.executable }),
     })),
+    unchanged: plan.unchanged.map(({ path, sha256 }) => ({ path, sha256 })),
   };
 }
 
@@ -79,7 +89,9 @@ export function parseJournal(text: string): ChangeJournal {
     throw new JournalError(`${CHANGE_JOURNAL_FILE} is invalid: ${issues.join("; ")}`);
   }
   // The same rules as the plan's, so a journal cannot name a path outside the project.
-  const problem = pathsProblem(parsed.data.changes);
+  const problem =
+    pathsProblem(parsed.data.changes) ??
+    parsed.data.unchanged.map((file) => repositoryPathProblem(file.path)).find(Boolean);
   if (problem !== undefined)
     throw new JournalError(`${CHANGE_JOURNAL_FILE} is invalid: ${problem}`);
   return parsed.data;

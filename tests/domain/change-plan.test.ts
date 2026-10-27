@@ -206,6 +206,25 @@ describe("CHANGE-003 a change that stops part way can be finished or undone", ()
     expect(() => parseJournal("nope")).toThrow("not valid JSON");
   });
 
+  it("keeps the files the change rests on, which finishing needs as they were", () => {
+    const resting = journalFor(
+      sealChangePlan({
+        ...unsigned([kept("README.md", A, B)]),
+        unchanged: [{ path: "pyproject.toml", sha256: A }],
+      }),
+      ".demo.liftoff-staging-abc123",
+      "2026-10-27T12:00:00Z",
+    );
+    expect(resting.unchanged).toEqual([{ path: "pyproject.toml", sha256: A }]);
+    expect(parseJournal(serializeJournal(resting))).toEqual(resting);
+    // A journal written before these were kept reads as resting on none.
+    const { unchanged: _, ...older } = resting;
+    expect(parseJournal(JSON.stringify(older)).unchanged).toEqual([]);
+    expect(() =>
+      parseJournal(JSON.stringify({ ...resting, unchanged: [{ path: "../x", sha256: A }] })),
+    ).toThrow("not a repository-relative path");
+  });
+
   const file = (sha: string): FileNow => ({ kind: "file", sha256: sha });
   const absent: FileNow = { kind: "absent" };
   const steps = (now: Record<string, FileNow>, mode: "finish" | "undo") =>

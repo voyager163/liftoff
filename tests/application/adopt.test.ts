@@ -171,13 +171,22 @@ describe("ADOPT-001 adopting proposes what the project is, from what it holds", 
       [{ infrastructure: "none", environments: ["dev"] }, "environments need infrastructure"],
       [{ agents: ["gemini"] }, "gemini"],
       [{ environments: ["qa"] }, "qa"],
-      [{ owners: ["bad!login"] }, "an option is invalid: owners"],
-      [{ name: "Store Front" }, "an option is invalid: name"],
+      [{ owners: ["bad!login"] }, '--owners: "bad!login" is not a GitHub login'],
+      [{ name: "Store Front" }, "--name: A project name must be"],
       [{ agents: ["copilot"], reviewEngine: "claude" }, "claude"],
     ] as const) {
       await expect(adopt(choices), message).rejects.toThrow(AdoptOptionError);
       await expect(adopt(choices)).rejects.toThrow(message);
     }
+    // Even when the project could not be adopted anyway.
+    write(
+      "services/api2/go.mod",
+      "module example.com/api2\n\ngo 1.25\n\nrequire github.com/danielgtaylor/huma/v2 v2.34.1\n",
+    );
+    expect(isBlocked(await adopt())).toBe(true);
+    await expect(adopt({ agents: ["gemini"] })).rejects.toThrow(
+      '--agents: unknown agent "gemini"; available: copilot, codex, claude',
+    );
     expect(chosenByOptions.others).toContainEqual({
       path: "infra/azure",
       component: "infrastructure",
@@ -265,6 +274,18 @@ describe("ADOPT-002 a part it cannot place blocks adopting", () => {
         reason: "another backend is adopted",
       },
     ]);
+  });
+
+  it("asks which stack to adopt when one directory holds two", async () => {
+    service();
+    write("package.json", '{"dependencies":{"fastify":"^5.0.0"}}\n');
+    const both =
+      ". holds a backend on each of node-fastify and python-fastapi; name the one to adopt with --stack";
+    expect((await adopt()).blocked).toEqual([both]);
+    expect((await adopt({ layout: { backend: "." } })).blocked).toEqual([both]);
+    const chosen = await adopt({ layout: { backend: "." }, stack: "python-fastapi" });
+    expect(isBlocked(chosen)).toBe(false);
+    expect(chosen.config?.stack).toBe("python-fastapi");
   });
 
   it("blocks a part that is not where an option names it", async () => {
@@ -522,6 +543,44 @@ describe("ADOPT-003 adopting adds Liftoff's own files, never over the project's"
     ]);
   });
 
+  it("keeps a path two names in other letter case stand for, on a volume that tells them apart", async () => {
+    service();
+    rmSync(at("AGENTS.md"));
+    // As a case-sensitive volume shows agents.md and Agents.md, and no AGENTS.md.
+    const port = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (directory: string, relative: string, maxBytes: number) =>
+        relative === "AGENTS.md"
+          ? Promise.resolve({ kind: "missing" as const })
+          : fs.hashWithin(directory, relative, maxBytes),
+      listWithin: async (directory: string, relative: string, maxEntries: number) => {
+        const listing = await fs.listWithin(directory, relative, maxEntries);
+        if (relative !== "." || listing.kind !== "directory") return listing;
+        return {
+          ...listing,
+          entries: [
+            ...listing.entries,
+            { name: "agents.md", kind: "file" as const },
+            { name: "Agents.md", kind: "file" as const },
+          ],
+        };
+      },
+    });
+    const plan = await planAdopt(
+      { assets, fs: port },
+      root,
+      VERSION,
+      { agents: ["claude"] },
+      { named: true, refused: [] },
+    );
+    expect(plan.files.find((file) => file.path === "AGENTS.md")).toEqual({
+      path: "AGENTS.md",
+      step: "kept",
+      ownership: "seeded",
+      reason:
+        "the project has Agents.md and agents.md, which macOS and Windows take for the same file",
+    });
+  });
+
   it("changes nothing when a declaration it rests on changed before it applies", async () => {
     service();
     const plan = await adopt();
@@ -551,6 +610,19 @@ describe("ADOPT-003 adopting adds Liftoff's own files, never over the project's"
     expect(
       (await adopt()).application.filter((change) => change.check === "infrastructure.roots"),
     ).toEqual([]);
+  });
+
+  it("lists a root without a lock file too, which the walk saw but could not classify", async () => {
+    monorepo();
+    write("infra/azure/shared/main.tf", "terraform {}\n");
+    const plan = await adopt();
+    expect(plan.config?.layout.infrastructure).toBe("infra/azure");
+    expect(plan.application).toContainEqual(
+      expect.objectContaining({
+        check: "infrastructure.roots",
+        message: expect.stringContaining("it does not validate the root in infra/azure/shared"),
+      }),
+    );
   });
 
   it("lists infrastructure laid out otherwise than Liftoff's CI validates", async () => {

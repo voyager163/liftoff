@@ -108,6 +108,11 @@ export interface Part {
   readonly stack: string;
   readonly supported: boolean;
   readonly evidence: readonly Evidence[];
+  /**
+   * For infrastructure, every OpenTofu or Terraform root module in its
+   * directory, whether its lock file was read or not.
+   */
+  readonly roots?: readonly string[];
 }
 
 /** What validate found in a Liftoff project, as far as an assessment needs. */
@@ -454,12 +459,14 @@ function infrastructureParts(
     ]);
   const azureAt = azure ? withModules(azure) : undefined;
   for (const [kind, group] of byProviders) {
+    const at = withModules(group);
     parts.push({
       component: "infrastructure",
-      path: withModules(group),
+      path: at,
       stack: kind === "azure" ? "azure" : `OpenTofu or Terraform with ${kind}`,
       supported: kind === "azure",
       evidence: group.map((root) => evidence.get(root) ?? listed(root)),
+      roots: roots.filter((root) => isWithin(root, at)),
     });
   }
   // Within the Azure part, its provider-lock check reports these.

@@ -295,6 +295,19 @@ export async function recoverChanges(
     const changed: string[] = [];
     const conflicts: string[] = [];
     const waiting: string[] = [];
+    // Finishing rests on what the change rested on: if any of it changed,
+    // nothing is finished, and the change can still be undone.
+    if (mode === "finish") {
+      for (const file of journal.unchanged) {
+        if (!fileMatches(await fileNow(fs, root, file.path), file.sha256)) {
+          conflicts.push(file.path);
+        }
+      }
+    }
+    const steps = recoverySteps(journal, current, mode);
+    if (conflicts.length > 0) {
+      waiting.push(...steps.filter((step) => step.step !== "done").map((step) => step.path));
+    }
     // Checked before every step, whatever it is, and before tidying up.
     const stopIfCancelled = () => {
       if (!signal?.aborted) return;
@@ -303,7 +316,7 @@ export async function recoverChanges(
         `recovery was cancelled after ${changed.length} file${changed.length === 1 ? "" : "s"}; run it again`,
       );
     };
-    for (const step of recoverySteps(journal, current, mode)) {
+    for (const step of conflicts.length > 0 ? [] : steps) {
       stopIfCancelled();
       if (step.step === "done") continue;
       const change = journal.changes.find((entry) => entry.path === step.path);

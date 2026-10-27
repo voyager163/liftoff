@@ -10,6 +10,7 @@ import {
   CONFIG_SCHEMA,
   type Component,
   ConfigError,
+  isGithubLogin,
   layoutOf,
   type ProjectConfig,
   projectNameProblem,
@@ -46,7 +47,6 @@ import {
 } from "../change/apply-changes.ts";
 import {
   MAX_RECORD_BYTES,
-  nameOnDisk,
   ProjectChangeError,
   RECORDS,
   refuseUnfinishedChange,
@@ -205,6 +205,8 @@ export async function planAdopt(
 
   // The hash of each declaration and old record, as the assessment read it.
   const read = new Map<string, string>();
+  const problem = optionProblem(choices);
+  if (problem !== undefined) throw new AdoptOptionError(problem);
   const assessment = await assessProject(fs, directory, { ...where, read });
   const blocked: string[] = [];
   const legacy = assessment.legacy?.records ?? [];
@@ -559,6 +561,73 @@ export async function planAdoptFromSaved(
   return adopt;
 }
 
+/**
+ * Why an option names something this release does not have, or undefined.
+ * Checked before the project is looked at, so an option's mistake is never
+ * hidden behind what keeps the project from being adopted.
+ */
+function optionProblem(choices: AdoptChoices): string | undefined {
+  const unknown = (
+    option: string,
+    values: readonly string[] | undefined,
+    known: (value: string) => boolean,
+    available: readonly string[],
+  ) => {
+    const value = values?.find((candidate) => !known(candidate));
+    return value === undefined
+      ? undefined
+      : `--${option}: unknown ${option === "agents" ? "agent" : option.replace(/s$/, "")} "${value}"; available: ${available.join(", ")}`;
+  };
+  const has = (registry: object) => (key: string) => Object.hasOwn(registry, key);
+  const hosts = Object.keys(AGENT_HOSTS);
+  const owners = choices.owners ?? [];
+  const twice = (values: readonly string[], fold = (value: string) => value) =>
+    new Set(values.map(fold)).size !== values.length;
+  const name = choices.name === undefined ? undefined : projectNameProblem(choices.name);
+  if (name !== undefined) return `--name: ${name}`;
+  return (
+    unknown("agents", choices.agents, has(AGENT_HOSTS), hosts) ??
+    unknown(
+      "environments",
+      choices.environments,
+      (value) => (ENVIRONMENTS as readonly string[]).includes(value),
+      ENVIRONMENTS,
+    ) ??
+    unknown(
+      "review-engine",
+      choices.reviewEngine === undefined ? undefined : [choices.reviewEngine],
+      has(AGENT_HOSTS),
+      hosts,
+    ) ??
+    unknown(
+      "stack",
+      choices.stack === undefined ? undefined : [choices.stack],
+      has(STACKS),
+      Object.keys(STACKS),
+    ) ??
+    unknown(
+      "pattern",
+      choices.pattern === undefined ? undefined : [choices.pattern],
+      (value) => value === NO_PATTERN || has(PATTERNS)(value),
+      Object.keys(PATTERNS),
+    ) ??
+    unknown(
+      "governance",
+      choices.governance === undefined ? undefined : [choices.governance],
+      has(GOVERNANCE),
+      Object.keys(GOVERNANCE),
+    ) ??
+    (owners.find((owner) => !isGithubLogin(owner)) !== undefined
+      ? `--owners: "${owners.find((owner) => !isGithubLogin(owner))}" is not a GitHub login`
+      : undefined) ??
+    (twice(choices.agents ?? []) ||
+    twice(choices.environments ?? []) ||
+    twice(owners, (owner) => owner.toLowerCase())
+      ? "--agents, --environments and --owners each name a value once"
+      : undefined)
+  );
+}
+
 /** The choices that make exactly this configuration. */
 function choicesOf(config: ProjectConfig): AdoptChoices {
   return {
@@ -585,6 +654,15 @@ interface Resolved {
 }
 
 const described = (part: Part) => `${part.stack} in ${part.path}`;
+
+/** Why several parts of one kind in one directory block adopting. */
+const sameDirectory = (
+  directory: string,
+  component: Component,
+  parts: readonly Part[],
+  flag: string,
+) =>
+  `${directory} holds a ${component} on each of ${parts.map((part) => part.stack).join(" and ")}; name the one to adopt with ${flag}`;
 
 /** The option that says what a part is: --stack for the backend, --frontend or --infrastructure. */
 const optionFor = (choices: AdoptChoices, component: Component): string | undefined =>
@@ -616,7 +694,12 @@ function resolveParts(assessment: ProjectAssessment, choices: AdoptChoices): Res
     const found = assessment.parts.filter((part) => part.component === component && part.supported);
     if (bound !== undefined) {
       const at = found.filter((part) => pathKey(part.path) === pathKey(bound));
-      const part = at.find((candidate) => option === undefined || candidate.stack === option);
+      const matching = at.filter((candidate) => option === undefined || candidate.stack === option);
+      const [part] = matching;
+      if (matching.length > 1) {
+        blocked.push(sameDirectory(bound, component, matching, flag));
+        continue;
+      }
       if (part !== undefined) {
         chosen[component] = part;
         continue;
@@ -636,8 +719,11 @@ function resolveParts(assessment: ProjectAssessment, choices: AdoptChoices): Res
     if (candidates.length === 1 && only !== undefined) {
       chosen[component] = only;
     } else if (candidates.length > 1) {
+      const directories = new Set(candidates.map((part) => pathKey(part.path)));
       blocked.push(
-        `${candidates.length} directories hold a ${component} (${candidates.map(described).join(", ")}); name the one to adopt with --layout ${component}=<directory>`,
+        directories.size === 1
+          ? sameDirectory(candidates[0]?.path ?? ".", component, candidates, flag)
+          : `${candidates.length} directories hold a ${component} (${candidates.map(described).join(", ")}); name the one to adopt with --layout ${component}=<directory>`,
       );
     } else if (option !== undefined) {
       blocked.push(
@@ -759,10 +845,8 @@ async function withoutRoots(
       missing.push(within(root));
     }
   }
-  // Each root the part was found from, by its lock file or its directory.
-  const roots = part.evidence.map(({ path: file }) =>
-    path.posix.basename(file) === ".terraform.lock.hcl" ? path.posix.dirname(file) : file,
-  );
+  // Every root module in the part, locked or not.
+  const roots = part.roots ?? [];
   const validated = (root: string) =>
     root.startsWith(`${part.path}/`) &&
     /^(bootstrap|environments\/[^/]+)$/.test(root.slice(part.path.length + 1));
@@ -885,10 +969,13 @@ async function occupant(
   const now: FileHash = await fs.hashWithin(directory, file, MAX_CHANGED_BYTES);
   switch (now.kind) {
     case "missing": {
-      const named = await nameOnDisk(fs, directory, file);
-      return named === undefined
+      const named = await aliases(fs, directory, file);
+      if (named === undefined) {
+        return "a directory on the way to it could not be listed whole, so whether it has another name in other letter case cannot be told";
+      }
+      return named.length === 0
         ? undefined
-        : `the project has ${named}, which macOS and Windows take for the same file`;
+        : `the project has ${named.join(" and ")}, which macOS and Windows take for the same file`;
     }
     case "file":
     case "directory":
@@ -898,4 +985,40 @@ async function occupant(
     default:
       return "a link or another kind of file is there or on the way to it, which Liftoff does not follow";
   }
+}
+
+/** The most entries read from one directory when looking for another letter case. */
+const MAX_LISTED = 10_000;
+
+/**
+ * Every name on disk that macOS and Windows take for this path, such as
+ * agents.md and Agents.md for AGENTS.md on a volume that tells them apart,
+ * or undefined when a directory on the way cannot be listed whole.
+ */
+async function aliases(
+  fs: ProjectFsPort,
+  directory: string,
+  relative: string,
+): Promise<string[] | undefined> {
+  let reached = ["."];
+  for (const name of relative.split("/")) {
+    const next: string[] = [];
+    for (const at of reached) {
+      const listing = await fs.listWithin(directory, at, MAX_LISTED);
+      if (listing.kind === "missing" || listing.kind === "file") continue;
+      if (listing.kind !== "directory" || !listing.complete) return undefined;
+      for (const entry of listing.entries) {
+        if (pathKey(entry.name) !== pathKey(name)) continue;
+        const found = at === "." ? entry.name : `${at}/${entry.name}`;
+        // Something that is not a directory, on the way, is in the way too.
+        if (entry.kind !== "directory" && found.split("/").length < relative.split("/").length) {
+          return [found];
+        }
+        next.push(found);
+      }
+    }
+    if (next.length === 0) return [];
+    reached = next;
+  }
+  return reached.sort();
 }

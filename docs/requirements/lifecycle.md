@@ -165,6 +165,10 @@ finishes or undoes the change, deciding each file from what is there now:
 `liftoff.yaml` and the manifest change only once every other file has, so
 the manifest never describes files that are not there.
 
+Finishing also needs every file the change rests on (CHANGE-001) to be as
+it was: if one is not, nothing is finished, it is named, and the change can
+still be undone.
+
 Finishing and undoing can follow each other until one completes, because
 the kept copies are copied into place, never used up. Recovery refuses a
 journal whose kept copies are missing, are a link, or belong to another
@@ -361,11 +365,14 @@ Verification: test
 
 An option that names something this release does not have, or that the
 other choices rule out, such as an unknown agent or `--review-engine` for
-a host not selected, is refused as a usage error (exit 2). Otherwise
-adopting changes nothing, names each reason and exits 3 when:
+a host not selected, is refused as a usage error (exit 2), checked before
+anything else about the project. Otherwise adopting changes nothing, names
+each reason and exits 3 when:
 
-- more than one directory holds a part of one kind, or a part named with an
-  option or `--layout` is not where it is named;
+- more than one directory holds a part of one kind (name one with
+  `--layout`), one directory holds two backends of different stacks (name
+  one with `--stack`), or a part named with an option or `--layout` is not
+  where it is named;
 - it could not tell what a directory holds, because a declaration could not
   be read or parsed, or part of the project was not walked, unless
   `--layout` names every part (or `--frontend none` and
@@ -405,9 +412,9 @@ expects of the parts it adopts, which adopting does not make: what
 coverage threshold, the lines Liftoff's `.gitignore` has for its own
 records when the project keeps its own `.gitignore` and it does not list
 them (with or without a leading `/`, or all of `.liftoff`), and each
-infrastructure root outside the `bootstrap` directory and the directories
-under `environments`, the ones Liftoff's CI validates, or those directories
-missing. They are the person's to make, for example with a reviewed patch
+infrastructure root module, with a lock file or without, outside the
+`bootstrap` directory and the directories under `environments`, the ones
+Liftoff's CI validates, or those directories missing. They are the person's to make, for example with a reviewed patch
 and `liftoff repair --patch` once the project is adopted.
 
 The change rests on the declarations the proposal was made from, and on the
