@@ -436,7 +436,7 @@ describe("ASSESS-003 findings keep unknown, unsupported, inaccessible and noncom
       "noncompliant liftoff.managed-file-missing .github/workflows/03-review-policy.yml",
     );
     expect(assessment.next).toContainEqual(
-      expect.objectContaining({ category: "liftoff", command: "liftoff validate" }),
+      expect.objectContaining({ category: "liftoff", command: "liftoff repair" }),
     );
   });
 });

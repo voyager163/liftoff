@@ -13,15 +13,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PackageAssets } from "../../src/adapters/assets.ts";
 import { LocalProjectFs } from "../../src/adapters/project-fs.ts";
 import { applyChanges, ChangeConflictError } from "../../src/application/change/apply-changes.ts";
+import {
+  ProjectChangeError,
+  ProjectChangeUnsupportedError,
+} from "../../src/application/change/project-change.ts";
 import { applyInit, planInit } from "../../src/application/init/init-project.ts";
 import type { FileHash, ProjectFsPort } from "../../src/application/ports.ts";
 import { validateProject } from "../../src/application/project/validate-project.ts";
 import {
   planFromSaved,
   planUpdate,
-  UpdateError,
   type UpdatePlan,
-  UpdateUnsupportedError,
   updateAvailable,
 } from "../../src/application/update/update-project.ts";
 import {
@@ -370,7 +372,7 @@ describe("UPDATE-002 update never switches what the project is made of", () => {
     await generated();
     edit();
     const before = snapshot();
-    await expect(plan()).rejects.toThrow(UpdateError);
+    await expect(plan()).rejects.toThrow(ProjectChangeError);
     await expect(plan()).rejects.toThrow(message);
     expect(snapshot()).toEqual(before);
   });
@@ -395,7 +397,7 @@ describe("UPDATE-002 update never switches what the project is made of", () => {
   });
 
   it("refuses a directory that is not there, and liftoff.yaml closed to this user", async () => {
-    await expect(plan()).rejects.toThrow(/is not a directory Liftoff can update/);
+    await expect(plan()).rejects.toThrow(/is not a directory Liftoff can change/);
     await generated();
     const closed = Object.assign(Object.create(fs) as ProjectFsPort, {
       readWithin: async (directory: string, relative: string, maxBytes: number) =>
@@ -416,7 +418,7 @@ describe("UPDATE-002 update never switches what the project is made of", () => {
         liftoffVersion: "0.12.3",
       }),
     );
-    await expect(plan()).rejects.toThrow(UpdateUnsupportedError);
+    await expect(plan()).rejects.toThrow(ProjectChangeUnsupportedError);
     await expect(plan()).rejects.toThrow(/before the rebuild/);
     rmSync(root, { recursive: true });
 
@@ -426,7 +428,7 @@ describe("UPDATE-002 update never switches what the project is made of", () => {
     age((manifest) => {
       entry(manifest, CONFIG_FILE).sha256 = sha(bound);
     });
-    await expect(plan()).rejects.toThrow(UpdateUnsupportedError);
+    await expect(plan()).rejects.toThrow(ProjectChangeUnsupportedError);
     await expect(plan()).rejects.toThrow(/only projects in the standard layout/);
   });
 });

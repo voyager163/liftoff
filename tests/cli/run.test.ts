@@ -65,6 +65,7 @@ describe("CLI-001 one registry drives every command", () => {
       "doctor",
       "assess",
       "update",
+      "repair",
       "review classify",
       "governance status",
       "governance assess",

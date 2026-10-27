@@ -1339,6 +1339,9 @@ function infrastructureChecks(tree: Tree, part: Part): AssessmentFinding[] {
   ];
 }
 
+/** What validate reports that liftoff repair can put right. */
+const REPAIRED = new Set(["managed-file-missing", "managed-file-changed", "seeded-file-missing"]);
+
 function liftoffChecks(state: LiftoffState): AssessmentFinding[] {
   // What validate found, other than whether this is a Liftoff project at
   // all: in a project that is not Liftoff's, only a change that stopped
@@ -1358,11 +1361,17 @@ function liftoffChecks(state: LiftoffState): AssessmentFinding[] {
         message: finding.message,
         ...(finding.path === undefined ? {} : { subject: finding.path }),
         evidence: finding.path === undefined ? [] : [read(finding.path)],
-        next: {
-          category: "liftoff",
-          text: "See what validate reports about the project's Liftoff files.",
-          command: "liftoff validate",
-        },
+        next: REPAIRED.has(finding.code)
+          ? {
+              category: "liftoff",
+              text: "Put back the files Liftoff wrote that are missing or were changed by hand.",
+              command: "liftoff repair",
+            }
+          : {
+              category: "liftoff",
+              text: "See what validate reports about the project's Liftoff files.",
+              command: "liftoff validate",
+            },
       }),
     );
   if (state.kind === "none") {
