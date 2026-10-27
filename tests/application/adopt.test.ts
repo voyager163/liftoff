@@ -531,6 +531,28 @@ describe("ADOPT-003 adopting adds Liftoff's own files, never over the project's"
     expect(snapshot()).toEqual(before);
   });
 
+  it("lists an infrastructure root Liftoff's CI does not validate", async () => {
+    monorepo();
+    write("infra/azure/shared/main.tf", "terraform {}\n");
+    write(
+      "infra/azure/shared/.terraform.lock.hcl",
+      'provider "registry.opentofu.org/hashicorp/azurerm" {\n  version = "4.0.0"\n}\n',
+    );
+    const plan = await adopt();
+    expect(plan.config?.layout.infrastructure).toBe("infra/azure");
+    expect(plan.application).toContainEqual(
+      expect.objectContaining({
+        check: "infrastructure.roots",
+        message:
+          "Liftoff's CI validates the OpenTofu roots in infra/azure/bootstrap and each infra/azure/environments/<environment>, and it does not validate the root in infra/azure/shared",
+      }),
+    );
+    rmSync(at("infra/azure/shared"), { recursive: true });
+    expect(
+      (await adopt()).application.filter((change) => change.check === "infrastructure.roots"),
+    ).toEqual([]);
+  });
+
   it("lists infrastructure laid out otherwise than Liftoff's CI validates", async () => {
     monorepo();
     rmSync(at("infra/azure/bootstrap"), { recursive: true });
@@ -541,7 +563,7 @@ describe("ADOPT-003 adopting adds Liftoff's own files, never over the project's"
       status: "noncompliant",
       subject: "infrastructure at infra/azure/environments/dev",
       message:
-        "Liftoff's CI validates the OpenTofu roots in infra/azure/environments/dev/bootstrap and each infra/azure/environments/dev/environments/<environment>, and infra/azure/environments/dev/bootstrap and infra/azure/environments/dev/environments are not there",
+        "Liftoff's CI validates the OpenTofu roots in infra/azure/environments/dev/bootstrap and each infra/azure/environments/dev/environments/<environment>, and infra/azure/environments/dev/bootstrap and infra/azure/environments/dev/environments are not there; it does not validate the root in infra/azure/environments/dev",
       next: "Move the roots there, or leave the infrastructure out with --infrastructure none.",
     });
   });

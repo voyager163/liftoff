@@ -742,8 +742,9 @@ async function unignored(
 
 /**
  * Liftoff's CI validates the OpenTofu roots it makes: one for the
- * bootstrap and one for each environment. Infrastructure laid out
- * otherwise needs moving before those checks pass.
+ * bootstrap and one in each directory under environments. A root anywhere
+ * else is not validated, and infrastructure without those directories
+ * needs moving before the checks pass.
  */
 async function withoutRoots(
   fs: ProjectFsPort,
@@ -751,24 +752,37 @@ async function withoutRoots(
   part: Part | undefined,
 ): Promise<ApplicationChange[]> {
   if (part === undefined) return [];
+  const within = (relative: string) => `${part.path}/${relative}`;
   const missing: string[] = [];
   for (const root of ["bootstrap", "environments"]) {
-    const at = part.path === "." ? root : `${part.path}/${root}`;
-    if ((await fs.entry(path.join(directory, ...at.split("/")))).kind !== "directory") {
-      missing.push(at);
+    if ((await fs.entry(path.join(directory, ...within(root).split("/")))).kind !== "directory") {
+      missing.push(within(root));
     }
   }
-  return missing.length === 0
-    ? []
-    : [
-        {
-          check: "infrastructure.roots",
-          status: "noncompliant",
-          subject: `infrastructure at ${part.path}`,
-          message: `Liftoff's CI validates the OpenTofu roots in ${part.path}/bootstrap and each ${part.path}/environments/<environment>, and ${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not there`,
-          next: "Move the roots there, or leave the infrastructure out with --infrastructure none.",
-        },
-      ];
+  // Each root the part was found from, by its lock file or its directory.
+  const roots = part.evidence.map(({ path: file }) =>
+    path.posix.basename(file) === ".terraform.lock.hcl" ? path.posix.dirname(file) : file,
+  );
+  const validated = (root: string) =>
+    root.startsWith(`${part.path}/`) &&
+    /^(bootstrap|environments\/[^/]+)$/.test(root.slice(part.path.length + 1));
+  const outside = [...new Set(roots)].filter((root) => !validated(root)).sort();
+  if (missing.length === 0 && outside.length === 0) return [];
+  const problems = [
+    ...(missing.length === 0
+      ? []
+      : [`${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not there`]),
+    ...(outside.length === 0 ? [] : [`it does not validate the root in ${outside.join(", ")}`]),
+  ];
+  return [
+    {
+      check: "infrastructure.roots",
+      status: "noncompliant",
+      subject: `infrastructure at ${part.path}`,
+      message: `Liftoff's CI validates the OpenTofu roots in ${within("bootstrap")} and each ${within("environments")}/<environment>, and ${problems.join("; ")}`,
+      next: "Move the roots there, or leave the infrastructure out with --infrastructure none.",
+    },
+  ];
 }
 
 /** Whether a finding is about the application of an adopted part, which adopting never changes. */

@@ -404,9 +404,10 @@ expects of the parts it adopts, which adopting does not make: what
 `liftoff assess` finds missing in them, such as a lock file, tests or a
 coverage threshold, the lines Liftoff's `.gitignore` has for its own
 records when the project keeps its own `.gitignore` and it does not list
-them (with or without a leading `/`, or all of `.liftoff`), and infrastructure
-roots outside the `bootstrap` and `environments` directories Liftoff's CI
-validates. They are the person's to make, for example with a reviewed patch
+them (with or without a leading `/`, or all of `.liftoff`), and each
+infrastructure root outside the `bootstrap` directory and the directories
+under `environments`, the ones Liftoff's CI validates, or those directories
+missing. They are the person's to make, for example with a reviewed patch
 and `liftoff repair --patch` once the project is adopted.
 
 The change rests on the declarations the proposal was made from, and on the

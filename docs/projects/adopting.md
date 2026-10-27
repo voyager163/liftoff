@@ -92,7 +92,8 @@ The plan also lists the application changes Liftoff's standard expects of
 the parts it adopts, which adopting does not make, such as a missing lock
 file, tests, a coverage threshold or a Dockerfile, the `.liftoff/` lines
 Liftoff's `.gitignore` has, and infrastructure roots outside the
-`bootstrap` and `environments` directories Liftoff's CI validates. Once the
+`bootstrap` directory and the directories under `environments`, which are
+the ones Liftoff's CI validates. Once the
 project is adopted, make each with a reviewed patch:
 
 ```bash
