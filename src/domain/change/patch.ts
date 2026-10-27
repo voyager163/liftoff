@@ -74,8 +74,10 @@ export function parsePatch(text: string): FilePatch[] {
   const next = () => lines[at];
   const isFileStart = (line: string | undefined) =>
     line !== undefined && (line.startsWith("diff --git ") || line.startsWith("--- "));
-  // Blank lines to the end, as an editor may add.
-  const rest = () => lines.slice(at).every((line) => line === "");
+  // Where blank lines run to the end, as an editor may add, found once.
+  let blankFrom = lines.length;
+  while (blankFrom > 0 && lines[blankFrom - 1] === "") blankFrom--;
+  const rest = () => at >= blankFrom;
   /**
    * Whether the changes end here: at blank lines to the end, or at git
    * format-patch's signature line, after which another commit would go

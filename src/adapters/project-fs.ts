@@ -92,9 +92,18 @@ export class LocalProjectFs implements ProjectFsPort {
 
   async matchPermissions(from: string, to: string, executable: boolean): Promise<void> {
     if (process.platform === "win32") return;
-    const { mode } = await lstat(from);
+    const mode = (await lstat(from)).mode & 0o777;
     // A private file stays private, whatever the umask would give a new one.
-    await chmod(to, (mode & 0o666) | (executable ? (mode & 0o444) >> 2 : 0));
+    // Its execute bits stay exactly as they were, unless they must change.
+    const wasExecutable = (mode & 0o111) !== 0;
+    await chmod(
+      to,
+      executable === wasExecutable
+        ? mode
+        : executable
+          ? mode | ((mode & 0o444) >> 2)
+          : mode & ~0o111,
+    );
   }
 
   async directoryIdentity(target: string): Promise<string | undefined> {

@@ -133,9 +133,10 @@ export interface ProjectFsPort {
   /** Copies a file byte for byte, with its mode; fails if `to` exists. */
   copyFile(from: string, to: string): Promise<void>;
   /**
-   * Gives `to` the read and write permissions of the regular file `from`,
-   * with execute permission wherever `from` may be read when `executable`,
-   * or none. Nothing on Windows, which has no such permissions.
+   * Gives `to` the permissions of the regular file `from`. When `executable`
+   * differs from whether `from` is executable, execute permission is added
+   * wherever `from` may be read, or removed. Nothing on Windows, which has
+   * no such permissions.
    */
   matchPermissions(from: string, to: string, executable: boolean): Promise<void>;
   /**

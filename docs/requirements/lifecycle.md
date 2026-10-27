@@ -170,9 +170,10 @@ Verification: test
 
 ## CHANGE-004 Files change one at a time, the manifest last
 
-Each file is replaced in one step, keeping the read and write permissions
-of the file it replaces, so a private file stays private, with the
-executable bit planned. The
+Each file is replaced in one step, keeping the permissions of the file it
+replaces, so a private file stays private; only when the plan changes
+whether it is executable is execute permission added wherever it may be
+read, or removed. The
 project's files change first, then `liftoff.yaml`, then
 `.liftoff/manifest.json`, so the manifest never lists files that were not
 written. Once every file has changed, the journal and the kept copies are

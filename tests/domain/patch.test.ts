@@ -156,6 +156,17 @@ describe("REPAIR-003 a patch applies exactly as git diff wrote it", () => {
     expect(() => parsePatch(second.join("\n"))).toThrow("the patch holds more than one commit");
   });
 
+  it("reads tens of thousands of empty files in time that grows with the patch", () => {
+    const empty = Array.from({ length: 40_000 }, (_, index) => [
+      `diff --git a/empty/${index}.txt b/empty/${index}.txt`,
+      "new file mode 100644",
+      "index 0000000..e69de29",
+    ]).flat();
+    const started = performance.now();
+    expect(parsePatch(empty.join("\n"))).toHaveLength(40_000);
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+
   it("refuses an insertion after a line the file does not have", () => {
     const [file] = parsePatch(["--- a/a", "+++ b/a", "@@ -10,0 +11 @@", "+inserted"].join("\n"));
     if (file === undefined) throw new Error("no file");

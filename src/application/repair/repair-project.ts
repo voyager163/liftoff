@@ -185,12 +185,18 @@ export async function planPatch(
   const contents = new Map<string, NewContent>();
   const seen = new Set<string>();
   const files = parsePatch(patch.text);
-  const keys = files.map((file) => pathKey(file.path));
+  // Every directory a changed file is in, to find a path that is also one.
+  const directories = new Set(
+    files.flatMap((file) => {
+      const parts = pathKey(file.path).split("/");
+      return parts.slice(1).map((_, depth) => parts.slice(0, depth + 1).join("/"));
+    }),
+  );
   for (const file of files) {
     const key = pathKey(file.path);
     if (seen.has(key)) throw new ProjectChangeError(`the patch changes ${file.path} twice`);
     seen.add(key);
-    if (keys.some((other) => other.startsWith(`${key}/`))) {
+    if (directories.has(key)) {
       throw new ProjectChangeError(
         `the patch makes ${file.path} both a file and a directory of other files`,
       );
