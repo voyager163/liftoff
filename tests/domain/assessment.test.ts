@@ -233,7 +233,17 @@ require (
         "github.com/pressly/goose/v3",
       ],
     });
-    expect(readGoMod("module x\n").goVersion).toBe(false);
+    expect(readGoMod("module x\n")?.goVersion).toBe(false);
+    // Not a go.mod: no module, a block left open, or a requirement without a version.
+    expect(readGoMod("go 1.26\n")).toBeUndefined();
+    expect(
+      readGoMod("module x\nrequire (\n\tgithub.com/danielgtaylor/huma/v2 v2.0.0\n"),
+    ).toBeUndefined();
+    expect(readGoMod("module x\nrequire github.com/danielgtaylor/huma/v2\n")).toBeUndefined();
+    expect(readGoMod("module x\nreplace (\n\ta => b\n)\n")).toEqual({
+      requires: [],
+      goVersion: false,
+    });
   });
 
   it("reads a workflow's triggers, jobs and actions", () => {
@@ -655,6 +665,30 @@ describe("ASSESS-003 what the walk did not see is never a difference", () => {
 });
 
 describe("ASSESS-003 what is found is only what the declarations say", () => {
+  it("takes only a regular file as a file, and never a link it did not follow", () => {
+    const project = lines(
+      run(
+        tree(
+          { "pyproject.toml": FASTAPI, "uv.lock/inner": "", "Dockerfile/inner": "" },
+          { other: ["README.md", "AGENTS.md", "CLAUDE.md"] },
+        ),
+      ),
+    );
+    expect(project).toEqual(
+      expect.arrayContaining([
+        "noncompliant dependencies.lockfile backend at .",
+        "noncompliant build.container backend at .",
+        "unknown docs.readme",
+        "unknown agents.instructions",
+      ]),
+    );
+    const broken = run(
+      tree({ "go.mod": "module x\nrequire (\n\tgithub.com/danielgtaylor/huma/v2 v2.0.0\n" }),
+    );
+    expect(broken.parts).toEqual([]);
+    expect(lines(broken)).toContain("unknown structure.part .");
+  });
+
   it("is unknown about a pyproject.toml that is not TOML, whatever it names", () => {
     const broken = run(
       tree({ "pyproject.toml": '[project]\ndependencies = ["fastapi"]\nbroken = [\n' }),

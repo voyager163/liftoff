@@ -215,6 +215,35 @@ export function presence(tree: Tree, file: string): Presence {
     : unknownFrom(gapOver(tree, at), file);
 }
 
+/**
+ * Whether a regular file is in the project. A directory by that name is not
+ * one; a link is never followed, so what it is cannot be told.
+ */
+export function fileAt(tree: Tree, file: string): Presence {
+  const found = presence(tree, file);
+  if (found.found !== true) return found;
+  const kind = tree.entries.get(found.path);
+  if (kind === "file") return found;
+  return kind === "other"
+    ? {
+        found: "unknown",
+        status: "unknown",
+        why: `${found.path} is a link or special file, never followed`,
+      }
+    : { found: false };
+}
+
+/** The first of several regular files that is there, or why none can be known to be. */
+export function firstFile(tree: Tree, files: readonly string[]): Presence {
+  let unknown: Presence | undefined;
+  for (const file of files) {
+    const found = fileAt(tree, file);
+    if (found.found === true) return found;
+    if (found.found === "unknown") unknown ??= found;
+  }
+  return unknown ?? { found: false };
+}
+
 /** The first of several paths that is there, or why none can be known to be. */
 export function firstPresent(tree: Tree, files: readonly string[]): Presence {
   let unknown: Presence | undefined;

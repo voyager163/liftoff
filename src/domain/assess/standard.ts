@@ -22,8 +22,9 @@ import {
 } from "./declarations.ts";
 import {
   type Declaration,
+  fileAt,
   filesUnder,
-  firstPresent,
+  firstFile,
   type Gap,
   type Presence,
   presence,
@@ -412,7 +413,7 @@ function infrastructureParts(
   const unlocked: string[] = [];
   const unread: { root: string; status: "inaccessible" | "unknown"; why: string }[] = [];
   for (const root of roots) {
-    const lock = presence(tree, within(root, ".terraform.lock.hcl"));
+    const lock = fileAt(tree, within(root, ".terraform.lock.hcl"));
     if (lock.found === false) {
       unlocked.push(root);
       continue;
@@ -578,13 +579,13 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
       return workspace !== undefined && isMember(at, root, workspace);
     }),
   ];
-  const locked = firstPresent(
+  const locked = firstFile(
     tree,
     lockedAt.map((directory) => within(directory, lock.standard)),
   );
   const other = lockedAt
     .flatMap((directory) => lock.others.map((file) => within(directory, file)))
-    .find((file) => presence(tree, file).found === true);
+    .find((file) => fileAt(tree, file).found === true);
   findings.push(
     locked.found === false && other !== undefined
       ? {
@@ -636,7 +637,7 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
       : expect(
           "dependencies.runtime",
           "dependencies",
-          firstPresent(tree, runtimeFiles),
+          firstFile(tree, runtimeFiles),
           { found: "the runtime version is pinned", missing: "no runtime version declared" },
           {
             category: "project",
@@ -684,7 +685,7 @@ function partChecks(tree: Tree, part: Part, detected: Detected): AssessmentFindi
     expect(
       "build.container",
       "build",
-      firstPresent(tree, [within(at, "Dockerfile"), within(at, "Containerfile")]),
+      firstFile(tree, [within(at, "Dockerfile"), within(at, "Containerfile")]),
       { found: "builds a container image", missing: "no Dockerfile" },
       { category: "project", text: "Add a Dockerfile that builds the application's image." },
       subject,
@@ -713,7 +714,7 @@ function declaredIn(
   | undefined {
   let unknown: { readonly status: "inaccessible" | "unknown"; readonly why: string } | undefined;
   for (const file of files) {
-    const there = presence(tree, file);
+    const there = fileAt(tree, file);
     if (there.found === false) continue;
     if (there.found === "unknown") {
       unknown ??= { status: there.status, why: there.why };
@@ -780,7 +781,7 @@ function coverageGate(tree: Tree, part: Part, subject: string): AssessmentFindin
     kind === "go"
       ? // Liftoff's Go projects gate coverage with a small tool of their own.
         (() => {
-          const tool = presence(tree, within(at, "tools/coverage/main.go"));
+          const tool = fileAt(tree, within(at, "tools/coverage/main.go"));
           if (tool.found === true) return { evidence: listed(tool.path) };
           return tool.found === "unknown" ? { status: tool.status, why: tool.why } : undefined;
         })()
@@ -914,7 +915,7 @@ function dataChecks(
     "docker-compose.yaml",
     "docker-compose.yml",
   ].flatMap((name) => (at === "." ? [name] : [name, within(at, name)]));
-  const compose = firstPresent(tree, composeFiles);
+  const compose = firstFile(tree, composeFiles);
   if (compose.found !== true) {
     findings.push(
       expect(
@@ -981,7 +982,7 @@ function agentChecks(tree: Tree, agents: readonly (keyof typeof HOSTS)[]): Asses
     expect(
       "agents.instructions",
       "agents",
-      presence(tree, "AGENTS.md"),
+      fileAt(tree, "AGENTS.md"),
       {
         found: "AGENTS.md tells coding agents how to work in the project",
         missing: "no AGENTS.md",
@@ -994,7 +995,7 @@ function agentChecks(tree: Tree, agents: readonly (keyof typeof HOSTS)[]): Asses
       expect(
         "agents.review-skills",
         "agents",
-        firstPresent(
+        firstFile(
           tree,
           HOSTS[host].skills.map((directory) => `${directory}/liftoff-code-review/SKILL.md`),
         ),
@@ -1129,6 +1130,24 @@ function ciChecks(tree: Tree): AssessmentFinding[] {
   ];
 }
 
+/** A pull request template: a file, or a directory of them, where GitHub looks. */
+function pullRequestTemplate(tree: Tree): Presence {
+  const file = firstFile(tree, [
+    ".github/pull_request_template.md",
+    "pull_request_template.md",
+    "docs/pull_request_template.md",
+  ]);
+  if (file.found === true) return file;
+  const directory = presence(tree, ".github/PULL_REQUEST_TEMPLATE");
+  if (directory.found === true && tree.entries.get(directory.path) === "directory")
+    return directory;
+  return file.found === "unknown"
+    ? file
+    : directory.found === "unknown"
+      ? directory
+      : { found: false };
+}
+
 /** Why no ruleset can be seen, when that is not because there are none. */
 function rulesetsHidden(tree: Tree, hidden: Presence | undefined): Presence {
   const directory = presence(tree, ".github/rulesets");
@@ -1150,7 +1169,7 @@ function governanceChecks(tree: Tree, profile: string | undefined): AssessmentFi
     expect(
       "governance.review-policy",
       "governance",
-      presence(tree, ".github/review-policy.yml"),
+      fileAt(tree, ".github/review-policy.yml"),
       {
         found: "a review policy sets each change's risk tier",
         missing: "no .github/review-policy.yml",
@@ -1183,12 +1202,7 @@ function governanceChecks(tree: Tree, profile: string | undefined): AssessmentFi
     expect(
       "governance.pr-template",
       "governance",
-      firstPresent(tree, [
-        ".github/pull_request_template.md",
-        "pull_request_template.md",
-        "docs/pull_request_template.md",
-        ".github/PULL_REQUEST_TEMPLATE",
-      ]),
+      pullRequestTemplate(tree),
       {
         found: "a pull request template asks for testing, risk and how to revert",
         missing: "no pull request template",
@@ -1198,7 +1212,7 @@ function governanceChecks(tree: Tree, profile: string | undefined): AssessmentFi
     expect(
       "governance.review-guide",
       "governance",
-      presence(tree, "REVIEW.md"),
+      fileAt(tree, "REVIEW.md"),
       { found: "REVIEW.md tells reviewers what matters", missing: "no REVIEW.md" },
       project("Add a REVIEW.md that says what reviewers look for."),
     ),
@@ -1213,14 +1227,14 @@ function governanceChecks(tree: Tree, profile: string | undefined): AssessmentFi
       : expect(
           "governance.document",
           "governance",
-          presence(tree, "GOVERNANCE.md"),
+          fileAt(tree, "GOVERNANCE.md"),
           { found: "GOVERNANCE.md says how changes merge", missing: "no GOVERNANCE.md" },
           project("Add a GOVERNANCE.md that says how changes merge."),
         ),
     expect(
       "governance.dependabot",
       "governance",
-      firstPresent(tree, [".github/dependabot.yml", ".github/dependabot.yaml"]),
+      firstFile(tree, [".github/dependabot.yml", ".github/dependabot.yaml"]),
       { found: "Dependabot keeps dependencies current", missing: "no Dependabot configuration" },
       project("Add .github/dependabot.yml."),
     ),
@@ -1240,7 +1254,7 @@ function infrastructureChecks(tree: Tree, part: Part): AssessmentFinding[] {
   const unlocked: string[] = [];
   let unseen = configurations.hidden;
   for (const root of roots) {
-    const lock = presence(tree, within(root, ".terraform.lock.hcl"));
+    const lock = fileAt(tree, within(root, ".terraform.lock.hcl"));
     if (lock.found === false) unlocked.push(root);
     else if (lock.found === "unknown") unseen ??= lock;
   }
@@ -1528,7 +1542,7 @@ export function assess(
     expect(
       "docs.readme",
       "docs",
-      presence(tree, "README.md"),
+      fileAt(tree, "README.md"),
       { found: "README.md explains the project", missing: "no README.md" },
       { category: "project", text: "Add a README.md." },
     ),

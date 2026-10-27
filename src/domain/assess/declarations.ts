@@ -250,24 +250,42 @@ export interface GoModule {
   readonly goVersion: boolean;
 }
 
-/** Reads a go.mod's go directive and required modules. */
-export function readGoMod(text: string): GoModule {
+/**
+ * Reads a go.mod's go directive and required modules, or undefined when it is
+ * not a valid go.mod: no module directive, a block left open, or a
+ * requirement without a version.
+ */
+export function readGoMod(text: string): GoModule | undefined {
   const requires: string[] = [];
-  let block = false;
+  let block: string | undefined;
+  let module = false;
   let goVersion = false;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/\/\/.*$/, "").trim();
+    if (line === "") continue;
+    if (block !== undefined) {
+      if (line === ")") block = undefined;
+      else if (block === "require") {
+        const [path, version] = line.split(/\s+/);
+        if (path === undefined || version === undefined) return undefined;
+        requires.push(path);
+      }
+      continue;
+    }
+    const opening = /^([a-z]+)\s*\($/.exec(line);
+    if (opening) {
+      block = opening[1];
+      continue;
+    }
+    if (/^module\s+\S/.test(line)) module = true;
     if (/^go\s+\d/.test(line)) goVersion = true;
-    if (block) {
-      if (line === ")") block = false;
-      else if (line !== "") requires.push(line.split(/\s+/)[0] ?? "");
-    } else if (/^require\s*\($/.test(line)) {
-      block = true;
-    } else if (/^require\s+\S/.test(line)) {
-      requires.push(line.split(/\s+/)[1] ?? "");
+    if (/^require\s/.test(line)) {
+      const [, path, version] = line.split(/\s+/);
+      if (path === undefined || version === undefined) return undefined;
+      requires.push(path);
     }
   }
-  return { requires, goVersion };
+  return module && block === undefined ? { requires, goVersion } : undefined;
 }
 
 export const requiresGo = (module: GoModule, prefix: string): boolean =>
