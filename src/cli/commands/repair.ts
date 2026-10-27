@@ -1,4 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
 import path from "node:path";
 import {
   MAX_PATCH_BYTES,
@@ -103,23 +104,43 @@ async function readPatch(
   if (paths.length === 0) {
     throw new UsageError("--patch needs --paths: the files and directories the patch may change");
   }
-  const resolved = path.resolve(io.cwd, file);
-  const size = await stat(resolved).then(
-    (info) => (info.isFile() ? info.size : undefined),
-    () => undefined,
-  );
-  if (size === undefined) throw new UsageError(`cannot read the patch ${file}`);
-  if (size > MAX_PATCH_BYTES) {
+  const bytes = await readBounded(path.resolve(io.cwd, file), MAX_PATCH_BYTES);
+  if (bytes === undefined) throw new UsageError(`cannot read the patch ${file}`);
+  if (bytes.length > MAX_PATCH_BYTES) {
     throw new UsageError(`the patch ${file} is over ${MAX_PATCH_BYTES / 1024 / 1024} MiB`);
   }
-  const bytes = await readFile(resolved).catch(() => {
-    throw new UsageError(`cannot read the patch ${file}`);
-  });
   // Read as it was reviewed: bytes that are not UTF-8 are refused, never replaced.
   try {
     return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes), paths };
   } catch {
     throw new UsageError(`the patch ${file} is not UTF-8 text`);
+  }
+}
+
+/**
+ * A regular file's bytes, read through one handle so what is checked is what
+ * is read, and never more than one byte past `limit`; undefined when it
+ * cannot be opened or is not a regular file. It never waits on a FIFO.
+ */
+async function readBounded(file: string, limit: number): Promise<Buffer | undefined> {
+  const handle = await open(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0)).catch(
+    () => undefined,
+  );
+  if (handle === undefined) return undefined;
+  try {
+    if (!(await handle.stat()).isFile()) return undefined;
+    const buffer = Buffer.alloc(limit + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, length, buffer.length - length, length);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+    }
+    return buffer.subarray(0, length);
+  } catch {
+    return undefined;
+  } finally {
+    await handle.close();
   }
 }
 

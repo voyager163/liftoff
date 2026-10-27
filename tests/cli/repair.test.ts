@@ -252,6 +252,7 @@ describe("REPAIR-003 a reviewed patch from the command line", () => {
         ["--patch", "../missing.diff", "--paths", "backend"],
         "cannot read the patch ../missing.diff",
       ],
+      [["--patch", "..", "--paths", "backend"], "cannot read the patch .."],
       [["--patch", "../big.diff", "--paths", "backend"], "the patch ../big.diff is over 4 MiB"],
       [
         ["--recover", "finish", "--patch", patch],
