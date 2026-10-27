@@ -135,15 +135,29 @@ export function parsePatch(text: string): FilePatch[] {
       }
     }
     const hunks: Hunk[] = [];
-    while (at < lines.length && !isFileStart(next()) && next() !== SIGNATURE) {
+    // Blank lines after the last hunk, as an editor may add, end the patch.
+    const rest = () => lines.slice(at).every((line) => line === "");
+    while (at < lines.length && !isFileStart(next()) && next() !== SIGNATURE && !rest()) {
       hunks.push(readHunk());
     }
+    if (rest()) at = lines.length;
     if (hunks.length === 0) {
       throw new PatchError(`the changes to ${path} at line ${startLine} have no hunks`);
     }
     patches.push({ path, kind, executable: kind === "add" && executable, hunks });
-    // What follows git format-patch's signature line is not part of the changes.
-    if (next() === SIGNATURE) break;
+    // What follows git format-patch's signature line is not part of the
+    // changes, unless it is another commit, which would go unapplied.
+    if (next() === SIGNATURE) {
+      const more = lines
+        .slice(at)
+        .findIndex((line) => /^(diff --git |From [0-9a-f]{40} )/.test(line));
+      if (more !== -1) {
+        throw new PatchError(
+          `the patch holds more than one commit, from line ${at + more + 1}; make one diff of the whole change with git diff --no-renames`,
+        );
+      }
+      break;
+    }
   }
 
   if (patches.length === 0) throw new PatchError("the patch changes no file");

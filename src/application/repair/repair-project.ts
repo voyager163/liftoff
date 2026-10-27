@@ -56,12 +56,23 @@ export interface RepairPlan {
 }
 
 /** Whether any Liftoff file has a problem, fixable or not. */
+/**
+ * Whether a file Liftoff manages has a problem, fixable or not. A missing
+ * file Liftoff wrote for the project is listed, but may have been removed
+ * on purpose, so it does not count.
+ */
 export const repairNeeded = (repair: RepairPlan): boolean =>
-  repair.files.some((file) => file.step === "offer" || file.step === "cannot");
+  repair.files.some(
+    (file) => file.ownership === "managed" && (file.step === "offer" || file.step === "cannot"),
+  );
 
-/** Whether a problem is left that no recipe fixes. */
+/**
+ * Whether a file Liftoff manages has a problem no recipe fixes. A missing
+ * file Liftoff wrote for the project is listed, but may have been removed
+ * on purpose, so it needs no one.
+ */
 export const needsPerson = (repair: RepairPlan): boolean =>
-  repair.files.some((file) => file.step === "cannot");
+  repair.files.some((file) => file.ownership === "managed" && file.step === "cannot");
 
 const sorted = (files: RepairFile[]) => files.sort((a, b) => a.path.localeCompare(b.path));
 
@@ -89,6 +100,7 @@ export async function planRestore(
   const steps: RepairFile[] = [];
   const changes: FileChange[] = [];
   const contents = new Map<string, NewContent>();
+  const unchanged: Unchanged[] = [generated.config];
   const entries = new Map(project.manifest.files.map((entry) => [entry.path, entry]));
 
   for (const entry of project.manifest.files) {
@@ -97,8 +109,13 @@ export async function planRestore(
     if (now.kind === "file" && now.sha256 === entry.sha256) continue;
     // A file the project owns may change freely; only a missing one is a problem.
     if (entry.ownership === "seeded" && now.kind !== "missing") continue;
-    const problem = problemWith(entry, now);
     const wanted = restorable(entry, now, generated.files.get(pathKey(entry.path)));
+    // Already as this release makes it: only the manifest needs to say so.
+    const current =
+      typeof wanted !== "string" && now.kind === "file" && now.sha256 === wanted.sha256;
+    const problem = current
+      ? "a file Liftoff manages is already as this release makes it, but the manifest records another version"
+      : problemWith(entry, now);
     if (typeof wanted === "string") {
       steps.push({
         path: entry.path,
@@ -113,6 +130,12 @@ export async function planRestore(
       steps.push({ path: entry.path, step: "offer", ownership: entry.ownership, problem });
       continue;
     }
+    entries.set(entry.path, { ...entry, sha256: wanted.sha256, plugin: wanted.plugin });
+    steps.push({ path: entry.path, step: "restore", ownership: entry.ownership, problem });
+    if (current) {
+      unchanged.push({ path: entry.path, sha256: wanted.sha256 });
+      continue;
+    }
     const executable = isExecutable(entry.path);
     changes.push({
       path: entry.path,
@@ -122,17 +145,10 @@ export async function planRestore(
       executable,
     });
     contents.set(entry.path, { content: wanted.content, executable });
-    entries.set(entry.path, { ...entry, sha256: wanted.sha256, plugin: wanted.plugin });
-    steps.push({ path: entry.path, step: "restore", ownership: entry.ownership, problem });
   }
 
-  const result = {
-    directory,
-    name: project.config.name,
-    files: sorted(steps),
-    unchanged: [generated.config],
-  };
-  if (changes.length === 0) return { ...result, contents: new Map() };
+  const result = { directory, name: project.config.name, files: sorted(steps), unchanged };
+  if (!steps.some((step) => step.step === "restore")) return { ...result, contents: new Map() };
   return {
     ...result,
     ...sealProjectChange(project, "repair", liftoffVersion, changes, contents, {
@@ -169,10 +185,17 @@ export async function planPatch(
   const changes: FileChange[] = [];
   const contents = new Map<string, NewContent>();
   const seen = new Set<string>();
-  for (const file of parsePatch(patch.text)) {
+  const files = parsePatch(patch.text);
+  const keys = files.map((file) => pathKey(file.path));
+  for (const file of files) {
     const key = pathKey(file.path);
     if (seen.has(key)) throw new ProjectChangeError(`the patch changes ${file.path} twice`);
     seen.add(key);
+    if (keys.some((other) => other.startsWith(`${key}/`))) {
+      throw new ProjectChangeError(
+        `the patch makes ${file.path} both a file and a directory of other files`,
+      );
+    }
     const entry = listed.get(key);
     refusePath(file.path, entry, scope, patch.paths);
     const ownership = entry?.ownership === "seeded" ? "seeded" : "project";
@@ -229,6 +252,19 @@ export async function planRepairFromSaved(
   if (saved.liftoff !== liftoffVersion) {
     throw new PlanError(
       `the plan was made by Liftoff ${saved.liftoff}, but this is ${liftoffVersion}; make a new plan`,
+    );
+  }
+  // Only a patch removes a file, or changes one Liftoff does not manage that is there.
+  const patched = saved.changes.some(
+    (change) =>
+      change.path !== MANIFEST_FILE &&
+      (change.after === null ||
+        change.ownership === "project" ||
+        (change.ownership === "seeded" && change.before !== null)),
+  );
+  if (patch === undefined && patched) {
+    throw new PlanError(
+      "this plan applies a patch; give the same --patch and --paths again to apply it",
     );
   }
   const repair =
@@ -328,7 +364,9 @@ function problemWith(entry: ManifestFile, now: FileHash): string {
       : "a file Liftoff wrote for the project";
   switch (now.kind) {
     case "missing":
-      return `${whose} is missing`;
+      return entry.ownership === "managed"
+        ? `${whose} is missing`
+        : `${whose} is missing, which is fine if it was removed on purpose`;
     case "file":
       return now.sha256 === undefined
         ? `${whose} is over ${MAX_CHANGED_BYTES / 1024 / 1024} MiB, so it was not read`

@@ -103,7 +103,9 @@ describe("REPAIR-001 the inventory from the command line", () => {
       ],
     });
     const text = await repair(["--check"]);
-    expect(text.out).toContain(`2 files Liftoff wrote in demo in ${root()} need attention:`);
+    expect(text.out).toContain(
+      `2 files Liftoff wrote in demo in ${root()} are not as Liftoff left them:`,
+    );
     expect(text.out).toContain(
       `Repair can put these back, if you choose them or name them with --restore:\n  ${VERIFY}: a file Liftoff manages is missing\n`,
     );
@@ -121,7 +123,9 @@ describe("REPAIR-001 the inventory from the command line", () => {
     const text = renderRepair(plan).join("\n");
     expect(text).toContain("/work/a\\u001b[2Jb");
     expect(text).toContain("No recipe fixes these:\n  x: p; r\\u202eeason");
-    expect(text).toContain("1 file Liftoff wrote in demo");
+    expect(text).toContain(
+      "1 file Liftoff wrote in demo in /work/a\\u001b[2Jb is not as Liftoff left it:",
+    );
   });
 });
 
@@ -188,6 +192,50 @@ describe("REPAIR-003 a reviewed patch from the command line", () => {
     expect(read("backend/app/main.py").endsWith("# fixed\n")).toBe(true);
   });
 
+  it("refuses a patch that is not UTF-8, and says nothing of other files after a patch", async () => {
+    writeFileSync(
+      path.join(work, "latin.diff"),
+      Buffer.concat([
+        Buffer.from("--- /dev/null\n+++ b/backend/app/latin.txt\n@@ -0,0 +1 @@\n+r"),
+        Buffer.from([0xe9, 0x0a]),
+      ]),
+    );
+    const latin = await repair(["--patch", "../latin.diff", "--paths", "backend", "--yes"]);
+    expect(latin.code).toBe(2);
+    expect(latin.err).toContain("the patch ../latin.diff is not UTF-8 text");
+    expect(existsSync(at("backend/app/latin.txt"))).toBe(false);
+
+    // A patch removes a file Liftoff wrote for the project, on purpose.
+    const readme = read("README.md").split("\n").slice(0, -1);
+    writeFileSync(
+      path.join(work, "remove.diff"),
+      [
+        "diff --git a/README.md b/README.md",
+        "deleted file mode 100644",
+        "--- a/README.md",
+        "+++ /dev/null",
+        `@@ -1,${readme.length} +0,0 @@`,
+        ...readme.map((line) => `-${line}`),
+        "",
+      ].join("\n"),
+    );
+    const removed = await repair([
+      "--patch",
+      "../remove.diff",
+      "--paths",
+      "README.md",
+      "--yes",
+      "--json",
+    ]);
+    expect(removed.code).toBe(0);
+    expect(JSON.parse(removed.out)).not.toHaveProperty("needed");
+    const check = await repair(["--check"]);
+    expect(check.code).toBe(0);
+    expect(check.out).toContain(
+      "README.md: a file Liftoff wrote for the project is missing, which is fine",
+    );
+  });
+
   it("refuses options that do not go together, and a patch it cannot read", async () => {
     const patch = fix();
     writeFileSync(path.join(work, "big.diff"), "x".repeat(MAX_PATCH_BYTES + 1));
@@ -242,7 +290,7 @@ describe("REPAIR-004 saved plans and recovery", () => {
     );
     const without = await repair(["--plan", "../patch.json", "--yes"]);
     expect(without.code).toBe(1);
-    expect(without.err).toContain("the project changed since the plan was made");
+    expect(without.err).toContain("give the same --patch and --paths again");
     const applied = await repair([
       "--plan",
       "../patch.json",

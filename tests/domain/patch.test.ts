@@ -106,6 +106,33 @@ describe("REPAIR-003 a patch applies exactly as git diff wrote it", () => {
     expect(applied(patch, { "a.txt": "one\n\nthree\n" })).toEqual({ "a.txt": "one\n\n3\n" });
   });
 
+  it("ignores blank lines after the last hunk, and refuses a second commit", () => {
+    const one = ["--- a/a.txt", "+++ b/a.txt", "@@ -1 +1 @@", "-one", "+1"];
+    expect(applied([...one, "", "", ""].join("\n"), { "a.txt": "one\n" })).toEqual({
+      "a.txt": "1\n",
+    });
+    const twoCommits = [
+      "From 1111111111111111111111111111111111111111 Mon Sep 17 00:00:00 2001",
+      "diff --git a/a.txt b/a.txt",
+      ...one,
+      "-- ",
+      "2.43.0",
+      "",
+      "From 2222222222222222222222222222222222222222 Mon Sep 17 00:00:00 2001",
+      "diff --git a/b.txt b/b.txt",
+      "--- a/b.txt",
+      "+++ b/b.txt",
+      "@@ -1 +1 @@",
+      "-two",
+      "+2",
+      "-- ",
+      "2.43.0",
+    ];
+    expect(() => parsePatch(twoCommits.join("\n"))).toThrow(
+      "the patch holds more than one commit, from line 11; make one diff of the whole change with git diff --no-renames",
+    );
+  });
+
   it.each<[string, string[], RegExp]>([
     [
       "renames a file",

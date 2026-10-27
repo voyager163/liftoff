@@ -51,7 +51,7 @@ export function renderRepair(repair: RepairPlan): string[] {
   } else {
     const problems = repair.files.length;
     lines.push(
-      `${problems === 1 ? "1 file" : `${problems} files`} Liftoff wrote in ${where} ${problems === 1 ? "needs" : "need"} attention:`,
+      `${problems === 1 ? "1 file" : `${problems} files`} Liftoff wrote in ${where} ${problems === 1 ? "is" : "are"} not as Liftoff left ${problems === 1 ? "it" : "them"}:`,
     );
   }
   const section = (heading: string, files: readonly RepairFile[], why = false) => {
@@ -74,10 +74,17 @@ export function renderRepair(repair: RepairPlan): string[] {
   return lines.map(shown);
 }
 
-/** What the JSON report says about the repair. */
+/** Whether the repair applies a patch, which looks only at the files it changes. */
+const patching = (repair: RepairPlan) =>
+  repair.files.some((file) => ["change", "add", "remove"].includes(file.step));
+
+/**
+ * What the JSON report says about the repair. Whether a Liftoff file needs
+ * attention is said only when the files were looked at, not for a patch.
+ */
 const reported = (repair: RepairPlan) => ({
   directory: repair.directory,
-  needed: repairNeeded(repair),
+  ...(patching(repair) ? {} : { needed: repairNeeded(repair) }),
   files: repair.files,
   ...(repair.plan === undefined ? {} : { plan: repair.plan.hash }),
 });
@@ -105,7 +112,15 @@ async function readPatch(
   if (size > MAX_PATCH_BYTES) {
     throw new UsageError(`the patch ${file} is over ${MAX_PATCH_BYTES / 1024 / 1024} MiB`);
   }
-  return { text: await readFile(resolved, "utf8"), paths };
+  const bytes = await readFile(resolved).catch(() => {
+    throw new UsageError(`cannot read the patch ${file}`);
+  });
+  // Read as it was reviewed: bytes that are not UTF-8 are refused, never replaced.
+  try {
+    return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes), paths };
+  } catch {
+    throw new UsageError(`the patch ${file} is not UTF-8 text`);
+  }
 }
 
 export function makeRepairCommand(
@@ -277,8 +292,11 @@ export function makeRepairCommand(
         report: reported(repair),
       });
       if ("outcome" in result) return result;
-      // What --check would now find: a problem no recipe fixes, or one not chosen.
-      const left = needsPerson(repair) || repair.files.some((file) => file.step === "offer");
+      // What --check would now find: a managed file no recipe fixes, or one
+      // not chosen. A patch looks at no other file, so it claims nothing.
+      const left =
+        needsPerson(repair) ||
+        repair.files.some((file) => file.step === "offer" && file.ownership === "managed");
       const repaired = [
         `Repaired ${repair.name}: changed ${changeSummary(repair.plan)}.`,
         ...(left ? ["Some files still need attention; liftoff repair --check lists them."] : []),
@@ -288,7 +306,7 @@ export function makeRepairCommand(
         outcome: left || result.leftovers.length > 0 ? "attention" : "success",
         report: {
           ...reported(repair),
-          needed: left,
+          ...(patching(repair) ? {} : { needed: left }),
           changed: true,
           leftovers: result.leftovers,
         },

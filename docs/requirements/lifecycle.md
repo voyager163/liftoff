@@ -420,8 +420,10 @@ hand, or something else where it should be, and a file Liftoff wrote for the
 project that is missing. A file the project changed is the project's, and
 framework files are the framework's, so neither is listed. Each listed file
 says what is wrong and whether a recipe can put it back, and why not when no
-recipe can. It writes nothing anywhere and exits 3 when any file is listed,
-0 otherwise.
+recipe can. It writes nothing anywhere and exits 3 when a file Liftoff
+manages is listed, 0 otherwise: a missing file Liftoff wrote for the
+project is listed too, but may have been removed on purpose, so it does
+not change the exit code.
 
 Verification: test
 
@@ -432,7 +434,9 @@ chosen by default, or named with `--restore`, which names only files it can
 put back:
 
 - a managed file that is missing or was changed by hand is put back as this
-  release makes it;
+  release makes it; one that already is, though the manifest records another
+  version, is put back by recording it in the manifest, provided it is
+  still so when the repair applies;
 - a file Liftoff wrote for the project that is missing is put back only when
   this release makes it exactly as Liftoff first wrote it.
 
@@ -463,13 +467,19 @@ the person reviewed. It is refused, changing nothing, when:
 - a hunk does not match the file exactly at the line it names; no hunk is
   moved or applied loosely;
 - it renames, copies or changes the mode of a file, changes a binary file,
-  names a file twice, or names a file in quotes;
+  names a file twice, names a file in quotes, or makes one path both a file
+  and a directory of other files;
+- it holds more than one commit, as `git format-patch` writes several, or is
+  not UTF-8 text;
 - a file it changes or removes is missing, not UTF-8 text, larger than
   4 MiB, or a link; a file it adds already exists;
 - the patch itself is larger than 4 MiB.
 
-A file it adds may be made executable; a file it changes keeps its mode.
-The manifest records the repair in its history and is otherwise unchanged.
+Blank lines after its last hunk are ignored. A file it adds may be made
+executable; a file it changes keeps its mode. The manifest records the
+repair in its history and is otherwise unchanged; a file Liftoff wrote for
+the project that the patch removes is then listed, as one that may have
+been removed on purpose.
 
 - Given a patch made with `git diff` against the project, when it is
   applied within its paths, then each file is exactly what Git would make.
@@ -487,7 +497,9 @@ refused unless it is the same plan, made by this release. `--check` goes
 without `--restore` and `--patch`. Files change as CHANGE-002 to CHANGE-004
 say; a repair that stops part way exits 5, `liftoff repair --recover finish`
 or `--recover undo` finishes or undoes it after asking, and Ctrl+C before
-any file changes exits 4. A repair exits 3 when files still need attention
-or something could not be removed afterwards, and 0 otherwise.
+any file changes exits 4. A repair exits 3 when files Liftoff manages still
+need attention or something could not be removed afterwards, and 0
+otherwise; after a patch, which looks at no other file, it does not say
+whether any still need attention.
 
 Verification: test

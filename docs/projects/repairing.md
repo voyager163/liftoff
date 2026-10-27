@@ -25,7 +25,8 @@ should be, and changes nothing:
   release makes it, replacing any hand edit.
 - **A file Liftoff wrote for the project** that is missing. Repair puts it
   back only when this release would write it exactly as Liftoff first did;
-  otherwise restore it from version control.
+  otherwise restore it from version control. Since you may have removed it
+  on purpose, it does not make `--check` exit 3.
 
 A file the project owns that you changed is yours, and is not listed.
 Neither are files a specification framework owns.
@@ -54,6 +55,8 @@ Repair applies it exactly as written, or not at all:
   `.liftoff` or `.git`;
 - renames, copies, mode changes and binary files are refused, so make the
   diff with `--no-renames`;
+- a `git format-patch` file with more than one commit is refused: make one
+  diff of the whole change;
 - each file it changes must be UTF-8 text of at most 4 MiB, and so must the
   patch.
 
@@ -82,7 +85,7 @@ liftoff repair --recover undo
 | 0 | Repaired, or nothing needed attention |
 | 1 | Refused or failed; nothing was changed |
 | 2 | The command line was wrong, or `--yes` was needed |
-| 3 | Files still need attention, or something could not be removed afterwards |
+| 3 | Files Liftoff manages still need attention, or something could not be removed afterwards |
 | 4 | You answered no, or pressed Ctrl+C before anything changed |
 | 5 | The repair, or its recovery, stopped part way |
 | 6 | This release cannot repair this project yet |

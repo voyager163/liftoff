@@ -140,7 +140,8 @@ describe("REPAIR-001 repair lists what needs attention, changing nothing", () =>
         path: "README.md",
         step: "offer",
         ownership: "seeded",
-        problem: "a file Liftoff wrote for the project is missing",
+        problem:
+          "a file Liftoff wrote for the project is missing, which is fine if it was removed on purpose",
       },
     ]);
     expect(found.plan).toBeUndefined();
@@ -226,7 +227,7 @@ describe("REPAIR-001 repair lists what needs attention, changing nothing", () =>
       [
         older,
         "cannot",
-        "a file Liftoff wrote for the project is missing",
+        "a file Liftoff wrote for the project is missing, which is fine if it was removed on purpose",
         expect.stringContaining("restore it from version control"),
       ],
     ]);
@@ -272,6 +273,39 @@ describe("REPAIR-002 recipes put back files Liftoff wrote, only those chosen", (
     await apply(repair);
     expect(read(PR)).toBe(current);
     expect(entry(parseManifest(read(MANIFEST_FILE)), PR).sha256).toBe(sha(current));
+  });
+
+  it("counts only files Liftoff manages as needing attention", async () => {
+    await generated();
+    rmSync(at("README.md"));
+    const seeded = await restore();
+    expect(steps(seeded)).toEqual(["offer README.md"]);
+    expect(repairNeeded(seeded)).toBe(false);
+    rmSync(at(VERIFY));
+    expect(repairNeeded(await restore())).toBe(true);
+  });
+
+  it("records a managed file already as this release makes it, in the manifest only", async () => {
+    await generated();
+    age((manifest) => {
+      entry(manifest, POLICY).sha256 = sha("as an earlier release wrote it\n");
+    });
+    const listed = await restore();
+    expect(listed.files).toEqual([
+      {
+        path: POLICY,
+        step: "offer",
+        ownership: "managed",
+        problem:
+          "a file Liftoff manages is already as this release makes it, but the manifest records another version",
+      },
+    ]);
+    const repair = await restore([POLICY]);
+    expect(repair.plan?.changes.map((change) => change.path)).toEqual([MANIFEST_FILE]);
+    expect(repair.unchanged).toContainEqual({ path: POLICY, sha256: sha(read(POLICY)) });
+    await apply(repair);
+    expect(entry(parseManifest(read(MANIFEST_FILE)), POLICY).sha256).toBe(sha(read(POLICY)));
+    expect((await restore()).files).toEqual([]);
   });
 
   it("refuses a changed liftoff.yaml, as update does", async () => {
@@ -389,6 +423,14 @@ describe("REPAIR-003 a reviewed patch changes only the project's own files, with
     expect(snapshot()).toEqual(before);
   });
 
+  it("refuses a patch that makes a path both a file and a directory", async () => {
+    await generated();
+    const nested = `${diff("backend/app/extra", null, "x\n")}${diff("backend/app/extra/y.py", null, "y\n")}`;
+    await expect(patch(nested, ["backend"])).rejects.toThrow(
+      "the patch makes backend/app/extra both a file and a directory of other files",
+    );
+  });
+
   it("refuses removing a file while leaving lines in it", async () => {
     await generated();
     write("two.txt", "one\ntwo\n");
@@ -459,7 +501,7 @@ describe("REPAIR-004 a saved repair is applied exactly as it was made", () => {
       patched,
     );
     await expect(planRepairFromSaved({ assets, fs }, patched, VERSION)).rejects.toThrow(
-      "the project changed since the plan was made",
+      "this plan applies a patch; give the same --patch and --paths again to apply it",
     );
     await expect(
       planRepairFromSaved({ assets, fs }, patched, VERSION, {
