@@ -377,16 +377,42 @@ describe("UPDATE-004 an update that stops part way is finished or undone", () =>
     });
   });
 
-  it("reports a recovery that stops part way as partial, and recovers on the next run", async () => {
+  it("reports a recovery that stops after changing a file as partial, and recovers on the next run", async () => {
     olderTwo();
+    const verify = read(VERIFY);
     expect((await update(["--yes"], { port: stopping(1, "fail") })).code).toBe(5);
-    const stopped = await update(["--recover", "undo", "--yes"], { port: stopping(0, "fail") });
+    // Finishing changes the skill, then stops at the manifest.
+    const stopped = await update(["--recover", "finish", "--yes"], {
+      port: stopping(1, "fail"),
+    });
     expect(stopped.code).toBe(5);
     expect(stopped.out).toContain("Recovery stopped: no space left on the disk");
-    expect(stopped.out).toContain("run liftoff update --recover undo again");
+    expect(stopped.out).toContain("run liftoff update --recover finish again");
+    expect(read(VERIFY)).not.toBe(verify);
     expect(existsSync(path.join(root(), ...CHANGE_JOURNAL_FILE.split("/")))).toBe(true);
-    expect((await update(["--recover", "undo", "--yes"])).code).toBe(0);
-    expect(read(PR)).toBe("old pr\n");
+    const finished = await update(["--recover", "finish", "--yes"]);
+    expect(finished.code).toBe(0);
+    expect(finished.out).toContain("The update is finished: 1 file changed.");
+    expect((await update(["--check"])).code).toBe(3);
+  });
+
+  it("recovers only the stopped update it showed", async () => {
+    olderTwo();
+    expect((await update(["--yes"], { port: stopping(1, "fail") })).code).toBe(5);
+    const journal = read(CHANGE_JOURNAL_FILE);
+    const swapped = journal.replace(/"plan": "[0-9a-f]{64}"/, `"plan": "${"b".repeat(64)}"`);
+    // Another update stops while the question is open.
+    const port = Object.assign(Object.create(fs) as ProjectFsPort, {
+      createExclusive: async (file: string, content: string) => {
+        write(CHANGE_JOURNAL_FILE, swapped);
+        return fs.createExclusive(file, content);
+      },
+    });
+    const refused = await update(["--recover", "undo"], { answer: true, port });
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("the change that stopped is no longer the one shown");
+    expect(read(CHANGE_JOURNAL_FILE)).toBe(swapped);
+    expect(read(PR)).not.toBe("old pr\n");
   });
 
   it("changes nothing when a file changes after the plan was shown", async () => {

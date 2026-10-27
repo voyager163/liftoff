@@ -385,7 +385,9 @@ again, with the same new files, and refused unless it is the same plan, made
 by this release. The files change as CHANGE-002 to CHANGE-004 say; an update
 that stops part way exits 5, and `liftoff update --recover finish` or
 `--recover undo` finishes or undoes it after asking. A recovery that stops
-part way also exits 5, keeping the journal so it can be run again. An update exits 3 when
+part way also exits 5, keeping the journal so it can be run again. Recovery
+acts only on the interrupted update it showed when it asked: if another
+change stopped meanwhile, it refuses and changes nothing. An update exits 3 when
 files were held back or new files could not be added, and 0 otherwise.
 
 - Given a saved plan, when a file it changes is edited before it is

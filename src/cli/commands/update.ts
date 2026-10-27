@@ -379,7 +379,8 @@ async function recoverUpdate(
   }
   let result: Awaited<ReturnType<typeof recoverChanges>>;
   try {
-    result = await recoverChanges(ports, directory, mode);
+    // Only the change shown and approved, not one that stopped since.
+    result = await recoverChanges(ports, directory, mode, journal.plan);
   } catch (error) {
     // A refusal changed nothing; anything else may have stopped it part way.
     if (error instanceof ChangeError) throw error;

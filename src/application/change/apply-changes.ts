@@ -215,12 +215,15 @@ export interface RecoveryResult {
  * liftoff.yaml and the manifest change only once every other file has, so
  * the manifest never describes files that are not there. While anything is
  * left, the journal stays. The kept files are copied into place, never
- * used up, so finishing and undoing can follow each other.
+ * used up, so finishing and undoing can follow each other. With `plan`, it
+ * recovers only the change with that plan, the one the person was shown,
+ * and refuses any other found under the lock.
  */
 export async function recoverChanges(
   ports: ChangePorts,
   root: string,
   mode: "finish" | "undo",
+  plan?: string,
 ): Promise<RecoveryResult> {
   const { fs } = ports;
   return withChangeLock(ports, root, async () => {
@@ -230,6 +233,11 @@ export async function recoverChanges(
     });
     if (journal === undefined) {
       throw new ChangeError("no change to this project stopped part way");
+    }
+    if (plan !== undefined && journal.plan !== plan) {
+      throw new ChangeError(
+        "the change that stopped is no longer the one shown, as another command changed the project meanwhile; nothing was changed, so run the recovery again to see it",
+      );
     }
     const staging = path.join(path.dirname(root), journal.staging);
     await checkStaging(fs, root, staging, journal.plan);
