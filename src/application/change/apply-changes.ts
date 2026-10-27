@@ -80,9 +80,19 @@ export interface NewContent {
 }
 
 /**
+ * Files a change does not touch but rests on, such as the configuration an
+ * update was planned from, each with the sha256 it must still have.
+ */
+export interface Unchanged {
+  readonly path: string;
+  readonly sha256: string;
+}
+
+/**
  * Makes a planned change to a project, file by file, never overwriting a
  * file that changed since the plan was made. `contents` holds each new
- * file's content, which must hash to what the plan says.
+ * file's content, which must hash to what the plan says. Each file in
+ * `unchanged` must still be as it was, too, or nothing changes.
  *
  * It holds the change lock throughout. The new files are staged beside the
  * project with a marker binding them to this project and plan, and the
@@ -97,6 +107,7 @@ export async function applyChanges(
   ports: ChangePorts,
   plan: ChangePlan,
   contents: ReadonlyMap<string, NewContent>,
+  unchanged: readonly Unchanged[] = [],
 ): Promise<{ readonly changed: number }> {
   const { fs, now } = ports;
   checkContents(plan, contents);
@@ -153,11 +164,12 @@ export async function applyChanges(
     }
 
     const problems: string[] = [];
-    for (const change of plan.changes) {
-      const current = await fileNow(fs, root, change.path);
-      if (!fileMatches(current, change.before)) {
-        problems.push(describe(change.path, current, change.before));
-      }
+    for (const { path: relative, before } of [
+      ...plan.changes,
+      ...unchanged.map((file) => ({ path: file.path, before: file.sha256 })),
+    ]) {
+      const current = await fileNow(fs, root, relative);
+      if (!fileMatches(current, before)) problems.push(describe(relative, current, before));
     }
     if (problems.length > 0) {
       await fs.remove(journalPath);

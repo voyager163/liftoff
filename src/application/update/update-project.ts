@@ -25,6 +25,7 @@ import {
   type NewContent,
   readJournal,
   UNREADABLE_JOURNAL_ADVICE,
+  type Unchanged,
 } from "../change/apply-changes.ts";
 import { generate } from "../init/generation.ts";
 import type { AssetPort, FileHash, ProjectFsPort } from "../ports.ts";
@@ -80,6 +81,8 @@ export interface UpdatePlan {
   readonly plan?: ChangePlan;
   /** The new content of each file the plan writes. */
   readonly contents: ReadonlyMap<string, NewContent>;
+  /** liftoff.yaml as the update was planned from it, which must not change before it applies. */
+  readonly unchanged: readonly Unchanged[];
 }
 
 /**
@@ -277,6 +280,7 @@ export async function planUpdate(
   const result = {
     directory,
     name: config.name,
+    unchanged: [{ path: CONFIG_FILE, sha256: sha256Hex(configText) }],
     files: steps.sort((a, b) => a.path.localeCompare(b.path)),
     plugins,
   };
@@ -293,6 +297,12 @@ export async function planUpdate(
     files: [...entries.values()],
     history: [...manifest.history, { operation: "update", liftoff: liftoffVersion }],
   });
+  // Never a manifest Liftoff would then refuse to read.
+  if (Buffer.byteLength(updated) > MAX_RECORD_BYTES) {
+    throw new UpdateError(
+      `${MANIFEST_FILE} would be over ${MAX_RECORD_BYTES / 1024 / 1024} MiB after this update, more than Liftoff reads, so nothing was changed`,
+    );
+  }
   changes.push({
     path: MANIFEST_FILE,
     before: sha256Hex(manifestText),

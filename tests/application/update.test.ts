@@ -343,6 +343,25 @@ describe("UPDATE-002 update never switches what the project is made of", () => {
     expect(snapshot()).toEqual(before);
   });
 
+  it("refuses an update that would leave a manifest larger than Liftoff reads", async () => {
+    await generated();
+    write(VERIFY, "old verify\n");
+    const manifest = JSON.parse(read(MANIFEST_FILE));
+    entry(manifest, VERIFY).sha256 = sha("old verify\n");
+    manifest.history = Array.from({ length: 22_000 }, () => ({
+      operation: "init",
+      liftoff: VERSION,
+    }));
+    // Written compactly, it is under 1 MiB; written as Liftoff writes it, over.
+    write(MANIFEST_FILE, JSON.stringify(manifest));
+    expect(statSync(at(MANIFEST_FILE)).size).toBeLessThan(1024 * 1024);
+    const before = snapshot();
+    await expect(plan()).rejects.toThrow(
+      ".liftoff/manifest.json would be over 1 MiB after this update, more than Liftoff reads",
+    );
+    expect(snapshot()).toEqual(before);
+  });
+
   it("refuses a directory that is not there, and liftoff.yaml closed to this user", async () => {
     await expect(plan()).rejects.toThrow(/is not a directory Liftoff can update/);
     await generated();

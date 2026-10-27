@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -18,8 +19,9 @@ import { entry, projectFiles, SKILL, sha } from "../helpers/older-project.ts";
 let work: string;
 let fs: ProjectFsPort;
 beforeEach(async () => {
-  // The directory update names is the real one.
-  work = realpathSync(mkdtempSync(path.join(tmpdir(), "liftoff-update-cli-")));
+  // The directory update names is the real one, resolved as the CLI does,
+  // which on Windows gives long names rather than 8.3 short ones.
+  work = await realpath(mkdtempSync(path.join(tmpdir(), "liftoff-update-cli-")));
   fs = new LocalProjectFs();
   const init = makeInitCommand((cwd) => ({
     ...defaultProjectPorts(cwd),
@@ -187,7 +189,8 @@ describe("UPDATE-004 checking, previewing and approving an update", () => {
     for (const [argv, message] of [
       [["--plan", "../update.plan.json", "--dir", "."], "--plan goes without --dir"],
       [["--plan", "../missing.json"], "cannot read the plan ../missing.json"],
-      [["--check", "--yes"], "--check and --out change nothing"],
+      [["--check", "--yes"], "--check and --out change nothing in the project"],
+      [["--check", "--out", "README.md"], "--check writes nothing, so it goes without --out"],
       [
         ["--recover", "undo", "--add", ASSESS],
         "--recover goes only with --dir and --yes, not --add",
@@ -198,6 +201,7 @@ describe("UPDATE-004 checking, previewing and approving an update", () => {
       expect(refused.code, argv.join(" ")).toBe(2);
       expect(refused.err).toContain(message);
     }
+    expect(read("README.md")).toContain("# demo");
   });
 
   it("refuses an edited liftoff.yaml, and cannot update a project from before the rebuild", async () => {
@@ -256,6 +260,7 @@ describe("UPDATE-004 checking, previewing and approving an update", () => {
       files: [{ path: "x", step: "hold", reason: "r‮eason" }],
       plugins: [],
       contents: new Map(),
+      unchanged: [],
     };
     const text = renderUpdate(plan, "1.0.0").join("\n");
     expect(text).toContain("/work/a\\u001b[2Jb");
@@ -351,6 +356,37 @@ describe("UPDATE-004 an update that stops part way is finished or undone", () =>
     const unreadable = await update(["--recover", "finish", "--yes"]);
     expect(unreadable.code).toBe(1);
     expect(unreadable.err).toContain("if it is empty, the change stopped before any file changed");
+  });
+
+  it("changes nothing when liftoff.yaml changes after the plan was shown", async () => {
+    older();
+    const before = snapshot();
+    const config = `${read("liftoff.yaml")}# mine\n`;
+    const port = Object.assign(Object.create(fs) as ProjectFsPort, {
+      createExclusive: async (file: string, content: string) => {
+        write("liftoff.yaml", config);
+        return fs.createExclusive(file, content);
+      },
+    });
+    const { code, err } = await update(["--yes"], { port });
+    expect(code).toBe(1);
+    expect(err).toContain("nothing was changed: liftoff.yaml changed since the plan was made");
+    expect(snapshot()).toEqual({
+      ...before,
+      "liftoff.yaml": Buffer.from(config).toString("base64"),
+    });
+  });
+
+  it("reports a recovery that stops part way as partial, and recovers on the next run", async () => {
+    olderTwo();
+    expect((await update(["--yes"], { port: stopping(1, "fail") })).code).toBe(5);
+    const stopped = await update(["--recover", "undo", "--yes"], { port: stopping(0, "fail") });
+    expect(stopped.code).toBe(5);
+    expect(stopped.out).toContain("Recovery stopped: no space left on the disk");
+    expect(stopped.out).toContain("run liftoff update --recover undo again");
+    expect(existsSync(path.join(root(), ...CHANGE_JOURNAL_FILE.split("/")))).toBe(true);
+    expect((await update(["--recover", "undo", "--yes"])).code).toBe(0);
+    expect(read(PR)).toBe("old pr\n");
   });
 
   it("changes nothing when a file changes after the plan was shown", async () => {

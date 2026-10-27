@@ -174,7 +174,7 @@ JSON report: `liftoff.update/v1`.
 | --- | --- |
 | `--dir <path>` | Project directory. (default `.`) |
 | `--check` | Change nothing; exit 3 when this release has an update for the project. |
-| `--out <file>` | Save the plan to this file and change nothing; apply it with --plan. |
+| `--out <file>` | Save the plan to this file and change nothing in the project; apply it with --plan. |
 | `--plan <file>` | Apply exactly this saved plan, and refuse it if the project or Liftoff changed since. |
 | `--add <paths>` | Also add these new files, comma-separated, from those the update offers. |
 | `--recover <mode>` | Finish or undo an update that stopped part way. (one of `finish`, `undo`) |

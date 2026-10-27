@@ -104,8 +104,9 @@ Verification: test
 
 Before anything changes, and once no other change can start, every file must
 still be exactly as the plan says: the same content, a regular file and not
-a link, or still absent. If any is not, nothing changes and each such file
-is named. So a change that finished while this one was being prepared is
+a link, or still absent. So must any file the change rests on without
+changing it, such as `liftoff.yaml` for an update. If any is not, nothing
+changes and each such file is named. So a change that finished while this one was being prepared is
 never overwritten. Each new file's content must hash to what the plan says
 and be no larger than 64 MiB, and a plan whose journal could not be read
 back is refused, both before anything changes. For each file, its original
@@ -343,13 +344,15 @@ An update applies this release to the configuration the project was made
 with. It refuses, changing nothing, when:
 
 - `liftoff.yaml` changed since Liftoff last wrote it, by its sha256 in the
-  manifest, since that would also apply the change;
+  manifest, since that would also apply the change, including after the
+  plan was made and before it applies (CHANGE-002);
 - this release would make the project from other plugins than the manifest
   lists, so it never switches the workflow, governance profile, stack,
   pattern, agents or any other plugin;
 - a change to the project has not finished (CHANGE-003);
 - `liftoff.yaml` or the manifest is missing, invalid, or not a regular file
-  Liftoff can read;
+  Liftoff can read, or the manifest would be over the 1 MiB Liftoff reads
+  once updated;
 - the project was made by a release before the rebuild, or has parts bound
   to other directories (PROJ-024), which this release cannot update yet
   (exit 6).
@@ -370,7 +373,8 @@ Verification: test
 
 ## UPDATE-004 Update checks, previews and applies exactly what was approved
 
-`liftoff update --check` changes nothing and exits 3 when this release has
+`liftoff update --check` writes nothing, so it does not go with `--out`, and
+exits 3 when this release has
 something for the project: a change, a file held back, a new file offered,
 or a new file it could not add; otherwise it exits 0, and only then does it
 say the project is up to date. `--out <file>` saves the plan (CHANGE-001)
@@ -380,7 +384,8 @@ changing anything; the default answer is no, and without a terminal it needs
 again, with the same new files, and refused unless it is the same plan, made
 by this release. The files change as CHANGE-002 to CHANGE-004 say; an update
 that stops part way exits 5, and `liftoff update --recover finish` or
-`--recover undo` finishes or undoes it after asking. An update exits 3 when
+`--recover undo` finishes or undoes it after asking. A recovery that stops
+part way also exits 5, keeping the journal so it can be run again. An update exits 3 when
 files were held back or new files could not be added, and 0 otherwise.
 
 - Given a saved plan, when a file it changes is edited before it is

@@ -134,7 +134,8 @@ export function makeUpdateCommand(
       out: {
         type: "string",
         valueName: "file",
-        description: "Save the plan to this file and change nothing; apply it with --plan.",
+        description:
+          "Save the plan to this file and change nothing in the project; apply it with --plan.",
       },
       plan: {
         type: "string",
@@ -183,8 +184,15 @@ export function makeUpdateCommand(
       const planFile = args.options.plan as string | undefined;
       const out = args.options.out as string | undefined;
       const preview = args.options.check === true || out !== undefined;
-      if (preview && yes)
-        throw new UsageError("--check and --out change nothing, so --yes has nothing to confirm");
+      // --check writes nothing at all, not even a plan.
+      if (args.options.check === true && out !== undefined) {
+        throw new UsageError("--check writes nothing, so it goes without --out");
+      }
+      if (preview && yes) {
+        throw new UsageError(
+          "--check and --out change nothing in the project, so --yes has nothing to confirm",
+        );
+      }
 
       let update: UpdatePlan;
       // Whether the plan was shown with the question about new files, and not changed since.
@@ -283,7 +291,7 @@ export function makeUpdateCommand(
         }
       }
       try {
-        await applyChanges(changePorts, update.plan, update.contents);
+        await applyChanges(changePorts, update.plan, update.contents, update.unchanged);
       } catch (error) {
         return stopped(error, ports, update);
       }
@@ -369,7 +377,21 @@ async function recoverUpdate(
       };
     }
   }
-  const result = await recoverChanges(ports, directory, mode);
+  let result: Awaited<ReturnType<typeof recoverChanges>>;
+  try {
+    result = await recoverChanges(ports, directory, mode);
+  } catch (error) {
+    // A refusal changed nothing; anything else may have stopped it part way.
+    if (error instanceof ChangeError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      outcome: "partial",
+      report: { directory, recovered: false, mode, stopped: message },
+      text: `${shown(`Recovery stopped: ${message}`)}
+The update is still not ${mode === "finish" ? "finished" : "undone"}, and ${CHANGE_JOURNAL_FILE} stays; run liftoff update --recover ${mode} again.
+`,
+    };
+  }
   const list = (heading: string, files: readonly string[]) =>
     files.length === 0 ? [] : [heading, ...files.map((file) => `  ${file}`)];
   const lines = [
