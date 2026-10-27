@@ -12,6 +12,7 @@ import {
   validateConfig,
 } from "../../src/domain/project/config.ts";
 import { parseManifest } from "../../src/domain/project/manifest.ts";
+import { classify } from "../../src/domain/risk-policy/classify.ts";
 import { parsePolicy } from "../../src/domain/risk-policy/policy.ts";
 import { GenerationError, generateProject } from "../../src/generators/project.ts";
 import { renderTemplate } from "../../src/generators/template.ts";
@@ -1864,12 +1865,19 @@ describe("PROJ-026 without the application, Liftoff makes only its own files, wh
     );
     // In the standard layout, they are the very files a new project gets,
     // except that AGENTS.md lists each part's directory, not the starter's
-    // layout, which the application does not have.
+    // layout, and nothing points to the README the application does not get.
     const same = await own(FULL);
+    const differ = [".liftoff/manifest.json", "AGENTS.md", ".github/workflows/reusable-deploy.yml"];
     for (const [file, generated] of same) {
-      if (file === ".liftoff/manifest.json" || file === "AGENTS.md") continue;
+      if (differ.includes(file)) continue;
       expect(generated.content, file).toBe(standard.get(file)?.content);
     }
+    const deploy = ".github/workflows/reusable-deploy.yml";
+    expect(standard.get(deploy)?.content).toContain("See the infrastructure section of README.md.");
+    expect(same.get(deploy)?.content).not.toContain("README");
+    expect(same.get(deploy)?.content).toBe(
+      standard.get(deploy)?.content.replace(" See the infrastructure section of README.md.", ""),
+    );
     const agents = same.get("AGENTS.md")?.content ?? "";
     expect(agents).toContain("- `backend/` the backend (Go API with Huma, Chi, pgx and Goose).");
     expect(agents).not.toContain("backend/internal/");
@@ -1949,6 +1957,43 @@ describe("PROJ-026 without the application, Liftoff makes only its own files, wh
     expect(text(".github/workflows/10-build.yml")).toContain("context: .\n");
     expect(text("AGENTS.md")).toContain("| `.` | `gofmt -l .` | Format |");
     expect(text("AGENTS.md")).toContain("- `.` the backend, at the repository root (");
+  });
+
+  it("refers to a frontend at the repository root as the root", async () => {
+    const project = await own({ ...FULL, layout: { backend: "api", frontend: "." } });
+    const text = (file: string) => project.get(file)?.content ?? "";
+    const ci = text(".github/workflows/01-pr-ci.yml");
+    expect(ci).toContain("node-version-file: .node-version\n");
+    expect(ci).toContain("cache-dependency-path: package-lock.json\n");
+    expect(ci).toContain("path: playwright-report/\n");
+    const dependabot = parse(text(".github/dependabot.yml")) as {
+      updates: { "package-ecosystem": string; directory?: string }[];
+    };
+    expect(
+      dependabot.updates
+        .filter((update) => update.directory === "/")
+        .map((update) => update["package-ecosystem"])
+        .sort(),
+    ).toEqual(["docker", "github-actions", "npm"]);
+    expect(text(".github/workflows/20-release.yml")).toContain("working-directory: .\n");
+    expect(text(".github/workflows/10-build.yml")).toContain("context: .\n");
+    expect(text("AGENTS.md")).toContain("- `.` the frontend, at the repository root (");
+  });
+
+  it("gives a part's sensitive files the same review where it lives", async () => {
+    const project = await own({ layout: { backend: "services/api v2" } });
+    const policy = parsePolicy(project.get(".github/review-policy.yml")?.content ?? "");
+    const change = (file: string) =>
+      classify({ policy, files: [{ path: file, additions: 1, deletions: 0 }], author: "alice" });
+    expect(change("services/api v2/migrations/versions/0002_items.py")).toMatchObject({
+      tier: "high",
+      alwaysHuman: true,
+    });
+    expect(change("services/api v2/tests/test_items.py").reasons).toContainEqual({
+      tier: "low",
+      reason: "tests; coverage gates still apply",
+      paths: ["services/api v2/tests/test_items.py"],
+    });
   });
 
   it("makes an application only in the standard layout", async () => {

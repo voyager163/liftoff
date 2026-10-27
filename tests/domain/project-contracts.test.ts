@@ -149,6 +149,12 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
     expect(layoutOf(standard)).toEqual({ backend: "backend" });
   });
 
+  it("accepts names a person would give a directory, in any script", () => {
+    for (const backend of ["services/api", "api_v2", "my api", "v1.10/api", "サービス", ".api"]) {
+      expect(validateConfig({ ...config, layout: { backend } }).layout).toEqual({ backend });
+    }
+  });
+
   it("lets the repository root hold one part, with others inside it", () => {
     const rooted = validateConfig({ ...withFrontend, layout: { backend: ".", frontend: "web" } });
     expect(layoutOf(rooted)).toMatchObject({ backend: ".", frontend: "web" });
@@ -246,6 +252,18 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
       withFrontend,
       "infrastructure: it cannot be the repository root, since its checks and review rules cover all of its directory",
     ],
+    // Written into YAML and review-policy globs, a binding must read as itself.
+    [{ backend: "api #2" }, config, "backend: api #2 has a character, or reads as a value"],
+    [{ backend: "svc (v2)" }, config, "a review-policy glob would take for something else"],
+    [{ backend: "@api" }, config, "has a character, or reads as a value"],
+    [{ backend: "services/[api]" }, config, "has a character, or reads as a value"],
+    [{ backend: "api,web" }, config, "has a character, or reads as a value"],
+    [{ backend: "!api" }, config, "has a character, or reads as a value"],
+    [{ backend: " api" }, config, "has a character, or reads as a value"],
+    [{ backend: "1.10" }, config, "backend: 1.10 has a character, or reads as a value"],
+    [{ backend: "true" }, config, "has a character, or reads as a value"],
+    [{ backend: "null" }, config, "has a character, or reads as a value"],
+    [{ backend: ".inf" }, config, "has a character, or reads as a value"],
     [{ cli: "tools" }, config, "layout"],
   ])("refuses the layout %j", (layout, base, message) => {
     expect(() => validateConfig({ ...base, layout })).toThrow(message);

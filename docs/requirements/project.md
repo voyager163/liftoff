@@ -388,6 +388,10 @@ rules cover all of its directory. A binding must:
   leaves out of a name, no name Windows reads as another file, no name over
   255 bytes), outside `.github` and `.liftoff` and outside `.git` at any
   depth;
+- name its directories with letters, digits, dots, hyphens, underscores and
+  spaces between them, and read as itself in YAML, since it is written into
+  workflows and review-policy globs as it is: so not `api #2`, `svc (v2)`,
+  `1.10` or `true`;
 - not put one part's directory inside another's, except inside the root,
   comparing names as macOS and Windows do: ignoring letter case and how an
   accented letter is encoded.
@@ -413,9 +417,10 @@ that refers to a part refers to it where it lives (PROJ-024): CI jobs run
 in the part's directory, Dependabot looks there, the review policy's rules
 for the part's files name them there, images are built from there, and
 `AGENTS.md` names each part's directory instead of the starter's layout.
-A part at the repository root is referred to as the root. In the standard
-layout these files are the ones a new project gets, apart from that list in
-`AGENTS.md`.
+A part at the repository root is referred to as the root. Nothing points to
+the README, which the application has its own of. In the standard layout
+these files are the ones a new project gets, apart from that list in
+`AGENTS.md` and that pointer.
 
 Verification: test
 

@@ -106,6 +106,10 @@ export const releasePlugin: ProjectPlugin = {
                 imageNames,
                 webVariable: frontend ? " AZURE_WEB_APP" : "",
                 readyPath: frontend ? "/api/health/ready" : "/health/ready",
+                // Only a new project gets the README that explains it.
+                setupGuide: context.application
+                  ? " See the infrastructure section of README.md."
+                  : "",
               }),
             ),
           ]
