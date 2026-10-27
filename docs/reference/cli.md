@@ -225,7 +225,7 @@ JSON report: `liftoff.migrate/v1`.
 | `--review-engine <host>` | Which selected agent host runs the verified AI review. |
 | `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. |
 | `--check` | Create nothing; show what migrating would do, and exit 3 when the project cannot be migrated as it is. |
-| `--out <file>` | Save the plan to this file and create nothing; apply it with --plan. |
+| `--out <file>` | Save the plan to this file, outside the project, and create nothing; apply it with --plan. |
 | `--plan <file>` | Apply exactly this saved plan, and refuse it if the project or Liftoff changed since. |
 | `--yes` | Create the new project without asking. |
 | `--json` | Print one JSON report on stdout. |
@@ -234,8 +234,8 @@ JSON report: `liftoff.migrate/v1`.
 ```bash
 liftoff migrate --check
 liftoff migrate --dir ../service --to ../service-next --stack node-fastify
-liftoff migrate --out migrate.plan.json
-liftoff migrate --plan migrate.plan.json --yes
+liftoff migrate --out ../migrate.plan.json
+liftoff migrate --plan ../migrate.plan.json --yes
 ```
 
 ## liftoff update

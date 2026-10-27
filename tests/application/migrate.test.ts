@@ -170,6 +170,24 @@ describe("MIGRATE-001 migrating makes a new project beside the old one, and neve
     );
     // Compared as macOS and Windows compare names.
     await expect(migrate({}, fs, path.join(work, "SHOP", "next"))).rejects.toThrow(InitTargetError);
+    const accented = path.join(work, "\u00e9t\u00e9");
+    mkdirSync(accented);
+    writeFileSync(path.join(accented, "pyproject.toml"), PYPROJECT);
+    await expect(
+      planMigrate(
+        { assets, fs },
+        accented,
+        path.join(work, "e\u0301te\u0301", "next"),
+        VERSION,
+        {},
+        where(),
+      ),
+    ).rejects.toThrow("overlaps the project it is made from");
+    // Nothing is made on the way to the new project.
+    await expect(migrate({}, fs, path.join(work, "new", "deep", "shop"))).rejects.toThrow(
+      `${path.join(work, "new", "deep")}, where the new project goes, is not a directory; make it first`,
+    );
+    expect(existsSync(path.join(work, "new"))).toBe(false);
     mkdirSync(target);
     writeFileSync(path.join(target, "notes.txt"), "mine\n");
     await expect(migrate()).rejects.toThrow(
@@ -177,7 +195,7 @@ describe("MIGRATE-001 migrating makes a new project beside the old one, and neve
     );
     rmSync(target, { recursive: true });
     await expect(migrate({}, fs, target, { cwd: target })).rejects.toThrow(
-      "is the current directory or contains it",
+      "is the current directory or contains it; run migrate from the directory that should hold the project",
     );
     // An empty directory is fine.
     mkdirSync(target);
@@ -351,6 +369,20 @@ describe("MIGRATE-001 migrating makes a new project beside the old one, and neve
     expect(huge.plan).toBeUndefined();
   });
 
+  it("blocks on a file it may not read, rather than copying the rest", async () => {
+    service();
+    write("private.bin", "mine\n");
+    const closed: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (directory: string, relative: string, maxBytes: number) =>
+        relative === "private.bin"
+          ? Promise.resolve({ kind: "inaccessible" } satisfies FileHash)
+          : fs.hashWithin(directory, relative, maxBytes),
+    });
+    const plan = await migrate({}, closed);
+    expect(plan.blocked).toEqual(["private.bin is closed to this user, so the copy would miss it"]);
+    expect(plan.plan).toBeUndefined();
+  });
+
   it("blocks when no name can be made, and on old records it cannot rely on", async () => {
     const odd = path.join(work, "123");
     mkdirSync(odd);
@@ -432,9 +464,13 @@ describe("MIGRATE-002 the copy leaves out secrets, dependencies, caches, state a
     try {
       writeFileSync(path.join(outside, "pyproject.toml"), PYPROJECT);
       symlinkSync(outside, at("linked"), "junction");
+      write(".envrc", "export AWS_SECRET_ACCESS_KEY=x\n");
+      write(".streamlit/secrets.toml", 'OPENAI_API_KEY = "x"\n');
+      write(".streamlit/config.toml", "[server]\n");
       const plan = await migrate();
       expect(plan.copies.map((copy) => copy.path)).toEqual([
         ".env.example",
+        ".streamlit/config.toml",
         "README.md",
         "app/main.py",
         "pyproject.toml",
@@ -443,7 +479,9 @@ describe("MIGRATE-002 the copy leaves out secrets, dependencies, caches, state a
       ]);
       expect(plan.left.map((item) => `${item.kind} ${item.path}`)).toEqual([
         "secrets .env",
+        "secrets .envrc",
         "git .git",
+        "secrets .streamlit/secrets.toml",
         "dependencies .venv",
         "secrets config/.env.local",
         "secrets deploy/key.pem",
@@ -462,7 +500,7 @@ describe("MIGRATE-002 the copy leaves out secrets, dependencies, caches, state a
       }
       const checklist = made.read("MIGRATION.md");
       expect(checklist).toContain(
-        "- [ ] Files that may hold secrets or state, never copied: `.env`, `config/.env.local`, `deploy/key.pem`.",
+        "- [ ] Files that may hold secrets or state, never copied: `.env`, `.envrc`, `.streamlit/secrets.toml`, `config/.env.local`, `deploy/key.pem`.",
       );
       expect(checklist).toContain(
         "- [ ] Installed dependencies, caches and build output: `.venv`, `dist`, `node_modules`.",

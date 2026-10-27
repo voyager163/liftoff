@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -127,6 +135,29 @@ describe("MIGRATE-003 migrating from the command line", () => {
     const outside = await migrate(["--check"], { cwd: work });
     expect(outside.code).toBe(2);
     expect(outside.err).toContain("is not the root of a Git repository; name it with --dir");
+  });
+
+  it("refuses a new project reached through a link into the old one, and a plan saved in either", async () => {
+    const linked = path.join(work, "shoplink");
+    symlinkSync(root(), linked, "junction");
+    const through = await migrate(["--check", "--to", "../shoplink/next"]);
+    expect(through.code).toBe(1);
+    expect(through.err).toContain("overlaps the project it is made from");
+    const deeper = await migrate(["--check", "--to", "../shoplink/new/project"]);
+    expect(deeper.code).toBe(1);
+    expect(deeper.err).toContain("where the new project goes, is not a directory; make it first");
+
+    const before = snapshot();
+    const inside = await migrate(["--out", "migrate.json"]);
+    expect(inside.code).toBe(2);
+    expect(inside.err).toContain(
+      `--out migrate.json is in ${root()}, which migrating does not write to; save the plan elsewhere`,
+    );
+    mkdirSync(target());
+    const inTarget = await migrate(["--out", "../shop-liftoff/plan.json"]);
+    expect(inTarget.code).toBe(2);
+    expect(snapshot()).toEqual(before);
+    expect(readdirSync(target())).toEqual([]);
   });
 
   it("saves a plan, applies exactly that plan, and refuses it once the project changed", async () => {

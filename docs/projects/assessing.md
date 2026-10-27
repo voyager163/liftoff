@@ -37,8 +37,8 @@ each:
 
 In a Liftoff project it also reads what `liftoff validate` reads. Every other
 file is seen by name only. Files that may hold secrets or state, such as
-`.env`, `*.tfstate`, `*.tfvars`, private keys and `.npmrc`, are listed as not
-read.
+`.env`, `.envrc`, `*.tfstate`, `*.tfvars`, private keys, `.npmrc`,
+`credentials.json` and SQLite databases, are listed as not read.
 
 ## What it reports
 

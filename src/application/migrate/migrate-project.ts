@@ -120,9 +120,36 @@ const changedWhilePlanned = (file: string) =>
   `${file} changed while migrating was being planned; plan it again`;
 
 /** Whether `inner` is `outer` or inside it, as macOS and Windows compare names. */
-function within(inner: string, outer: string): boolean {
-  const relative = path.relative(outer.toLowerCase(), inner.toLowerCase());
+export function within(inner: string, outer: string): boolean {
+  const relative = path.relative(pathKey(outer), pathKey(inner));
   return relative === "" || !(relative.startsWith("..") || path.isAbsolute(relative));
+}
+
+/**
+ * Refuses a target that is the old project, is inside it or holds it, as
+ * macOS and Windows compare names, or whose directory is not there: the new
+ * project goes in a directory that exists, so nothing is made on the way to
+ * it, inside the old project or anywhere else. Links in both paths are
+ * followed by the caller, once, before they are compared.
+ */
+async function checkMigrationTarget(
+  fs: ProjectFsPort,
+  source: string,
+  target: string,
+  cwd: string | undefined,
+): Promise<void> {
+  if (within(target, source) || within(source, target)) {
+    throw new InitTargetError(
+      `${target} overlaps the project it is made from; put the new project beside it, with --to`,
+    );
+  }
+  const parent = path.dirname(target);
+  if ((await fs.entry(parent)).kind !== "directory") {
+    throw new InitTargetError(
+      `${parent}, where the new project goes, is not a directory; make it first`,
+    );
+  }
+  await checkTarget(fs, target, cwd, "migrate");
 }
 
 /**
@@ -152,12 +179,7 @@ export async function planMigrate(
   if ((await fs.directoryIdentity(source)) === undefined) {
     throw new ProjectChangeError(`${source} is not a directory Liftoff can migrate`);
   }
-  if (within(target, source) || within(source, target)) {
-    throw new InitTargetError(
-      `${target} overlaps the project it is made from; put the new project beside it, with --to`,
-    );
-  }
-  await checkTarget(fs, target, where.cwd);
+  await checkMigrationTarget(fs, source, target, where.cwd);
   await refuseUnfinishedChange(fs, source);
   await refuseLiftoffProject(fs, source);
 
@@ -176,7 +198,16 @@ export async function planMigrate(
       );
     }
   }
-  const { copies, left, bytes } = await copyList(fs, source, walked, assessment.gaps, legacy);
+  const { copies, left, closed, bytes } = await copyList(
+    fs,
+    source,
+    walked,
+    assessment.gaps,
+    legacy,
+  );
+  for (const file of closed) {
+    blocked.push(`${file} is closed to this user, so the copy would miss it`);
+  }
   if (bytes > MAX_COPY_BYTES) {
     blocked.push(
       `the copy would hold ${Math.ceil(bytes / 1024 / 1024)} MiB, more than the ${MAX_COPY_BYTES / 1024 / 1024 / 1024} GiB Liftoff copies`,
@@ -398,7 +429,7 @@ export async function applyMigrate(
 ): Promise<MigrateResult> {
   const { plan } = migration;
   if (plan === undefined) throw new Error("a migration that is blocked has no plan to apply");
-  await checkTarget(fs, plan.target, options.cwd);
+  await checkMigrationTarget(fs, migration.source, plan.target, options.cwd);
   options.signal?.throwIfAborted();
   const staging = await fs.createStaging(plan.target);
   try {
@@ -484,7 +515,7 @@ async function copyList(
   walked: ReadonlyMap<string, EntryKind>,
   gaps: readonly Gap[],
   legacy: readonly LegacyRecord[],
-): Promise<{ copies: CopiedFile[]; left: LeftOut[]; bytes: number }> {
+): Promise<{ copies: CopiedFile[]; left: LeftOut[]; closed: string[]; bytes: number }> {
   const records = new Set(legacy.map((record) => pathKey(record.path)));
   const left: LeftOut[] = [];
   const notRead = new Set<string>();
@@ -508,6 +539,7 @@ async function copyList(
     }
   }
   const copies: CopiedFile[] = [];
+  const closed: string[] = [];
   const taken = new Map<string, string>();
   let bytes = 0;
   const files = [...walked]
@@ -536,6 +568,10 @@ async function copyList(
     }
     taken.set(key, file);
     const now = await fs.hashWithin(source, file, MAX_COPIED_BYTES);
+    if (now.kind === "inaccessible") {
+      closed.push(now.via ?? file);
+      continue;
+    }
     if (now.kind !== "file") throw new ProjectChangeError(changedWhilePlanned(file));
     if (now.sha256 === undefined) {
       left.push({
@@ -549,7 +585,7 @@ async function copyList(
     bytes += now.size;
   }
   left.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { copies, left, bytes };
+  return { copies, left, closed: [...new Set(closed)], bytes };
 }
 
 /** Each kind of part the new project has, and where the choice came from. */

@@ -49,21 +49,43 @@ const SKIPPED = new Set([
 
 export const isSkippedDirectory = (name: string): boolean => SKIPPED.has(name);
 
+/** Files named for the credentials they hold, wherever they are. */
+const CREDENTIAL_FILES = new Set([
+  ".envrc",
+  ".npmrc",
+  ".pypirc",
+  ".netrc",
+  ".pgpass",
+  ".git-credentials",
+  ".dockercfg",
+  ".htpasswd",
+  ".terraformrc",
+  "terraform.rc",
+  "kubeconfig",
+]);
+
 /**
- * Files that may hold secrets or state, such as `.env` or a `.tfstate`. They
- * are noted as present, never read. Examples meant to be committed are not.
+ * Files that may hold secrets or state, such as `.env`, `.envrc`, a
+ * `.tfstate`, `credentials.json`, `secrets.toml` or a SQLite database.
+ * They are noted as present, never read, and never copied. Examples meant to
+ * be committed are not.
  */
 export function holdsSecretsOrState(file: string): boolean {
   const name = path.posix.basename(file).toLowerCase();
   if (/\.(example|sample|template)$/.test(name)) return false;
+  const stem = name.replace(/\.[^.]*$/, "");
   return (
     name === ".env" ||
     name.startsWith(".env.") ||
+    CREDENTIAL_FILES.has(name) ||
+    /^(secrets?|credentials?)$/.test(stem) ||
+    /^(client_secret|service[-_]account)/.test(name) ||
+    /\.(secrets?)$/.test(name) ||
     /\.tfstate(\.backup)?$/.test(name) ||
-    name.endsWith(".tfvars") ||
-    /\.(pem|key|p12|pfx|jks|keystore)$/.test(name) ||
+    /\.tfvars(\.json)?$/.test(name) ||
+    /\.(pem|key|p8|p12|pfx|ppk|jks|keystore|kdbx)$/.test(name) ||
     /^id_(rsa|dsa|ecdsa|ed25519)$/.test(name) ||
-    [".npmrc", ".pypirc", ".netrc"].includes(name)
+    /\.(sqlite3?|db)$/.test(name)
   );
 }
 

@@ -210,7 +210,8 @@ configuration, `pytest.toml`, `.coveragerc`, `setup.cfg`, `tox.ini`, `pytest.ini
 `.terraform.lock.hcl` and the workflows in `.github/workflows`, plus what
 `liftoff validate` reads in a Liftoff project, without following a link to
 any of them. Every other file is seen by name only. Files that may hold secrets or state, such as `.env`,
-`*.tfstate`, `*.tfvars`, private keys and `.npmrc`, are listed as not read.
+`.envrc`, `*.tfstate`, `*.tfvars`, private keys, `.npmrc`, `credentials.json`,
+`secrets.toml` and SQLite databases, are listed as not read.
 
 - Given a generated project, when it is assessed, then no file in it
   changes and only those declarations and Liftoff's own files are read.
@@ -676,9 +677,11 @@ refuses the root of the file system and the home directory, a project
 Liftoff already has (one with `liftoff.yaml` or `.liftoff/manifest.json`),
 and a project with a change that has not finished (CHANGE-003). The new
 project goes in a new or empty directory named with `--to`, by default the
-old project's directory name followed by `-liftoff`, beside it. That
-directory may not be the old project, be inside it or hold it, and may not
-be the current directory or hold it.
+old project's directory name followed by `-liftoff`, beside it. The
+directory it goes in must exist. The new project's directory may not be the
+old project, be inside it or hold it, compared as macOS and Windows compare
+names once each link in either path is followed, and may not be the
+current directory or hold it. `--out` may not save a plan in either.
 
 Migrating writes nothing into the old project: no file, lock or record. It
 reads the project as `liftoff assess` does (ASSESS-001 and ASSESS-002),
@@ -703,9 +706,9 @@ names each reason and exits 3 when:
 - it could not tell what a directory holds, because a declaration could
   not be read or parsed, unless `--stack`, `--frontend` and
   `--infrastructure` are all given;
-- part of the project was not walked, because it is closed to this user,
-  changed while it was listed or is past a limit, so the copy would miss
-  it;
+- part of the project was not walked or a file in it cannot be read,
+  because it is closed to this user, changed while it was listed or is past
+  a limit, so the copy would miss it;
 - the stack cannot have a frontend or infrastructure found in the project:
   it says to leave that part out with `--frontend none` or
   `--infrastructure none`;

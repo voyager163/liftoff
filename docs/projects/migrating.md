@@ -15,14 +15,15 @@ no standard for and you want to move it to one that it has.
 liftoff migrate --check                                 # what would migrating do? creates nothing
 liftoff migrate                                         # see the plan, then approve
 liftoff migrate --dir ../service --to ../service-next --stack node-fastify
-liftoff migrate --out migrate.json && liftoff migrate --plan migrate.json --yes
+liftoff migrate --out ../migrate.json && liftoff migrate --plan ../migrate.json --yes
 ```
 
 Run it from the root of the repository, or name another directory with
 `--dir`. The new project goes in a new or empty directory named with `--to`,
 by default the old project's directory name followed by `-liftoff`, beside
-it. It may not be inside the old project or hold it. Migrating refuses a
-project Liftoff already has, and one with a change that has not finished.
+it. The directory it goes in must exist, and it may not be inside the old
+project or hold it, even through a link. Migrating refuses a project
+Liftoff already has, and one with a change that has not finished.
 
 ## What it proposes
 
@@ -50,9 +51,9 @@ It creates nothing, says why and exits 3 when:
 - it could not tell what a directory holds, such as one whose
   `package.json` is not valid: fix it, or name every part with `--stack`,
   `--frontend` and `--infrastructure`;
-- part of the project could not be walked, because it is closed to you,
-  changed while it was being listed or is past a limit, so the copy would
-  miss it;
+- part of the project could not be walked or read, because it is closed
+  to you, changed while it was being listed or is past a limit, so the copy
+  would miss it;
 - the stack cannot have a frontend or infrastructure found in the project:
   leave it out with `--frontend none` or `--infrastructure none`;
 - the directory's name does not make a project name: give one with `--name`;
@@ -70,8 +71,9 @@ with its permissions, except:
 
 - Git's data, installed dependencies, caches and build output, such as
   `.git`, `node_modules`, `.venv` and `dist`;
-- files that may hold secrets or state, such as `.env`, `*.tfstate`,
-  `*.tfvars`, private keys and `.npmrc` (`.env.example` is copied);
+- files that may hold secrets or state, such as `.env`, `.envrc`,
+  `*.tfstate`, `*.tfvars`, private keys, `.npmrc`, `credentials.json`,
+  `secrets.toml` and SQLite databases (`.env.example` is copied);
 - the records a Liftoff release before the rebuild left, which stay with the
   old project as its history;
 - links, which are never followed;
@@ -107,8 +109,8 @@ The old project, and its Git history, stay where they are.
 
 Migrating shows the proposal and the plan, and asks before creating
 anything; the default answer is no. Without a terminal it needs `--yes`.
-`--out` saves the plan, and `--plan` applies exactly that plan, or refuses
-it if the project or Liftoff changed since.
+`--out` saves the plan, outside both projects, and `--plan` applies exactly
+that plan, or refuses it if the project or Liftoff changed since.
 
 The new project is written beside its directory and moved into place in
 one step, so it is there whole or not at all; Ctrl+C before then leaves

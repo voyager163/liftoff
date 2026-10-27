@@ -9,6 +9,7 @@ import {
   type MigratePlan,
   planMigrate,
   planMigrateFromSaved,
+  within,
 } from "../../application/migrate/migrate-project.ts";
 import { AssessError } from "../../application/project/assess-project.ts";
 import { type Plan, parsePlan } from "../../domain/plan/plan.ts";
@@ -142,7 +143,8 @@ export function makeMigrateCommand(
       out: {
         type: "string",
         valueName: "file",
-        description: "Save the plan to this file and create nothing; apply it with --plan.",
+        description:
+          "Save the plan to this file, outside the project, and create nothing; apply it with --plan.",
       },
       plan: {
         type: "string",
@@ -155,8 +157,8 @@ export function makeMigrateCommand(
     examples: [
       "liftoff migrate --check",
       "liftoff migrate --dir ../service --to ../service-next --stack node-fastify",
-      "liftoff migrate --out migrate.plan.json",
-      "liftoff migrate --plan migrate.plan.json --yes",
+      "liftoff migrate --out ../migrate.plan.json",
+      "liftoff migrate --plan ../migrate.plan.json --yes",
     ],
     async run(args, { io, version }): Promise<CommandResult> {
       const ports = portsFor(io.cwd);
@@ -189,6 +191,16 @@ export function makeMigrateCommand(
             io.cwd,
             to ?? path.join(path.dirname(source), `${path.basename(source)}-liftoff`),
           );
+          // The old project is never written to, and the new one's directory must stay empty.
+          if (out !== undefined) {
+            const file = await newDirectory(io.cwd, out);
+            const inside = [source, target].find((directory) => within(file, directory));
+            if (inside !== undefined) {
+              throw new UsageError(
+                `--out ${out} is in ${inside}, which migrating does not write to; save the plan elsewhere, such as ../migrate.plan.json`,
+              );
+            }
+          }
           migration = await planMigrate(ports, source, target, version, choicesFrom(args), {
             named: args.given.has("dir"),
             refused,

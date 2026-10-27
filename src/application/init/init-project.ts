@@ -286,12 +286,17 @@ function withFrameworkFiles(
  * the caller's working directory: publishing replaces the target directory,
  * which would leave the caller's shell in a deleted one.
  */
-export async function checkTarget(fs: ProjectFsPort, target: string, cwd?: string): Promise<void> {
+export async function checkTarget(
+  fs: ProjectFsPort,
+  target: string,
+  cwd?: string,
+  command: "init" | "migrate" = "init",
+): Promise<void> {
   if (cwd !== undefined) {
     const inside = path.relative(target, path.resolve(cwd));
     if (inside === "" || !(inside.startsWith("..") || path.isAbsolute(inside))) {
       throw new InitTargetError(
-        `${target} is the current directory or contains it; run init from the directory that should hold the project`,
+        `${target} is the current directory or contains it; run ${command} from the directory that should hold the project`,
       );
     }
   }
