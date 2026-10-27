@@ -261,7 +261,8 @@ export async function validateProject(
         severity: "warning",
         code: "managed-file-changed",
         path: file.path,
-        message: "a file Liftoff manages was changed by hand; Liftoff would replace this change",
+        message:
+          "a file Liftoff manages was changed by hand; liftoff update leaves it as it is, so it takes no update until it is restored",
       });
     }
   }

@@ -3,6 +3,14 @@ import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import type { Choice, Prompts } from "./command.ts";
 import { CancelledError } from "./outcome.ts";
 
+/** Escapes characters that would change how a terminal shows the rest of a line. */
+export const shown = (text: string): string =>
+  text.replace(
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it escapes.
+    /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+
 /** Ctrl+C at a question, or a cancelled command, stops the command as cancelled. */
 export const answered = <T>(prompt: Promise<T>): Promise<T> =>
   prompt.catch((error: unknown) => {

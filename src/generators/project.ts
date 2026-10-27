@@ -18,6 +18,9 @@ export interface ProjectFile {
   readonly plugin: string;
 }
 
+/** Whether a generated file needs the executable bit. */
+export const isExecutable = (path: string): boolean => path.endsWith(".sh");
+
 /** Every file of a generated project, sorted by path. */
 export type GeneratedProject = readonly ProjectFile[];
 

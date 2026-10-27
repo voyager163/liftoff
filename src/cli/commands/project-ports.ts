@@ -2,11 +2,13 @@ import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { PackageAssets } from "../../adapters/assets.ts";
 import { LocalInitializer } from "../../adapters/initializer.ts";
+import { LocalProcesses } from "../../adapters/process.ts";
 import { LocalProjectFs } from "../../adapters/project-fs.ts";
 import { LocalTools } from "../../adapters/tools.ts";
 import type {
   AssetPort,
   InitializerPort,
+  ProcessesPort,
   ProjectFsPort,
   ToolPort,
 } from "../../application/ports.ts";
@@ -16,6 +18,7 @@ export interface ProjectPorts {
   fs: ProjectFsPort;
   tools: ToolPort;
   initializer: InitializerPort;
+  processes: ProcessesPort;
 }
 
 export const defaultProjectPorts = (cwd: string): ProjectPorts => ({
@@ -23,6 +26,7 @@ export const defaultProjectPorts = (cwd: string): ProjectPorts => ({
   fs: new LocalProjectFs(),
   tools: new LocalTools(cwd),
   initializer: new LocalInitializer(),
+  processes: new LocalProcesses(),
 });
 
 /**

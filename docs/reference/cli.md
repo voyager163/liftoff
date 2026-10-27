@@ -162,6 +162,35 @@ liftoff assess --dir ../service --json
 liftoff assess --live --use-gh
 ```
 
+## liftoff update
+
+Updates the files .liftoff/manifest.json lists as managed by Liftoff to what this release makes for the project's liftoff.yaml, and removes those it no longer makes. A managed file changed since Liftoff wrote it is left as it is and named. Files the project or a framework owns, such as its source, lock files, environment files, infrastructure and README, and liftoff.yaml itself, are never changed. Update never switches the workflow, governance profile, stack, pattern or agents, and refuses if liftoff.yaml was changed. New files this release makes are offered separately and added only if you choose them, or name them with --add, never over an existing file. It shows the plan and asks before changing anything; the default answer is no. In scripts, pass --yes. Each file is changed only if it is still as planned, and an update that stops part way can be finished or undone with --recover.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.update/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--check` | Change nothing; exit 3 when this release has an update for the project. |
+| `--out <file>` | Save the plan to this file and change nothing in the project; apply it with --plan. |
+| `--plan <file>` | Apply exactly this saved plan, and refuse it if the project or Liftoff changed since. |
+| `--add <paths>` | Also add these new files, comma-separated, from those the update offers. |
+| `--recover <mode>` | Finish or undo an update that stopped part way. (one of `finish`, `undo`) |
+| `--yes` | Change the files without asking. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff update --check
+liftoff update
+liftoff update --add .claude/skills/liftoff-assess/SKILL.md --yes
+liftoff update --out update.plan.json
+liftoff update --plan update.plan.json --yes
+liftoff update --recover undo
+```
+
 ## liftoff review classify
 
 Classifies the change on this branch against its base with the repository's review policy (.github/review-policy.yml, read from the base branch). Reports the risk tier, review depth, required human approvals and why. It is the same check CI runs, so the result predicts what the pull request will need.

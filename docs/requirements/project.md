@@ -492,7 +492,8 @@ Verification: test
 
 `liftoff validate` checks the configuration, the plugins it names and every
 file in the manifest. Missing or hand-edited managed files and missing seeded
-files are reported, as is a directory where a generated file should be;
+files are reported, as is a directory where a generated file should be (a
+hand-edited managed file takes no update, UPDATE-001);
 unknown plugins and invalid files are errors; newer plugin versions are
 information. Apart from a link in the path naming the project, which is
 followed once, it follows no link to `liftoff.yaml`, the manifest or a file

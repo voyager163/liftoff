@@ -66,15 +66,54 @@ export class ChangeConflictError extends ChangeError {
   }
 }
 
+/**
+ * A change stopped part way: the files before the one named changed, and the
+ * journal stays so the change can be finished or undone.
+ */
+export class ChangeStoppedError extends ChangeError {
+  override readonly name = "ChangeStoppedError";
+}
+
 export interface NewContent {
   readonly content: string;
   readonly executable: boolean;
 }
 
 /**
+ * Files a change does not touch but rests on, such as the configuration an
+ * update was planned from, each with the sha256 it must still have, or null
+ * when it must still be absent.
+ */
+export interface Unchanged {
+  readonly path: string;
+  readonly sha256: string | null;
+}
+
+export interface ChangeOptions {
+  /** Files the change rests on without changing them. */
+  readonly unchanged?: readonly Unchanged[];
+  /**
+   * Stops the change between files. Before the first, nothing changes;
+   * after, it stops part way and can be recovered.
+   */
+  readonly signal?: AbortSignal;
+}
+
+export interface ChangeResult {
+  readonly changed: number;
+  /**
+   * What could not be removed once every file had changed, such as the kept
+   * copies or the lock, for the person to delete. The change is complete.
+   */
+  readonly leftovers: readonly string[];
+}
+
+/**
  * Makes a planned change to a project, file by file, never overwriting a
  * file that changed since the plan was made. `contents` holds each new
- * file's content, which must hash to what the plan says.
+ * file's content, which must hash to what the plan says. Each file in
+ * `unchanged` must still be as it was, too, or nothing changes. A `signal`
+ * stops it between files.
  *
  * It holds the change lock throughout. The new files are staged beside the
  * project with a marker binding them to this project and plan, and the
@@ -89,9 +128,12 @@ export async function applyChanges(
   ports: ChangePorts,
   plan: ChangePlan,
   contents: ReadonlyMap<string, NewContent>,
-): Promise<{ readonly changed: number }> {
+  options: ChangeOptions = {},
+): Promise<ChangeResult> {
   const { fs, now } = ports;
+  const { unchanged = [], signal } = options;
   checkContents(plan, contents);
+  signal?.throwIfAborted();
   const root = plan.target;
   // The staging directory's name has this length, so the size is exact.
   const named = `.${path.basename(root)}.liftoff-staging-XXXXXX`;
@@ -100,7 +142,8 @@ export async function applyChanges(
       "the plan changes too many files to recover if it stopped part way; split it into smaller changes",
     );
   }
-  return withChangeLock(ports, root, async () => {
+  const leftovers: string[] = [];
+  const changed = await withChangeLock(ports, root, leftovers, async () => {
     const journalPath = path.join(root, ...CHANGE_JOURNAL_FILE.split("/"));
     if ((await fs.entry(journalPath)).kind !== "missing") {
       throw new ChangeError(
@@ -145,11 +188,12 @@ export async function applyChanges(
     }
 
     const problems: string[] = [];
-    for (const change of plan.changes) {
-      const current = await fileNow(fs, root, change.path);
-      if (!fileMatches(current, change.before)) {
-        problems.push(describe(change.path, current, change.before));
-      }
+    for (const { path: relative, before } of [
+      ...plan.changes,
+      ...unchanged.map((file) => ({ path: file.path, before: file.sha256 })),
+    ]) {
+      const current = await fileNow(fs, root, relative);
+      if (!fileMatches(current, before)) problems.push(describe(relative, current, before));
     }
     if (problems.length > 0) {
       await fs.remove(journalPath);
@@ -157,18 +201,35 @@ export async function applyChanges(
       throw new ChangeConflictError(problems);
     }
 
-    for (const change of plan.changes) {
+    for (const [index, change] of plan.changes.entries()) {
+      if (signal?.aborted) {
+        if (index === 0) {
+          await fs.remove(journalPath);
+          await fs.remove(staging);
+          signal.throwIfAborted();
+        }
+        throw new ChangeStoppedError(
+          `the change was cancelled after ${index} of ${plan.changes.length} files; finish or undo it with ${CHANGE_COMMANDS[plan.operation]} --recover`,
+        );
+      }
       const source = change.after === null ? "removed" : "after";
       if (!(await changeFile(fs, root, staging, change, change.before, source, true))) {
-        throw new ChangeError(
+        throw new ChangeStoppedError(
           `${change.path} changed while the change was being made, so it and the files after it were left alone; finish or undo the change with ${CHANGE_COMMANDS[plan.operation]} --recover`,
         );
       }
     }
+    // Once the journal is gone the change is complete, whatever is left.
     await fs.remove(journalPath);
-    await fs.remove(staging);
-    return { changed: plan.changes.length };
+    await tidy(
+      fs,
+      staging,
+      `the kept copies in ${path.basename(staging)} beside the project`,
+      leftovers,
+    );
+    return plan.changes.length;
   });
+  return { changed, leftovers };
 }
 
 export interface RecoveryResult {
@@ -181,6 +242,11 @@ export interface RecoveryResult {
   readonly waiting: readonly string[];
   /** Whether the change is now finished or undone, and its journal removed. */
   readonly complete: boolean;
+  /**
+   * What could not be removed, for the person to delete: the kept copies
+   * once it is complete, and the lock either way.
+   */
+  readonly leftovers: readonly string[];
 }
 
 /**
@@ -195,21 +261,32 @@ export interface RecoveryResult {
  * liftoff.yaml and the manifest change only once every other file has, so
  * the manifest never describes files that are not there. While anything is
  * left, the journal stays. The kept files are copied into place, never
- * used up, so finishing and undoing can follow each other.
+ * used up, so finishing and undoing can follow each other. With `plan`, it
+ * recovers only the change with that plan, the one the person was shown,
+ * and refuses any other found under the lock. A `signal` stops it between
+ * files, leaving the journal for another run.
  */
 export async function recoverChanges(
   ports: ChangePorts,
   root: string,
   mode: "finish" | "undo",
+  options: { readonly plan?: string; readonly signal?: AbortSignal } = {},
 ): Promise<RecoveryResult> {
   const { fs } = ports;
-  return withChangeLock(ports, root, async () => {
+  const { plan, signal } = options;
+  const leftovers: string[] = [];
+  const result = await withChangeLock(ports, root, leftovers, async () => {
     const journal = await readJournal(fs, root).catch((error: unknown) => {
       if (!(error instanceof JournalError)) throw error;
       throw new ChangeError(`${error.message}; ${UNREADABLE_JOURNAL_ADVICE}`);
     });
     if (journal === undefined) {
       throw new ChangeError("no change to this project stopped part way");
+    }
+    if (plan !== undefined && journal.plan !== plan) {
+      throw new ChangeError(
+        "the change that stopped is no longer the one shown, as another command changed the project meanwhile; nothing was changed, so run the recovery again to see it",
+      );
     }
     const staging = path.join(path.dirname(root), journal.staging);
     await checkStaging(fs, root, staging, journal.plan);
@@ -220,7 +297,16 @@ export async function recoverChanges(
     const changed: string[] = [];
     const conflicts: string[] = [];
     const waiting: string[] = [];
+    // Checked before every step, whatever it is, and before tidying up.
+    const stopIfCancelled = () => {
+      if (!signal?.aborted) return;
+      if (changed.length === 0) signal.throwIfAborted();
+      throw new ChangeStoppedError(
+        `recovery was cancelled after ${changed.length} file${changed.length === 1 ? "" : "s"}; run it again`,
+      );
+    };
     for (const step of recoverySteps(journal, current, mode)) {
+      stopIfCancelled();
       if (step.step === "done") continue;
       const change = journal.changes.find((entry) => entry.path === step.path);
       // Changes are ordered with liftoff.yaml and the manifest last.
@@ -254,13 +340,20 @@ export async function recoverChanges(
         conflicts.push(step.path);
       }
     }
+    stopIfCancelled();
     const complete = conflicts.length === 0 && waiting.length === 0;
     if (complete) {
       await fs.remove(path.join(root, ...CHANGE_JOURNAL_FILE.split("/")));
-      await fs.remove(staging);
+      await tidy(
+        fs,
+        staging,
+        `the kept copies in ${journal.staging} beside the project`,
+        leftovers,
+      );
     }
     return { operation: journal.operation, changed, conflicts, waiting, complete };
   });
+  return { ...result, leftovers };
 }
 
 /** What to do about a journal that cannot be read. */
@@ -296,6 +389,7 @@ export async function readJournal(
 async function withChangeLock<T>(
   ports: ChangePorts,
   root: string,
+  leftovers: string[],
   body: () => Promise<T>,
 ): Promise<T> {
   const { fs, processes, now } = ports;
@@ -326,12 +420,31 @@ async function withChangeLock<T>(
       `${process} is changing this project; wait for it, or if it is not running, delete ${CHANGE_LOCK_FILE}`,
     );
   }
+  let value: T;
   try {
     // It may have been swapped for a link while the lock was being made.
     await checkRecordsDirectory(fs, root, false);
-    return await body();
-  } finally {
-    await fs.remove(lock);
+    value = await body();
+  } catch (error) {
+    // What stopped it matters more; a lock left behind is reported next time.
+    await fs.remove(lock).catch(() => undefined);
+    throw error;
+  }
+  await tidy(fs, lock, CHANGE_LOCK_FILE, leftovers);
+  return value;
+}
+
+/** Removes what a complete change no longer needs, or says what is left to delete. */
+async function tidy(
+  fs: ProjectFsPort,
+  target: string,
+  what: string,
+  leftovers: string[],
+): Promise<void> {
+  try {
+    await fs.remove(target);
+  } catch (error) {
+    leftovers.push(`${what} could not be removed (${(error as Error).message}); delete it`);
   }
 }
 

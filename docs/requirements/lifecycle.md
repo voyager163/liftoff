@@ -104,9 +104,12 @@ Verification: test
 
 Before anything changes, and once no other change can start, every file must
 still be exactly as the plan says: the same content, a regular file and not
-a link, or still absent. If any is not, nothing changes and each such file
-is named. So a change that finished while this one was being prepared is
-never overwritten. Each new file's content must hash to what the plan says
+a link, or still absent. So must any file the change rests on without
+changing it, such as `liftoff.yaml` for an update, or a file whose manifest
+entry an update rewrites, which must still have the content seen, or still
+be absent. If any is not, nothing changes and each such file is named. So a
+change that finished while this one was being prepared is never
+overwritten. Each new file's content must hash to what the plan says
 and be no larger than 64 MiB, and a plan whose journal could not be read
 back is refused, both before anything changes. For each file, its original
 is copied as every file is read (following no link, never waiting on a
@@ -169,8 +172,14 @@ Each file is replaced in one step, keeping the executable bit planned. The
 project's files change first, then `liftoff.yaml`, then
 `.liftoff/manifest.json`, so the manifest never lists files that were not
 written. Once every file has changed, the journal and the kept copies are
-removed. A change across several files is not atomic; the journal is how an
+removed. If the kept copies or the lock cannot be removed then, the change
+is still complete, and what is left is named for the person to delete. A
+change across several files is not atomic; the journal is how an
 interrupted one is recovered.
+
+A change, or its recovery, cancelled with Ctrl+C stops between files:
+before the first file, nothing changes; after it, the change stops part way
+and can be recovered.
 
 Verification: test
 
@@ -300,5 +309,103 @@ checkpoint becomes a finding. A repository GitHub refuses to
 show is inaccessible, and any other failure is unknown; the local
 assessment is still reported. `--repo` and `--use-gh` are refused without
 `--live`.
+
+Verification: test
+
+## UPDATE-001 Update changes only the files Liftoff manages
+
+`liftoff update` brings the files `.liftoff/manifest.json` lists as managed
+to what this release makes for the project's configuration. For each one
+this release changes:
+
+- if it is as Liftoff last wrote it, by its sha256 in the manifest, it is
+  replaced, or removed when this release no longer makes it;
+- if it is already as this release makes it, or already gone when this
+  release no longer makes it, only the manifest changes;
+- otherwise, changed by hand, missing, a directory, a link, closed to this
+  user or over 64 MiB, it is left as it is and named, with why, and its
+  entry in the manifest stays as it was.
+
+Names are compared as macOS and Windows compare them, ignoring letter case
+and how an accented letter is encoded, so a managed file this release names
+in other letter case is held back for the person to rename, never removed.
+Once its name on disk is the one this release uses, it is updated, and
+recorded, under that name.
+
+Files the project owns, such as its source, lock files, environment files,
+infrastructure and `README.md`, files a framework owns, and `liftoff.yaml`
+are never changed, whatever this release makes or the manifest says of
+them, and no file changes owner:
+a managed file this release makes as the project's is left as it is. The
+manifest changes last, with this release's plugin versions and an `update`
+in its history; who generated the project stays as it was.
+
+- Given a project made by an earlier release, when it is updated, then each
+  managed file still as Liftoff wrote it takes this release's version, and
+  a managed file changed by hand is left as it is and named.
+- Given a seeded file whose template changed, when the project is updated,
+  then it is not changed.
+
+Verification: test
+
+## UPDATE-002 Update never switches what the project is made of
+
+An update applies this release to the configuration the project was made
+with. It refuses, changing nothing, when:
+
+- `liftoff.yaml` changed since Liftoff last wrote it, by its sha256 in the
+  manifest, since that would also apply the change, including after the
+  plan was made and before it applies (CHANGE-002);
+- this release would make the project from other plugins than the manifest
+  lists, so it never switches the workflow, governance profile, stack,
+  pattern, agents or any other plugin;
+- a change to the project has not finished (CHANGE-003);
+- `liftoff.yaml` or the manifest is missing, invalid, or not a regular file
+  Liftoff can read, or the manifest would be over the 1 MiB Liftoff reads
+  once updated;
+- the project was made by a release before the rebuild, or has parts bound
+  to other directories (PROJ-024), which this release cannot update yet
+  (exit 6).
+
+Verification: test
+
+## UPDATE-003 New files are added only when chosen
+
+A file this release makes that the manifest does not list, comparing names
+as macOS and Windows do, is offered, never added by itself. It is added only
+when chosen at a question, where none is chosen by default, or named with
+`--add`; `--add` names only offered files. A new file is never added where
+something already is, or may be: a file, a directory, a link, or a path
+through a directory closed to this user. That path is named and left as it
+is.
+
+Verification: test
+
+## UPDATE-004 Update checks, previews and applies exactly what was approved
+
+`liftoff update --check` writes nothing, so it does not go with `--out`, and
+exits 3 when this release has
+something for the project: a change, a file held back, a new file offered,
+or a new file it could not add; otherwise it exits 0, and only then does it
+say the project is up to date. `--out <file>` saves the plan (CHANGE-001)
+and changes nothing. Otherwise update shows the plan and asks before
+changing anything; the default answer is no, and without a terminal it needs
+`--yes`. `--plan <file>` applies exactly a saved plan: the update is planned
+again, with the same new files, and refused unless it is the same plan, made
+by this release. The files change as CHANGE-002 to CHANGE-004 say; an update
+that stops part way exits 5, and `liftoff update --recover finish` or
+`--recover undo` finishes or undoes it after asking. A recovery that stops
+part way also exits 5, keeping the journal so it can be run again. Recovery
+acts only on the interrupted update it showed when it asked: if another
+change stopped meanwhile, it refuses and changes nothing. Cancelled with
+Ctrl+C before any file changes, an update or a recovery exits 4; after, 5.
+An update exits 3 when files were held back, new files could not be added,
+or something could not be removed once every file had changed, and 0
+otherwise.
+
+- Given a saved plan, when a file it changes is edited before it is
+  applied, then it is refused and nothing changes.
+- Given an update that stopped part way, when it is recovered, then each
+  file is finished or undone and the journal is removed.
 
 Verification: test

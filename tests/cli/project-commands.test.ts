@@ -370,6 +370,7 @@ describe("DOCTOR-001 doctor from the command line", () => {
       fs: { state: async () => "missing", readText: async () => undefined } as never,
       tools: { version: async (command) => versions[command] },
       initializer: undefined as never,
+      processes: undefined as never,
     }));
 
   it("is ready when the tools are present", async () => {

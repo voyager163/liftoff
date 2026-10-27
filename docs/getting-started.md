@@ -146,3 +146,5 @@ release and publish their images.
 rulesets on GitHub with `liftoff governance`.
 [Assessing a project](projects/assessing.md) covers checking any project,
 Liftoff's or not, against the standard with `liftoff assess`.
+[Updating a project](projects/updating.md) covers bringing the files Liftoff
+manages to a new release with `liftoff update`.
