@@ -139,6 +139,29 @@ liftoff doctor
 liftoff doctor --dir demo --json
 ```
 
+## liftoff assess
+
+Walks the project, within limits and without following links, and checks its applications, dependencies, tests, builds, database, coding-agent setup, CI, governance, infrastructure and documentation against what this Liftoff release generates. It reads only the declarations it interprets, such as pyproject.toml, package.json and workflow files, never secrets or state, runs nothing and writes nothing. Each finding is compliant, noncompliant, unknown, unsupported or inaccessible, with the paths it rests on, and what was not walked or read is listed. With --live it also reads the repository's governance on GitHub, after you agree.
+
+Read-only.
+
+JSON report: `liftoff.assessment/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Directory to assess: the root of a Git repository, or any other directory when named. (default `.`) |
+| `--live` | Also read the repository's branches, rulesets and check runs on GitHub. |
+| `--repo <owner/name>` | With --live, the GitHub repository. Defaults to the one origin points at. |
+| `--use-gh` | With --live, let Liftoff use your GitHub CLI login without asking. Liftoff never sees or stores your credentials. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff assess
+liftoff assess --dir ../service --json
+liftoff assess --live --use-gh
+```
+
 ## liftoff review classify
 
 Classifies the change on this branch against its base with the repository's review policy (.github/review-policy.yml, read from the base branch). Reports the risk tier, review depth, required human approvals and why. It is the same check CI runs, so the result predicts what the pull request will need.

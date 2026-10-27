@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -165,6 +173,46 @@ describe("GOV-001 each required check is required from the app that produces it"
       { context: "ci-gate", integrationId: 15368 },
       { context: "ci-gate", integrationId: 999 },
     ]);
+  });
+});
+
+describe("GOV-001 the committed rulesets are read in full, through no link", () => {
+  const ruleset = (name: string) =>
+    JSON.stringify({
+      name,
+      target: "branch",
+      enforcement: "active",
+      conditions: { ref_name: { include: [`refs/heads/${name}`], exclude: [] } },
+      bypass_actors: [],
+      rules: [{ type: "deletion" }],
+    });
+
+  it("reads rulesets in directories under .github/rulesets, and only top-level workflows", async () => {
+    const dir = path.join(work, "nested");
+    mkdirSync(path.join(dir, ".github/rulesets/releases"), { recursive: true });
+    mkdirSync(path.join(dir, ".github/workflows/old"), { recursive: true });
+    writeFileSync(path.join(dir, ".github/rulesets/develop.json"), ruleset("develop"));
+    writeFileSync(path.join(dir, ".github/rulesets/releases/main.json"), ruleset("main"));
+    writeFileSync(path.join(dir, ".github/workflows/ci.yml"), "on: push\n");
+    writeFileSync(path.join(dir, ".github/workflows/old/ci.yml"), "on: push\n");
+    const desired = await readDesired(fs, dir);
+    expect(desired.rulesets.map((found) => found.name)).toEqual(["develop", "main"]);
+    expect(desired.workflows).toEqual([".github/workflows/ci.yml"]);
+  });
+
+  it("refuses a linked or malformed ruleset rather than leave it out", async () => {
+    const dir = path.join(work, "linked");
+    const outside = path.join(work, "outside");
+    mkdirSync(path.join(dir, ".github/rulesets"), { recursive: true });
+    mkdirSync(outside);
+    writeFileSync(path.join(outside, "main.json"), ruleset("main"));
+    symlinkSync(outside, path.join(dir, ".github/rulesets/releases"), "junction");
+    await expect(readDesired(fs, dir)).rejects.toThrow(
+      ".github/rulesets/releases is a link or special file, which Liftoff does not follow",
+    );
+    rmSync(path.join(dir, ".github/rulesets/releases"));
+    writeFileSync(path.join(dir, ".github/rulesets/main.json"), "{}");
+    await expect(readDesired(fs, dir)).rejects.toThrow("is not a ruleset");
   });
 });
 

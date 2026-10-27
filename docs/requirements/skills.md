@@ -68,3 +68,14 @@ Liftoff's repository carries the rendered skills for Claude Code and Copilot.
 managed file no longer has a source.
 
 Verification: test
+
+## SKILL-007 Skills to assess a project and its governance
+
+Generated projects get the `liftoff-assess` skill, which runs
+`liftoff assess` and explains its findings, gaps and next actions, and the
+`liftoff-governance-assess` skill, which runs `liftoff governance assess`
+and explains each checkpoint. Both only read: they change nothing in the
+project or on GitHub, and they leave any change to the person, through the
+commands the findings name.
+
+Verification: test

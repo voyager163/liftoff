@@ -494,8 +494,11 @@ Verification: test
 file in the manifest. Missing or hand-edited managed files and missing seeded
 files are reported, as is a directory where a generated file should be;
 unknown plugins and invalid files are errors; newer plugin versions are
-information. It exits 3 when there is anything to act on and
-changes nothing.
+information. Apart from a link in the path naming the project, which is
+followed once, it follows no link to `liftoff.yaml`, the manifest or a file
+the manifest lists, or on the way to one: a link or another kind of file
+there is reported and never read, as is one this user may not read. It
+exits 3 when there is anything to act on and changes nothing.
 
 Verification: test
 

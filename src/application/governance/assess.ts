@@ -27,23 +27,97 @@ export class GovernanceError extends Error {
   override readonly name = "GovernanceError";
 }
 
-/** What the project's committed governance files ask GitHub to enforce. */
+/** Files read from the governance directories, and the most of each. */
+const MAX_GOVERNANCE_FILES = 1000;
+const MAX_RULESET_BYTES = 1024 * 1024;
+
+/** Whether a parsed ruleset has the fields the checkpoints read. */
+function isRuleset(value: unknown): value is DesiredRuleset {
+  const ruleset = value as Partial<Record<keyof DesiredRuleset, unknown>> | null;
+  const refs = (ruleset?.conditions as { ref_name?: { include?: unknown; exclude?: unknown } })
+    ?.ref_name;
+  return (
+    typeof ruleset === "object" &&
+    ruleset !== null &&
+    !Array.isArray(ruleset) &&
+    typeof ruleset.name === "string" &&
+    Array.isArray(ruleset.rules) &&
+    ruleset.rules.every(
+      (rule) =>
+        typeof rule === "object" &&
+        rule !== null &&
+        typeof (rule as { type?: unknown }).type === "string",
+    ) &&
+    Array.isArray(refs?.include) &&
+    Array.isArray(refs?.exclude)
+  );
+}
+
+/**
+ * What the project's committed governance files ask GitHub to enforce, read
+ * without following a link and within limits.
+ */
 export async function readDesired(fs: ProjectFsPort, directory: string): Promise<Desired> {
-  const files = async (relative: string, extension: string) => {
-    const absolute = path.join(directory, ...relative.split("/"));
-    if ((await fs.state(absolute)) === "missing") return [];
-    return (await fs.listTree(absolute))
-      .filter((entry) => entry.kind === "file" && entry.path.endsWith(extension))
-      .map((entry) => `${relative}/${entry.path}`);
+  /**
+   * Files with one of `extensions` in a directory, and with `nested` in the
+   * directories under it too; a link, or a directory that cannot be read in
+   * full, is an error rather than left out.
+   */
+  const files = async (relative: string, extensions: readonly string[], nested: boolean) => {
+    const found: string[] = [];
+    const queue = [relative];
+    let seen = 0;
+    for (let at = queue.shift(); at !== undefined; at = queue.shift()) {
+      const listing = await fs.listWithin(directory, at, MAX_GOVERNANCE_FILES - seen);
+      if (listing.kind === "missing" && at === relative) return [];
+      if (listing.kind !== "directory") {
+        throw new GovernanceError(
+          listing.kind === "inaccessible"
+            ? `${at} cannot be read by this user`
+            : `${at} is not a directory Liftoff can read: it is a file or a link, or it changed as it was read`,
+        );
+      }
+      seen += listing.entries.length;
+      if (!listing.complete) {
+        throw new GovernanceError(`${relative} has more than ${MAX_GOVERNANCE_FILES} entries`);
+      }
+      for (const entry of listing.entries) {
+        const file = `${at}/${entry.name}`;
+        if (entry.kind === "file" && extensions.some((end) => entry.name.endsWith(end))) {
+          found.push(file);
+        } else if (entry.kind === "directory" && nested) {
+          queue.push(file);
+        } else if (entry.kind === "other") {
+          throw new GovernanceError(
+            `${file} is a link or special file, which Liftoff does not follow`,
+          );
+        }
+      }
+    }
+    return found.sort();
   };
   const rulesets: DesiredRuleset[] = [];
-  for (const file of await files(".github/rulesets", ".json")) {
-    const text = (await fs.readText(path.join(directory, ...file.split("/")))) ?? "";
+  for (const file of await files(".github/rulesets", [".json"], true)) {
+    const found = await fs.readWithin(directory, file, MAX_RULESET_BYTES);
+    if (found.kind !== "file" || found.text === undefined) {
+      throw new GovernanceError(
+        found.kind === "inaccessible"
+          ? `${file} cannot be read by this user`
+          : `${file} is not a regular file Liftoff can read, or is over 1 MiB`,
+      );
+    }
+    let ruleset: unknown;
     try {
-      rulesets.push(JSON.parse(text) as DesiredRuleset);
+      ruleset = JSON.parse(found.text);
     } catch (error) {
       throw new GovernanceError(`${file} is not valid JSON: ${(error as Error).message}`);
     }
+    if (!isRuleset(ruleset)) {
+      throw new GovernanceError(
+        `${file} is not a ruleset: it needs a name, rules with a type each, and conditions.ref_name with include and exclude`,
+      );
+    }
+    rulesets.push(ruleset);
   }
   const requiredChecks = new Map<string, { context: string; integrationId: number }>();
   for (const ruleset of rulesets) {
@@ -63,7 +137,8 @@ export async function readDesired(fs: ProjectFsPort, directory: string): Promise
       }
     }
   }
-  const workflows = [...(await files(".github/workflows", ".yml"))].sort();
+  // GitHub runs only the workflows directly in .github/workflows.
+  const workflows = await files(".github/workflows", [".yml"], false);
   return {
     rulesets,
     workflows,
