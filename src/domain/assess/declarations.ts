@@ -129,8 +129,9 @@ export function pytestTomlCoverageGate(text: string): boolean | undefined {
 
 /**
  * The sections of an INI file, such as setup.cfg, each with its keys. A
- * line indented deeper than its option continues the value before it. A comment, whole-line or
- * after a space, is left out, so what it mentions never counts.
+ * line indented deeper than its option continues the value before it. A
+ * comment, whole-line or after a space, is left out, so what it mentions
+ * never counts.
  */
 export function readIni(text: string): ReadonlyMap<string, ReadonlyMap<string, string>> {
   const sections = new Map<string, Map<string, string>>();
