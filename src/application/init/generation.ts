@@ -1,4 +1,9 @@
-import { ConfigError, isStandardLayout, type ProjectConfig } from "../../domain/project/config.ts";
+import {
+  ConfigError,
+  directoriesOf,
+  isStandardLayout,
+  type ProjectConfig,
+} from "../../domain/project/config.ts";
 import { type GeneratedProject, generateProject } from "../../generators/project.ts";
 import type { GenerationContext, TemplateSet } from "../../plugins/contracts/project-plugin.ts";
 import { resolveSelection, type Selection } from "../../plugins/registry.ts";
@@ -31,16 +36,28 @@ export interface Generation {
   readonly files: GeneratedProject;
 }
 
+export interface GenerateOptions {
+  /**
+   * Whether to generate the application's files too, as for a new project:
+   * each part's starter code, Compose, .env.example and the README. Without
+   * them, only Liftoff's own files are generated, for where the parts live,
+   * as for a project adopted with an application of its own. Defaults to true.
+   */
+  readonly application?: boolean;
+}
+
 /** Checks the selection and generates every file of the project, in memory. */
 export async function generate(
   assets: AssetPort,
   config: ProjectConfig,
   liftoffVersion: string,
+  { application = true }: GenerateOptions = {},
 ): Promise<Generation> {
-  // Never the standard directories in place of the bound ones.
-  if (!isStandardLayout(config)) {
+  // A starter is made only in the standard layout, never the standard
+  // directories in place of the bound ones.
+  if (application && !isStandardLayout(config)) {
     throw new ConfigError(
-      "this release generates only the standard layout; a project whose parts live elsewhere is changed by adopting it, which comes in a later release",
+      "this release generates an application's files only in the standard layout; for a project whose parts live elsewhere, it generates only its own files",
     );
   }
   const selection = resolveSelection(config);
@@ -48,6 +65,8 @@ export async function generate(
   const context: GenerationContext = {
     config,
     liftoffVersion,
+    layout: directoriesOf(config),
+    application,
     hosts: selection.hosts,
     profile: selection.profile,
     workflow: selection.workflow,

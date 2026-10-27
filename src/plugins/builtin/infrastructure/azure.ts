@@ -88,7 +88,7 @@ function lock(context: GenerationContext, kind: string, directory: string): Arti
 export const azureInfrastructure: InfrastructurePlugin = {
   id: "infrastructure/azure-opentofu",
   kind: "infrastructure",
-  version: "1",
+  version: "2",
   summary: "Azure infrastructure as OpenTofu code, with a root per environment",
   templateRoots: [`${ROOT}/files`, `${ROOT}/environment`, `${ROOT}/lock`, `${ROOT}/parts`],
   parts: `${ROOT}/parts`,
@@ -127,7 +127,7 @@ export const azureInfrastructure: InfrastructurePlugin = {
   ],
   reviewRules: [
     {
-      paths: ["infrastructure/**"],
+      paths: [`${TARGET}/**`],
       tier: "high",
       always_human: true,
       reason: "changes the Azure infrastructure",

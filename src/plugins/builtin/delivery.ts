@@ -6,6 +6,7 @@ import type {
   GenerationContext,
   ProjectPlugin,
 } from "../contracts/project-plugin.ts";
+import { layoutValues } from "./files.ts";
 import { changeProcess } from "./stacks/shared.ts";
 
 const ROOT = "templates/delivery";
@@ -46,10 +47,14 @@ const withPart = (context: GenerationContext, file: string) =>
     .map((component) => ({ component, path: `${component.parts}/${file}` }))
     .filter(({ component, path }) => context.templates.list(component.parts).includes(path));
 
-/** Each component's part of one shared file, rendered and checked to parse as `shape`. */
+/**
+ * Each component's part of one shared file, rendered for where the parts
+ * live and checked to parse as `shape`.
+ */
 function parts(context: GenerationContext, file: string, shape: "mapping" | "list"): Part[] {
+  const values = { name: context.config.name, ...layoutValues(context.layout) };
   return withPart(context, file).map(({ component, path }) => {
-    const text = renderTemplate(context.templates.read(path), { name: context.config.name }, path);
+    const text = renderTemplate(context.templates.read(path), values, path);
     const data: unknown = parse(text);
     const isList = Array.isArray(data);
     if (data === null || typeof data !== "object" || isList !== (shape === "list")) {
@@ -244,16 +249,17 @@ export const deliveryPlugin: ProjectPlugin = {
   summary: "Docker Compose, CI, CodeQL, Dependabot and README for the selected components",
   templateRoots: [ROOT],
   artifacts(context): Artifact[] {
-    const file = (path: string, content: string): Artifact => ({
+    const file = (path: string, content: string, application = false): Artifact => ({
       path,
       ownership: "seeded",
       content,
+      ...(application ? { application } : {}),
     });
     const env = envExample(context);
     return [
-      ...(env === undefined ? [] : [file(".env.example", env)]),
-      file("README.md", readme(context)),
-      file("compose.yaml", compose(context)),
+      ...(env === undefined ? [] : [file(".env.example", env, true)]),
+      file("README.md", readme(context), true),
+      file("compose.yaml", compose(context), true),
       file(".github/workflows/01-pr-ci.yml", ci(context)),
       file(".github/workflows/02-codeql.yml", codeql(context)),
       file(".github/dependabot.yml", dependabot(context)),

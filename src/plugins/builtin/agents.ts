@@ -1,13 +1,48 @@
+import { type Component, placedIn } from "../../domain/project/config.ts";
 import { renderAgentIntegration } from "../../generators/skills.ts";
-import type { Artifact, GenerationContext, ProjectPlugin } from "../contracts/project-plugin.ts";
+import type {
+  Artifact,
+  ComponentPlugin,
+  GenerationContext,
+  ProjectPlugin,
+} from "../contracts/project-plugin.ts";
 
-function agentsMarkdown({ config, components, workflow }: GenerationContext): string {
+/** The part each kind of component is, for those with a directory of their own. */
+const PART: Partial<Record<ComponentPlugin["kind"], Component>> = {
+  stack: "backend",
+  frontend: "frontend",
+  infrastructure: "infrastructure",
+};
+
+/**
+ * What lives where: the starter's layout in a new project, or, in an adopted
+ * one, whose application is its own, each part's directory.
+ */
+function layoutLines({ components, layout, application }: GenerationContext): string[] {
+  if (application) {
+    return components
+      .flatMap((component) => component.layout)
+      .map((entry) => `- \`${placedIn(layout, entry.path)}\` ${entry.purpose}.`);
+  }
+  return components.flatMap(({ kind, summary }) => {
+    const part = PART[kind];
+    if (part === undefined) return [];
+    const directory = layout[part];
+    return directory === "."
+      ? [`- \`.\` the ${part}, at the repository root (${summary}).`]
+      : [`- \`${directory}/\` the ${part} (${summary}).`];
+  });
+}
+
+function agentsMarkdown(context: GenerationContext): string {
+  const { config, components, workflow, layout: directories } = context;
   const checks = components
     .flatMap((component) => component.checks)
-    .map((check) => `| \`${check.directory}\` | \`${check.command}\` | ${check.name} |`);
-  const layout = components
-    .flatMap((component) => component.layout)
-    .map((entry) => `- \`${entry.path}\` ${entry.purpose}.`);
+    .map(
+      (check) =>
+        `| \`${placedIn(directories, check.directory)}\` | \`${check.command}\` | ${check.name} |`,
+    );
+  const layout = layoutLines(context);
   return [
     `# ${config.name}`,
     "",

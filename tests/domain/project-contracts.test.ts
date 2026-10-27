@@ -8,9 +8,11 @@ import {
 } from "../../src/domain/plan/plan.ts";
 import {
   ConfigError,
+  directoriesOf,
   isStandardLayout,
   layoutOf,
   parseConfig,
+  placedIn,
   serializeConfig,
   validateConfig,
 } from "../../src/domain/project/config.ts";
@@ -152,6 +154,52 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
     expect(layoutOf(rooted)).toMatchObject({ backend: ".", frontend: "web" });
   });
 
+  it("places a path named in the standard layout where its part lives", () => {
+    const directories = directoriesOf(
+      validateConfig({
+        ...withFrontend,
+        layout: { backend: ".", frontend: "apps/web", infrastructure: "deploy" },
+      }),
+    );
+    expect(directories).toEqual({ backend: ".", frontend: "apps/web", infrastructure: "deploy" });
+    expect(
+      [
+        "backend",
+        "backend/",
+        "backend/tests/**",
+        "backend/Dockerfile",
+        "frontend",
+        "frontend/e2e/**",
+        "infrastructure/opentofu/azure",
+        "infrastructure/opentofu/azure/bootstrap",
+        // Only whole directories move: these are other paths.
+        "infrastructure/opentofu",
+        "backends/app",
+        "compose.yaml",
+        ".github/workflows/01-pr-ci.yml",
+      ].map((path) => placedIn(directories, path)),
+    ).toEqual([
+      ".",
+      ".",
+      "tests/**",
+      "Dockerfile",
+      "apps/web",
+      "apps/web/e2e/**",
+      "deploy",
+      "deploy/bootstrap",
+      "infrastructure/opentofu",
+      "backends/app",
+      "compose.yaml",
+      ".github/workflows/01-pr-ci.yml",
+    ]);
+    // In the standard layout, every path stays where it is.
+    const standard = directoriesOf(validateConfig(config));
+    expect(placedIn(standard, "backend/app/main.py")).toBe("backend/app/main.py");
+    expect(placedIn(standard, "infrastructure/opentofu/azure/modules")).toBe(
+      "infrastructure/opentofu/azure/modules",
+    );
+  });
+
   it.each([
     [{ frontend: "web" }, config, "frontend: the project has no frontend"],
     [{ backend: "../api" }, config, "backend: ../api is not a repository-relative path"],
@@ -193,6 +241,11 @@ describe("PROJ-024 layout bindings say where each part of a project lives", () =
       "frontend is inside backend's directory",
     ],
     [{ backend: ".", frontend: "." }, withFrontend, "share a directory"],
+    [
+      { infrastructure: "." },
+      withFrontend,
+      "infrastructure: it cannot be the repository root, since its checks and review rules cover all of its directory",
+    ],
     [{ cli: "tools" }, config, "layout"],
   ])("refuses the layout %j", (layout, base, message) => {
     expect(() => validateConfig({ ...base, layout })).toThrow(message);

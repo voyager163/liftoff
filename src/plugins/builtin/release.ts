@@ -1,6 +1,8 @@
 import { RELEASE_MANIFEST_PREDICATE } from "../../domain/governance/release.ts";
+import { placedIn } from "../../domain/project/config.ts";
 import { renderTemplate } from "../../generators/template.ts";
 import type { Artifact, ProjectPlugin } from "../contracts/project-plugin.ts";
+import { layoutValues } from "./files.ts";
 
 const ROOT = "templates/release";
 
@@ -62,7 +64,7 @@ export const releasePlugin: ProjectPlugin = {
           images: images
             .map(
               ({ name, context: directory }) =>
-                `          - name: ${name}\n            context: ${directory}`,
+                `          - name: ${name}\n            context: ${placedIn(context.layout, directory)}`,
             )
             .join("\n"),
           trivyVersion: TRIVY.version,
@@ -78,7 +80,9 @@ export const releasePlugin: ProjectPlugin = {
               qualification: frontend
                 ? "its browser tests and the ZAP baseline scan"
                 : "the ZAP baseline scan",
-              browserTests: frontend ? read("browser-tests.yml").trimEnd() : "",
+              browserTests: frontend
+                ? read("browser-tests.yml", layoutValues(context.layout)).trimEnd()
+                : "",
             })
           : read("20-release.yml"),
       ),

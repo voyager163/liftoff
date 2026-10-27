@@ -1,7 +1,7 @@
 - package-ecosystem: opentofu
   directories:
-    - /infrastructure/opentofu/azure/bootstrap
-    - /infrastructure/opentofu/azure/environments/*
+    - /{{liftoff.infrastructurePrefix}}bootstrap
+    - /{{liftoff.infrastructurePrefix}}environments/*
   schedule:
     interval: weekly
   cooldown:

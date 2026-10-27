@@ -137,11 +137,39 @@ export function layoutOf(config: ProjectConfig): Partial<Record<Component, strin
 export const isStandardLayout = (config: ProjectConfig): boolean =>
   Object.keys(config.layout).length === 0;
 
+/** The directory of every part: its binding, or the standard directory. */
+export type Directories = Readonly<Record<Component, string>>;
+
+export const directoriesOf = (config: ProjectConfig): Directories => ({
+  backend: config.layout.backend ?? STANDARD_LAYOUT.backend,
+  frontend: config.layout.frontend ?? STANDARD_LAYOUT.frontend,
+  infrastructure: config.layout.infrastructure ?? STANDARD_LAYOUT.infrastructure,
+});
+
+/**
+ * Where a path named in the standard layout lies in a project: a path in a
+ * part's standard directory moves to the directory the part is bound to, so
+ * `backend/tests/**` is `api/tests/**` for a backend in `api`, and `tests/**`
+ * for one at the root. Any other path stays as it is.
+ */
+export function placedIn(directories: Directories, path: string): string {
+  for (const component of COMPONENTS) {
+    const standard = STANDARD_LAYOUT[component];
+    const bound = directories[component];
+    if (path === standard) return bound;
+    if (!path.startsWith(`${standard}/`)) continue;
+    const rest = path.slice(standard.length + 1);
+    if (bound === ".") return rest === "" ? "." : rest;
+    return `${bound}/${rest}`;
+  }
+  return path;
+}
+
 /**
  * Why the layout cannot be used, or undefined: each binding is for a part
- * the project has, is "." or a repository-relative path outside .git,
- * .github and .liftoff, and no part lies inside another part's directory,
- * except inside the repository root.
+ * the project has, is "." (never for the infrastructure) or a
+ * repository-relative path outside .git, .github and .liftoff, and no part
+ * lies inside another part's directory, except inside the repository root.
  */
 function layoutProblem(config: ProjectConfig): string | undefined {
   for (const component of COMPONENTS) {
@@ -149,6 +177,9 @@ function layoutProblem(config: ProjectConfig): string | undefined {
     if (directory === undefined) continue;
     if (!hasComponent(config, component)) {
       return `${component}: the project has no ${component}`;
+    }
+    if (directory === "." && component === "infrastructure") {
+      return "infrastructure: it cannot be the repository root, since its checks and review rules cover all of its directory";
     }
     if (directory === ".") continue;
     const problem = repositoryPathProblem(directory);

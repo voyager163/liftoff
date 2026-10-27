@@ -191,7 +191,7 @@ describe("PROJ-024 layout bindings", () => {
           liftoffVersion: "1.0.0",
         },
       ),
-    ).rejects.toThrow("this release generates only the standard layout");
+    ).rejects.toThrow("this release generates an application's files only in the standard layout");
   });
 
   it("warns about a part bound to a directory that is not there", async () => {
