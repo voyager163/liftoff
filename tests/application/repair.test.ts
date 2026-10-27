@@ -368,6 +368,27 @@ describe("REPAIR-003 a reviewed patch changes only the project's own files, with
     ]);
   });
 
+  it("keeps a patched file's permissions, so a private file stays private", async () => {
+    await generated();
+    write("config/.env.local", "SECRET=1\n");
+    write("scripts/private.sh", "echo one\n");
+    if (process.platform !== "win32") {
+      const { chmodSync } = await import("node:fs");
+      chmodSync(at("config/.env.local"), 0o600);
+      chmodSync(at("scripts/private.sh"), 0o700);
+    }
+    const repair = await patch(
+      `${diff("config/.env.local", "SECRET=1\n", "SECRET=2\n")}${diff("scripts/private.sh", "echo one\n", "echo two\n")}`,
+      ["config", "scripts"],
+    );
+    await apply(repair);
+    expect(read("config/.env.local")).toBe("SECRET=2\n");
+    if (process.platform !== "win32") {
+      expect(statSync(at("config/.env.local")).mode & 0o777).toBe(0o600);
+      expect(statSync(at("scripts/private.sh")).mode & 0o777).toBe(0o700);
+    }
+  });
+
   it.each<[string, () => string, string[], RegExp]>([
     [
       "a file Liftoff manages",
