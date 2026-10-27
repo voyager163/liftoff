@@ -105,7 +105,9 @@ describe("MIGRATE-003 migrating from the command line", () => {
     const run = await migrate(["--yes", "--to", "../next"]);
     expect(run.code).toBe(0);
     expect(run.out).toContain(", 2 of them copied from ");
-    expect(run.out).toContain("which is unchanged.\n\nNext:\n  cd ../next\n  follow MIGRATION.md");
+    expect(run.out).toContain(
+      `which is unchanged.\n\nNext:\n  cd ${path.join("..", "next")}\n  follow MIGRATION.md`,
+    );
     expect(readdirSync(work).sort()).toEqual(["shop", "next"].sort());
   });
 
@@ -158,6 +160,42 @@ describe("MIGRATE-003 migrating from the command line", () => {
     expect(inTarget.code).toBe(2);
     expect(snapshot()).toEqual(before);
     expect(readdirSync(target())).toEqual([]);
+  });
+
+  it("refuses a target or a plan named with two dots inside the old project, and a plan written through a link", async () => {
+    const before = snapshot();
+    const dotted = await migrate(["--check", "--to", "./..next"]);
+    expect(dotted.code).toBe(1);
+    expect(dotted.err).toContain("overlaps the project it is made from");
+    const plan = await migrate(["--out", "..plan.json"]);
+    expect(plan.code).toBe(2);
+    expect(plan.err).toContain("which migrating does not write to");
+    expect(snapshot()).toEqual(before);
+    // A link to a file is a privilege on Windows, so this part runs elsewhere.
+    if (process.platform === "win32") return;
+    symlinkSync(path.join(root(), "new-plan.json"), path.join(work, "plan.json"));
+    const linked = await migrate(["--out", "../plan.json"]);
+    expect(linked.code).toBe(2);
+    expect(linked.err).toContain(
+      "--out ../plan.json is a link, which Liftoff does not write through",
+    );
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("cancels on Ctrl+C while it plans, even with --check", async () => {
+    const io = captureIo(root());
+    const aborting = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (directory: string, relative: string, maxBytes: number) => {
+        io.controller.abort();
+        return fs.hashWithin(directory, relative, maxBytes);
+      },
+    });
+    const command = makeMigrateCommand(
+      (cwd) => ({ ...defaultProjectPorts(cwd), fs: aborting }),
+      path.join(work, "home"),
+    );
+    expect(await runCli(["migrate", "--check"], io, [command], "1.0.0")).toBe(4);
+    expect(io.out.join("")).toBe("");
   });
 
   it("saves a plan, applies exactly that plan, and refuses it once the project changed", async () => {

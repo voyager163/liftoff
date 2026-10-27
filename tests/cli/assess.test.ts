@@ -137,6 +137,22 @@ describe("ASSESS-001 what is assessed", () => {
   });
 });
 
+describe("ASSESS-001 assessing can be cancelled", () => {
+  it("exits 4 on Ctrl+C, reporting nothing", async () => {
+    const io = captureIo(path.join(work, "demo"));
+    const fs = new LocalProjectFs();
+    const aborting = Object.assign(Object.create(fs) as LocalProjectFs, {
+      listWithin: (directory: string, relative: string, max: number) => {
+        io.controller.abort();
+        return fs.listWithin(directory, relative, max);
+      },
+    });
+    const command = makeAssessCommand(() => ({ fs: aborting, github }), path.join(work, "home"));
+    expect(await runCli(["assess"], io, [command], "1.0.0")).toBe(4);
+    expect(io.out.join("")).toBe("");
+  });
+});
+
 describe("ASSESS-002 a project directory named through a link", () => {
   it("is followed once, for assess, validate and governance status", async () => {
     symlinkSync(path.join(work, "demo"), path.join(work, "demo-link"), "junction");

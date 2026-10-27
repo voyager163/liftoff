@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { WorkspacePort } from "../application/ports.ts";
+import { leaves } from "../domain/project/paths.ts";
 
 /** Reads files under a root directory, refusing paths that escape it. */
 export class LocalWorkspace implements WorkspacePort {
@@ -13,7 +14,7 @@ export class LocalWorkspace implements WorkspacePort {
   async readText(relativePath: string): Promise<string | undefined> {
     const target = path.resolve(this.root, relativePath);
     const inside = path.relative(this.root, target);
-    if (inside.startsWith("..") || path.isAbsolute(inside)) {
+    if (leaves(inside)) {
       throw new Error(`refusing to read outside the workspace: ${relativePath}`);
     }
     try {

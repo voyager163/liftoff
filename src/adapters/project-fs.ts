@@ -12,6 +12,7 @@ import {
   opendir,
   readdir,
   readFile,
+  realpath,
   rename,
   rm,
   rmdir,
@@ -104,6 +105,16 @@ export class LocalProjectFs implements ProjectFsPort {
           ? mode | ((mode & 0o444) >> 2)
           : mode & ~0o111,
     );
+  }
+
+  async realPath(target: string): Promise<string | undefined> {
+    try {
+      return await realpath(target);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+      throw error;
+    }
   }
 
   async directoryIdentity(target: string): Promise<string | undefined> {

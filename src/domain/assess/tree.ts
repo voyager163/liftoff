@@ -64,22 +64,26 @@ const CREDENTIAL_FILES = new Set([
   "kubeconfig",
 ]);
 
+/** Extensions of files that hold data rather than code, for names that say what the data is. */
+const DATA = /\.(json|ya?ml|toml|ini|env|txt|xml|conf|cfg|properties|plist)$/;
+
 /**
  * Files that may hold secrets or state, such as `.env`, `.envrc`, a
- * `.tfstate`, `credentials.json`, `secrets.toml` or a SQLite database.
- * They are noted as present, never read, and never copied. Examples meant to
- * be committed are not.
+ * `.tfstate`, `credentials.json`, `secrets.local.toml` or a SQLite
+ * database. They are noted as present, never read, and never copied.
+ * Examples meant to be committed, with "example", "sample" or "template" in
+ * their name, are not; nor is code named for secrets, such as
+ * `credentials_test.py`.
  */
 export function holdsSecretsOrState(file: string): boolean {
   const name = path.posix.basename(file).toLowerCase();
-  if (/\.(example|sample|template)$/.test(name)) return false;
-  const stem = name.replace(/\.[^.]*$/, "");
+  if (/(^|[._-])(example|sample|template)([._-]|$)/.test(name)) return false;
+  const secretName = /^(secrets?|credentials?|client[-_]secrets?|service[-_]account)([._-]|$)/;
   return (
     name === ".env" ||
     name.startsWith(".env.") ||
     CREDENTIAL_FILES.has(name) ||
-    /^(secrets?|credentials?)$/.test(stem) ||
-    /^(client_secret|service[-_]account)/.test(name) ||
+    (secretName.test(name) && (DATA.test(name) || !name.includes("."))) ||
     /\.(secrets?)$/.test(name) ||
     /\.tfstate(\.backup)?$/.test(name) ||
     /\.tfvars(\.json)?$/.test(name) ||

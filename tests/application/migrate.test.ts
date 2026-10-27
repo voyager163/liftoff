@@ -202,6 +202,35 @@ describe("MIGRATE-001 migrating makes a new project beside the old one, and neve
     expect(isBlocked(await migrate())).toBe(false);
   });
 
+  it("takes a name that only starts with two dots for one inside the old project", async () => {
+    service();
+    await expect(migrate({}, fs, path.join(root, "..next"))).rejects.toThrow(
+      "overlaps the project it is made from",
+    );
+    mkdirSync(at("..work"));
+    await expect(migrate({}, fs, path.join(root, "..work", "next"))).rejects.toThrow(
+      "overlaps the project it is made from",
+    );
+  });
+
+  it("refuses a saved plan, and an apply, once a link redirects the new project's directory", async () => {
+    service();
+    write("sub/.keep", "");
+    const out = path.join(work, "out");
+    mkdirSync(path.join(out, "sub"), { recursive: true });
+    const plan = await migrate({}, fs, path.join(out, "sub", "next"));
+    const saved = plan.plan ?? fail();
+    const before = snapshot();
+    // The directory the plan names now leads into the old project.
+    rmSync(out, { recursive: true });
+    symlinkSync(root, out, "junction");
+    await expect(
+      planMigrateFromSaved({ assets, fs }, saved, VERSION, { refused: [], cwd: work }),
+    ).rejects.toThrow(`${path.join(out, "sub")} leads to ${path.join(root, "sub")} through a link`);
+    await expect(applyMigrate(fs, plan, { cwd: work })).rejects.toThrow(InitTargetError);
+    expect(snapshot()).toEqual(before);
+  });
+
   it("refuses a Liftoff project, an unfinished change, and a directory that is not a project", async () => {
     service();
     write(CONFIG_FILE, "schema: liftoff.config/v1\n");
@@ -541,9 +570,74 @@ describe("MIGRATE-002 the copy leaves out secrets, dependencies, caches, state a
       {
         path: "docs/notes.md",
         kind: "name",
-        why: "macOS and Windows take it for docs/Notes.md",
+        why: "macOS and Windows take docs/notes.md for docs/Notes.md",
       },
       { path: "docs/nul.txt", kind: "name", why: expect.stringContaining("nul.txt") },
+    ]);
+  });
+
+  it("leaves out a file a directory takes the name of on macOS and Windows, and two spellings of one directory", async () => {
+    write("pyproject.toml", PYPROJECT);
+    write("data/app.txt", "app\n");
+    write("Docs/a.md", "a\n");
+    write("docs-extra/b.md", "b\n");
+    // As a volume that tells letter case apart would list them.
+    const sensitive: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      listWithin: async (directory: string, relative: string, max: number) => {
+        const listing = await fs.listWithin(directory, relative, max);
+        if (listing.kind !== "directory" || relative !== ".") return listing;
+        return {
+          ...listing,
+          entries: [
+            ...listing.entries,
+            { name: "Data", kind: "file" as const },
+            { name: "docs", kind: "directory" as const },
+          ].sort((a, b) => (a.name < b.name ? -1 : 1)),
+        };
+      },
+      hashWithin: (directory: string, relative: string, maxBytes: number) =>
+        relative === "Data"
+          ? Promise.resolve({ kind: "file", size: 5, sha256: "0".repeat(64) } satisfies FileHash)
+          : fs.hashWithin(directory, relative, maxBytes),
+    });
+    const plan = await migrate({}, sensitive);
+    expect(plan.copies.map((copy) => copy.path)).toEqual([
+      "Data",
+      "Docs/a.md",
+      "docs-extra/b.md",
+      "pyproject.toml",
+    ]);
+    expect(plan.left).toEqual([
+      { path: "data/app.txt", kind: "name", why: "macOS and Windows take data for Data" },
+      { path: "docs/a.md", kind: "name", why: "macOS and Windows take docs for Docs" },
+    ]);
+  });
+
+  it("refuses a declaration that changed after the assessment read it, and blocks one that is not UTF-8", async () => {
+    service();
+    let edited = false;
+    const editing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (directory: string, relative: string, maxBytes: number) => {
+        if (relative === "pyproject.toml" && !edited) {
+          edited = true;
+          write(
+            "pyproject.toml",
+            PYPROJECT.replace('"fastapi>=0.115"', '"fastapi", "pydantic-ai"'),
+          );
+        }
+        return fs.hashWithin(directory, relative, maxBytes);
+      },
+    });
+    await expect(migrate({}, editing)).rejects.toThrow(
+      "pyproject.toml changed while migrating was being planned; plan it again",
+    );
+    writeFileSync(
+      at("pyproject.toml"),
+      Buffer.concat([Buffer.from("# d"), Buffer.from([0xe9]), Buffer.from(`j\n${PYPROJECT}`)]),
+    );
+    const latin = await migrate();
+    expect(latin.blocked).toEqual([
+      "pyproject.toml is not UTF-8 text; save it as UTF-8 to migrate the project",
     ]);
   });
 
@@ -682,6 +776,19 @@ describe("MIGRATE-003 a checklist says what to move, and the new project is chec
     // What only a migration holds, it must hold, and nothing else may.
     const { source: _, ...sourceless } = plan.plan as Plan;
     expect(() => parsePlan(JSON.stringify(sourceless), "migrate")).toThrow(PlanError);
+  });
+
+  it("stops planning when cancelled", async () => {
+    service();
+    const controller = new AbortController();
+    const cancelling: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (directory: string, relative: string, maxBytes: number) => {
+        if (relative === "README.md") controller.abort();
+        return fs.hashWithin(directory, relative, maxBytes);
+      },
+    });
+    await expect(migrate({}, cancelling, target, { signal: controller.signal })).rejects.toThrow();
+    expect(readdirSync(work)).toEqual(["shop"]);
   });
 
   it("leaves nothing when cancelled before the project is in place", async () => {

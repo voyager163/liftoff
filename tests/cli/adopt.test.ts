@@ -170,6 +170,22 @@ describe("ADOPT-005 adopting from the command line", () => {
     }
   });
 
+  it("cancels on Ctrl+C while it plans, even with --check", async () => {
+    const io = captureIo(root());
+    const aborting = Object.assign(Object.create(fs) as ProjectFsPort, {
+      listWithin: (directory: string, relative: string, max: number) => {
+        io.controller.abort();
+        return fs.listWithin(directory, relative, max);
+      },
+    });
+    const command = makeAdoptCommand(
+      (cwd) => ({ ...defaultProjectPorts(cwd), fs: aborting }),
+      path.join(work, "home"),
+    );
+    expect(await runCli(["adopt", "--check"], io, [command], "1.0.0")).toBe(4);
+    expect(io.out.join("")).toBe("");
+  });
+
   it("finishes an adoption only while what it rests on is as it was", async () => {
     let moves = 0;
     const failing = Object.assign(Object.create(fs) as ProjectFsPort, {

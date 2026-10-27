@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AssetPort } from "../application/ports.ts";
+import { leaves } from "../domain/project/paths.ts";
 
 /**
  * The assets directory of this installation. Source and built layouts both
@@ -57,7 +58,7 @@ export class PackageAssets implements AssetPort {
   private resolve(relative: string): string {
     const target = path.resolve(this.root, relative);
     const inside = path.relative(this.root, target);
-    if (inside.startsWith("..") || path.isAbsolute(inside)) {
+    if (leaves(inside)) {
       throw new Error(`asset path escapes the asset root: ${relative}`);
     }
     return target;

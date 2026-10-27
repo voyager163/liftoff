@@ -78,8 +78,8 @@ with its permissions, except:
   old project as its history;
 - links, which are never followed;
 - files over 64 MiB;
-- paths not every system can hold, and a second path that macOS and Windows
-  take for the same file.
+- paths not every system can hold, and a path that macOS and Windows take
+  for another the copy holds, such as `Data` and `data/app.txt`.
 
 The plan names each one left out, and so does `MIGRATION.md`. The plan
 lists each copied file with its sha256: a file changed since the plan was

@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { CHECKLIST_FILE, COPY_DIRECTORY } from "../../application/migrate/checklist.ts";
@@ -100,6 +101,28 @@ const reported = (migration: MigratePlan) => ({
   ...(migration.plan === undefined ? {} : { plan: migration.plan.hash }),
 });
 
+/** Refuses an --out that is a link, even one to nothing yet, which would write wherever it points. */
+async function refuseLink(cwd: string, out: string): Promise<void> {
+  const entry = await lstat(path.resolve(cwd, out)).catch(() => undefined);
+  if (entry?.isSymbolicLink()) {
+    throw new UsageError(`--out ${out} is a link, which Liftoff does not write through`);
+  }
+}
+
+/** Writes the plan, following no link at the file where the system allows. */
+async function writePlan(file: string, text: string): Promise<void> {
+  const handle = await open(
+    file,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0),
+    0o644,
+  );
+  try {
+    await handle.writeFile(text);
+  } finally {
+    await handle.close();
+  }
+}
+
 /** The options that choose what the new project is, which a saved plan already names. */
 const CHOSEN = Object.keys(CHOICE_OPTIONS);
 
@@ -183,6 +206,7 @@ export function makeMigrateCommand(
           migration = await planMigrateFromSaved(ports, parsePlan(text, "migrate"), version, {
             refused,
             cwd: io.cwd,
+            signal: io.signal,
           });
         } else {
           const source = await projectDirectory(io.cwd, args.options.dir as string);
@@ -193,6 +217,7 @@ export function makeMigrateCommand(
           );
           // The old project is never written to, and the new one's directory must stay empty.
           if (out !== undefined) {
+            await refuseLink(io.cwd, out);
             const file = await newDirectory(io.cwd, out);
             const inside = [source, target].find((directory) => within(file, directory));
             if (inside !== undefined) {
@@ -205,6 +230,7 @@ export function makeMigrateCommand(
             named: args.given.has("dir"),
             refused,
             cwd: io.cwd,
+            signal: io.signal,
           });
         }
       } catch (error) {
@@ -214,6 +240,8 @@ export function makeMigrateCommand(
         return toCli(error);
       }
 
+      // Ctrl+C while planning, even for --check, cancels rather than reporting.
+      io.signal.throwIfAborted();
       const lines = renderMigrate(migration, version);
       if (isBlocked(migration)) {
         return {
@@ -230,7 +258,7 @@ export function makeMigrateCommand(
         if (out !== undefined) {
           const file = path.resolve(io.cwd, out);
           io.signal.throwIfAborted();
-          await writeFile(file, `${JSON.stringify(plan, null, 2)}\n`);
+          await writePlan(file, `${JSON.stringify(plan, null, 2)}\n`);
           lines.push(
             "",
             `Saved the plan to ${shown(file)}.`,

@@ -230,6 +230,8 @@ export function makeAdoptCommand(
         return toCli(error);
       }
 
+      // Ctrl+C while planning, even for --check, cancels rather than reporting.
+      io.signal.throwIfAborted();
       const lines = renderAdopt(adopt, version);
       if (isBlocked(adopt)) {
         return {

@@ -13,7 +13,7 @@ import {
   validateConfig,
 } from "../../domain/project/config.ts";
 import { MANIFEST_FILE, parseManifest, serializeManifest } from "../../domain/project/manifest.ts";
-import { pathKey, repositoryPathProblem } from "../../domain/project/paths.ts";
+import { leaves, pathKey, repositoryPathProblem } from "../../domain/project/paths.ts";
 import { isExecutable } from "../../generators/project.ts";
 import { ENVIRONMENTS } from "../../plugins/contracts/project-plugin.ts";
 import {
@@ -114,6 +114,8 @@ export const isBlocked = (migration: MigratePlan): boolean => migration.blocked.
 export type MigrateWhere = Pick<AssessOptions, "named" | "refused" | "limits"> & {
   /** The caller's working directory, which must not be the new project's or inside it. */
   readonly cwd?: string;
+  /** Stops planning between files, as hashing every file of a large project takes a while. */
+  readonly signal?: AbortSignal;
 };
 
 const changedWhilePlanned = (file: string) =>
@@ -122,15 +124,19 @@ const changedWhilePlanned = (file: string) =>
 /** Whether `inner` is `outer` or inside it, as macOS and Windows compare names. */
 export function within(inner: string, outer: string): boolean {
   const relative = path.relative(pathKey(outer), pathKey(inner));
-  return relative === "" || !(relative.startsWith("..") || path.isAbsolute(relative));
+  return relative === "" || !leaves(relative);
 }
 
 /**
  * Refuses a target that is the old project, is inside it or holds it, as
  * macOS and Windows compare names, or whose directory is not there: the new
  * project goes in a directory that exists, so nothing is made on the way to
- * it, inside the old project or anywhere else. Links in both paths are
- * followed by the caller, once, before they are compared.
+ * it, inside the old project or anywhere else. The caller follows each link
+ * in both paths once; here they must still lead nowhere else, so a saved
+ * plan whose directories a link now redirects is refused, and so is one
+ * redirected between planning and applying. Node has no way to create a
+ * directory relative to one held open, so a link swapped in after this
+ * check and before the new project is staged is the one case it cannot see.
  */
 async function checkMigrationTarget(
   fs: ProjectFsPort,
@@ -148,6 +154,17 @@ async function checkMigrationTarget(
     throw new InitTargetError(
       `${parent}, where the new project goes, is not a directory; make it first`,
     );
+  }
+  for (const directory of [source, parent]) {
+    const real = await fs.realPath(directory);
+    if (real === undefined || pathKey(real) !== pathKey(directory)) {
+      throw new InitTargetError(
+        `${directory} leads ${real === undefined ? "nowhere" : `to ${real}`} through a link; name the directories as they are, or make a new plan`,
+      );
+    }
+  }
+  if ((await fs.entry(target)).kind === "other") {
+    throw new InitTargetError(`${target} is a link or special file, which Liftoff does not follow`);
   }
   await checkTarget(fs, target, cwd, "migrate");
 }
@@ -185,8 +202,9 @@ export async function planMigrate(
 
   const read = new Map<string, string>();
   const walked = new Map<string, EntryKind>();
-  const { cwd: _, ...assessWhere } = where;
+  const { cwd: _, signal, ...assessWhere } = where;
   const assessment = await assessProject(fs, source, { ...assessWhere, read, walked });
+  signal?.throwIfAborted();
   const legacy = assessment.legacy?.records ?? [];
   const blocked = legacyBlocks(legacy, "migrating");
   const old = await oldChoices(fs, source, legacy, read, changedWhilePlanned);
@@ -204,7 +222,9 @@ export async function planMigrate(
     walked,
     assessment.gaps,
     legacy,
+    signal,
   );
+  blocked.push(...(await sameAsAssessed(fs, source, assessment.parts, read, copies)));
   for (const file of closed) {
     blocked.push(`${file} is closed to this user, so the copy would miss it`);
   }
@@ -503,6 +523,41 @@ function releaseOf(legacy: readonly LegacyRecord[]): { readonly release?: string
 }
 
 /**
+ * The declarations the parts were found from must be the files the copy
+ * holds, byte for byte: what the proposal and the checklist say comes from
+ * the same project the copy does. A declaration whose text is the same but
+ * whose bytes are not is not UTF-8, so what was read is not what is there,
+ * which blocks migrating; any other difference means it changed meanwhile.
+ */
+async function sameAsAssessed(
+  fs: ProjectFsPort,
+  source: string,
+  parts: readonly Part[],
+  read: ReadonlyMap<string, string>,
+  copies: readonly CopiedFile[],
+): Promise<string[]> {
+  const blocked: string[] = [];
+  const copied = new Map(copies.map((copy) => [copy.path, copy.sha256]));
+  const declarations = new Set(
+    parts.flatMap((part) =>
+      part.evidence.filter((evidence) => evidence.how === "read").map((evidence) => evidence.path),
+    ),
+  );
+  for (const file of [...declarations].sort()) {
+    const seen = read.get(file);
+    // One the copy leaves out, by name or size, is named with why already.
+    if (seen === undefined || !copied.has(file) || copied.get(file) === seen) continue;
+    const again = await fs.readWithin(source, file, MAX_COPIED_BYTES);
+    if (again.kind === "file" && again.text !== undefined && sha256Hex(again.text) === seen) {
+      blocked.push(`${file} is not UTF-8 text; save it as UTF-8 to migrate the project`);
+      continue;
+    }
+    throw new ProjectChangeError(changedWhilePlanned(file));
+  }
+  return blocked;
+}
+
+/**
  * Every regular file the walk reached that the copy holds, each hashed as
  * it is now, and what it leaves out: Git's data, dependencies, caches and
  * build output; files that may hold secrets or state; records from before
@@ -515,6 +570,7 @@ async function copyList(
   walked: ReadonlyMap<string, EntryKind>,
   gaps: readonly Gap[],
   legacy: readonly LegacyRecord[],
+  signal: AbortSignal | undefined,
 ): Promise<{ copies: CopiedFile[]; left: LeftOut[]; closed: string[]; bytes: number }> {
   const records = new Set(legacy.map((record) => pathKey(record.path)));
   const left: LeftOut[] = [];
@@ -540,13 +596,35 @@ async function copyList(
   }
   const copies: CopiedFile[] = [];
   const closed: string[] = [];
-  const taken = new Map<string, string>();
+  // Each copied file and each directory on the way to one, by the name
+  // macOS and Windows compare, with its spelling: a file and a directory
+  // they take for the same name, or two spellings of one, cannot both be in
+  // the copy.
+  const taken = new Map<string, { readonly spelling: string; readonly kind: EntryKind }>();
+  const prefixes = (file: string) =>
+    file.split("/").map((_, depth, parts) => ({
+      spelling: parts.slice(0, depth + 1).join("/"),
+      kind: (depth === parts.length - 1 ? "file" : "directory") as EntryKind,
+    }));
+  const clash = (file: string) => {
+    for (const { spelling, kind } of prefixes(file)) {
+      const seen = taken.get(pathKey(spelling));
+      if (
+        seen !== undefined &&
+        (kind === "file" || seen.kind !== kind || seen.spelling !== spelling)
+      ) {
+        return `macOS and Windows take ${spelling} for ${seen.spelling}`;
+      }
+    }
+    return undefined;
+  };
   let bytes = 0;
   const files = [...walked]
     .filter(([file, kind]) => kind === "file" && !notRead.has(file))
     .map(([file]) => file)
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   for (const file of files) {
+    signal?.throwIfAborted();
     const key = pathKey(file);
     if (records.has(key)) {
       left.push({
@@ -556,17 +634,11 @@ async function copyList(
       });
       continue;
     }
-    const problem = repositoryPathProblem(file);
-    const other = taken.get(key);
-    if (problem !== undefined || other !== undefined) {
-      left.push({
-        path: file,
-        kind: "name",
-        why: problem ?? `macOS and Windows take it for ${other}`,
-      });
+    const problem = repositoryPathProblem(file) ?? clash(file);
+    if (problem !== undefined) {
+      left.push({ path: file, kind: "name", why: problem });
       continue;
     }
-    taken.set(key, file);
     const now = await fs.hashWithin(source, file, MAX_COPIED_BYTES);
     if (now.kind === "inaccessible") {
       closed.push(now.via ?? file);
@@ -582,6 +654,7 @@ async function copyList(
       continue;
     }
     copies.push({ path: file, sha256: now.sha256, bytes: now.size });
+    for (const prefix of prefixes(file)) taken.set(pathKey(prefix.spelling), prefix);
     bytes += now.size;
   }
   left.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));

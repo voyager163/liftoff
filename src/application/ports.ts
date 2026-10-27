@@ -140,6 +140,11 @@ export interface ProjectFsPort {
    */
   matchPermissions(from: string, to: string, executable: boolean): Promise<void>;
   /**
+   * The path with every link in it followed, or undefined when it is not
+   * there.
+   */
+  realPath(path: string): Promise<string | undefined>;
+  /**
    * What identifies a directory, such as its inode, while it exists, even
    * across the disk being detached and attached again; undefined when it is
    * missing, a link or not a directory. A copy of a directory has a

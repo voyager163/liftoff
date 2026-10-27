@@ -202,7 +202,8 @@ Verification: test
 directory named with `--dir`. It refuses the root of the file system and
 the home directory. It writes no file, receipt or record into the project or
 anywhere else, runs no project script or tool, installs nothing, asks for no
-credentials and, without `--live`, contacts no network service.
+credentials and, without `--live`, contacts no network service. Ctrl+C
+while it assesses exits 4 and reports nothing.
 
 It reads only the declarations it interprets: `pyproject.toml`,
 `package.json`, `go.mod`, Compose files, Vitest, Vite and Jest
@@ -680,8 +681,11 @@ project goes in a new or empty directory named with `--to`, by default the
 old project's directory name followed by `-liftoff`, beside it. The
 directory it goes in must exist. The new project's directory may not be the
 old project, be inside it or hold it, compared as macOS and Windows compare
-names once each link in either path is followed, and may not be the
-current directory or hold it. `--out` may not save a plan in either.
+names once each link in either path is followed (a name that only starts
+with two dots, such as `..next`, is inside), and may not be the current
+directory or hold it. When a saved plan is applied, and again just before
+the new project is made, no link may lead either directory elsewhere.
+`--out` may not save a plan in either, or write through a link.
 
 Migrating writes nothing into the old project: no file, lock or record. It
 reads the project as `liftoff assess` does (ASSESS-001 and ASSESS-002),
@@ -713,10 +717,16 @@ names each reason and exits 3 when:
   it says to leave that part out with `--frontend none` or
   `--infrastructure none`;
 - the directory's name makes no project name and `--name` gives none;
+- a declaration a part was found from is not UTF-8 text, so what was read
+  is not what is there;
 - a record from a Liftoff release before the rebuild is unsupported
   (LEGACY-002), or is an update or repair that release did not finish
   (LEGACY-001);
 - what it would copy is over 1 GiB together.
+
+Planning refuses a declaration a part was found from that changed after it
+was read, so the proposal, the checklist and the copy describe the same
+project. Ctrl+C while planning, even with `--check`, exits 4.
 
 - Given a FastAPI project, when it is migrated, then the new project has a
   `python-fastapi` backend in `backend/`, and no file in the old project
@@ -738,8 +748,9 @@ regular file the walk reaches, except:
   stay with the old project as its history;
 - links and special files, which are never followed;
 - a file over 64 MiB;
-- a path not every system can hold (CHANGE-001), or a second path that
-  macOS and Windows take for the same file.
+- a path not every system can hold (CHANGE-001), or one that macOS and
+  Windows take for another the copy holds: the same file, a file and a
+  directory, or two spellings of one directory.
 
 Each file or directory left out is named, with why, in the plan and in
 `MIGRATION.md`. The plan lists each copied file with its sha256 and size. A

@@ -142,6 +142,8 @@ export function makeAssessCommand(
         if (error instanceof AssessError) throw new UsageError(error.message);
         throw error;
       }
+      // Ctrl+C while assessing cancels rather than reporting.
+      io.signal.throwIfAborted();
       const { summary } = assessment;
       return {
         outcome: summary.compliant === assessment.findings.length ? "success" : "attention",
