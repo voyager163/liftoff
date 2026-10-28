@@ -319,7 +319,10 @@ export const requiresGo = (module: GoModule, prefix: string): boolean =>
 
 /** The providers a .terraform.lock.hcl locks, such as "hashicorp/azurerm". */
 export const lockedProviders = (text: string): string[] =>
-  [...text.matchAll(/^provider\s+"(?:[^"/]+\/)?([^"]+)"/gm)].map((match) => match[1] ?? "");
+  // A provider's address is a quoted string on one line, as HCL writes it.
+  [...text.matchAll(/^provider[ \t]+"(?:[^"/\r\n]+\/)?([^"\r\n]+)"/gm)].map(
+    (match) => match[1] ?? "",
+  );
 
 /** What a GitHub Actions workflow declares, or undefined when it is not valid YAML. */
 export interface Workflow {

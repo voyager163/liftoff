@@ -1015,13 +1015,16 @@ function dataChecks(
 /**
  * What adopting does for a project that is not Liftoff's, named only when
  * `liftoff adopt` can: when a backend this release supports was found.
+ * Otherwise `liftoff migrate` makes a new project beside it, on a stack
+ * this release has.
  */
 const adopting = (text: string, adoptable: boolean): NextAction =>
   adoptable
     ? { category: "liftoff", text, command: "liftoff adopt" }
     : {
-        category: "unavailable",
-        text: "Adopting needs a backend this release supports (a FastAPI, PydanticAI, Fastify or Huma application), and none was found.",
+        category: "liftoff",
+        text: "Adopting needs a backend this release supports (a FastAPI, PydanticAI, Fastify or Huma application), and none was found; migrate the project instead, naming the stack the new project has with --stack. The new project goes beside this one, with a copy of its files, and this one is not changed.",
+        command: "liftoff migrate",
       };
 
 /**

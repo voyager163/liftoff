@@ -201,6 +201,43 @@ liftoff adopt --plan adopt.plan.json --yes
 liftoff adopt --recover undo
 ```
 
+## liftoff migrate
+
+Reads the project as liftoff assess does, running nothing, and proposes the new project from what it finds, as liftoff adopt does; options replace any part of the proposal. In a new or empty directory beside it, it makes the project liftoff init would make, starter application included, with a copy of the old project's files in legacy/ and MIGRATION.md, a checklist of what to move and how to check it. The copy leaves out Git's data, installed dependencies, caches, build output, files that may hold secrets or state, and records from a Liftoff release before the rebuild, and names each. The old project is never changed. It shows the plan and asks before creating anything; the default answer is no. In scripts, pass --yes.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.migrate/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | The project to migrate. Without it, the current directory must be the root of a Git repository. (default `.`) |
+| `--to <path>` | A new or empty directory for the new project. Defaults to the project's directory name followed by -liftoff, beside it. |
+| `--name <name>` | Project name: 2 to 50 lowercase letters, digits and single hyphens. Defaults to the old configuration's, or the directory's name. |
+| `--stack <stack>` | The new project's backend stack. Defaults to the stack of the backend the project holds; name one to move the application to it. (one of `python-fastapi`, `node-fastify`, `go-huma`, `python-pydanticai`) |
+| `--pattern <pattern>` | GenAI pattern, for a PydanticAI backend. Defaults to generic. (one of `generic`, `prompt`, `chatbot`, `rag`, `agent`, `multi-agent`, `fine-tuned`, `streaming`, `workflow`) |
+| `--frontend <frontend>` | Web frontend, or none to leave one found as the project's own. (one of `none`, `vue`) |
+| `--infrastructure <provider>` | Infrastructure as code, or none to leave any found as the project's own. (one of `none`, `azure`) |
+| `--environments <list>` | Environments the infrastructure deploys to, comma-separated: dev, staging, prod. Defaults to all three. |
+| `--agents <list>` | Coding-agent hosts, comma-separated: copilot, codex, claude. Defaults to those the project is set up for. |
+| `--governance <profile>` | Governance profile. Defaults to single-maintainer-gitflow. (one of `single-maintainer-gitflow`, `team-gitflow`, `risk-tiered-gitflow`, `none`) |
+| `--ai-review <mode>` | Verified AI review in CI; auto turns it on when agents are selected. (one of `auto`, `on`, `off`) |
+| `--review-engine <host>` | Which selected agent host runs the verified AI review. |
+| `--owners <logins>` | GitHub logins that own the project, comma-separated, for CODEOWNERS. |
+| `--check` | Create nothing; show what migrating would do, and exit 3 when the project cannot be migrated as it is. |
+| `--out <file>` | Save the plan to this file, outside the project, and create nothing; apply it with --plan. |
+| `--plan <file>` | Apply exactly this saved plan, and refuse it if the project or Liftoff changed since. |
+| `--yes` | Create the new project without asking. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff migrate --check
+liftoff migrate --dir ../service --to ../service-next --stack node-fastify
+liftoff migrate --out ../migrate.plan.json
+liftoff migrate --plan ../migrate.plan.json --yes
+```
+
 ## liftoff update
 
 Updates the files .liftoff/manifest.json lists as managed by Liftoff to what this release makes for the project's liftoff.yaml, and removes those it no longer makes. A managed file changed since Liftoff wrote it is left as it is and named. Files the project or a framework owns, such as its source, lock files, environment files, infrastructure and README, and liftoff.yaml itself, are never changed. Update never switches the workflow, governance profile, stack, pattern or agents, and refuses if liftoff.yaml was changed. New files this release makes are offered separately and added only if you choose them, or name them with --add, never over an existing file. It shows the plan and asks before changing anything; the default answer is no. In scripts, pass --yes. Each file is changed only if it is still as planned, and an update that stops part way can be finished or undone with --recover.

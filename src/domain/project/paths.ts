@@ -1,3 +1,5 @@
+import nodePath from "node:path";
+
 /**
  * Why a path is not a repository-relative POSIX path that every system and
  * Git can hold, or undefined when it is: no absolute path, drive or
@@ -62,3 +64,14 @@ export function repositoryPathProblem(path: string): string | undefined {
  */
 export const pathKey = (path: string): string =>
   path.normalize("NFC").toLowerCase().toUpperCase().toLowerCase().normalize("NFC");
+
+/**
+ * Whether a path that path.relative made leaves the directory it is
+ * relative to: ".." itself, or ".." and then a separator. A name that only
+ * starts with two dots, such as "..next", is inside it.
+ */
+export const leaves = (relative: string): boolean =>
+  relative === ".." ||
+  relative.startsWith(`..${nodePath.sep}`) ||
+  relative.startsWith("../") ||
+  nodePath.isAbsolute(relative);

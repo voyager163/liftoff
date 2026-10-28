@@ -113,6 +113,35 @@ describe("ASSESS-001 only declarations are read, and secrets are never", () => {
     ["certs/server.PEM", true],
     ["id_ed25519", true],
     [".npmrc", true],
+    [".envrc", true],
+    [".streamlit/secrets.toml", true],
+    ["config/credentials.json", true],
+    [".aws/credentials", true],
+    ["client_secret_123.apps.googleusercontent.com.json", true],
+    ["deploy/service-account.json", true],
+    ["app.secrets", true],
+    ["infra/prod.tfvars.json", true],
+    ["keys/AuthKey_ABC.p8", true],
+    ["data/app.sqlite3", true],
+    ["local.db", true],
+    ["data/app.sqlite3-wal", true],
+    ["data/app.sqlite3-journal", true],
+    ["app.db-shm", true],
+    ["credentials-production.json", true],
+    ["config/secrets.local.toml", true],
+    ["secrets", true],
+    ["prod.env", true],
+    ["deploy/app.env", true],
+    [".env-prod", true],
+    ["certs/example.com+3-key.pem", true],
+    [".github/workflows/secret-scan.yml", false],
+    [".github/workflows/secrets.yaml", false],
+    ["config/secrets.example.toml", false],
+    ["credentials.sample.json", false],
+    ["src/service_account.py", false],
+    ["secrets.toml.example", false],
+    ["docs/secret-management.md", false],
+    ["src/credentials_test.py", false],
     ["main.tf", false],
   ])("%s may hold secrets or state: %s", (file, expected) => {
     expect(holdsSecretsOrState(file)).toBe(expected);
@@ -302,6 +331,10 @@ jobs:
         'provider "registry.opentofu.org/hashicorp/azurerm" {\n}\nprovider "registry.opentofu.org/hashicorp/random" {\n}\n',
       ),
     ).toEqual(["hashicorp/azurerm", "hashicorp/random"]);
+    // An address is one quoted string on one line.
+    expect(
+      lockedProviders('provider "registry.opentofu.org/x/a\n\n- [ ] injected" {\n}\n'),
+    ).toEqual([]);
   });
 });
 
@@ -1238,7 +1271,7 @@ describe("ASSESS-003 Liftoff projects and projects from before the rebuild", () 
         (action) => action.command === "liftoff adopt",
       )?.text,
     ).toBe("Adopt the project into this release, which keeps the old records as they are.");
-    // Without a backend this release supports, adopting cannot help.
+    // Without a backend this release supports, adopting cannot help, and migrating can.
     const express = run(
       tree({ "package.json": '{"dependencies":{"express":"^5.0.0"}}', "CLAUDE.md": "" }),
       NOT_LIVE,
@@ -1246,7 +1279,9 @@ describe("ASSESS-003 Liftoff projects and projects from before the rebuild", () 
     );
     expect(express.next.filter((action) => action.command === "liftoff adopt")).toEqual([]);
     expect(express.next.find((action) => action.checks.includes("liftoff.project"))).toMatchObject({
-      category: "unavailable",
+      category: "liftoff",
+      command: "liftoff migrate",
+      text: expect.stringContaining("naming the stack the new project has with --stack"),
     });
     // In a Liftoff project, adding a host is not something this release does.
     const project: LiftoffState = { kind: "project", findings: [] };

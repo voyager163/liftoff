@@ -428,8 +428,8 @@ Verification: test
 
 `.liftoff/manifest.json` records:
 
-- each Liftoff operation that wrote the project (`init`, `update`, `adopt`
-  and the others), with the release, oldest first;
+- each Liftoff operation that wrote the project (`init`, `migrate`,
+  `update`, `adopt` and the others), with the release, oldest first;
 - for a project adopted from a Liftoff release before the rebuild, a legacy
   record: the old release, and each old record's path, kind and state, with
   the sha256 of a file as it was kept;
@@ -444,7 +444,10 @@ Verification: test
 
 ## INIT-001 Plans are read-only and tamper-evident
 
-`liftoff plan` changes nothing except the plan file named with `--out`. A
+`liftoff plan` changes nothing except the plan file named with `--out`,
+which, as for every command's `--out`, is written as a new file and moved
+into place, so a link or another name for a file already there is replaced,
+never written through. A
 plan lists the target, configuration, every file with its ownership, hash and
 size, and the permitted effects: writing files and, for a workflow with its
 own initializer, running exactly the commands it lists. Because the manifest

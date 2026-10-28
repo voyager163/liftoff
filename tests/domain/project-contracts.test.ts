@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   canonicalJson,
@@ -22,7 +23,7 @@ import {
   parseManifest,
   serializeManifest,
 } from "../../src/domain/project/manifest.ts";
-import { pathKey } from "../../src/domain/project/paths.ts";
+import { leaves, pathKey } from "../../src/domain/project/paths.ts";
 
 const config = {
   schema: "liftoff.config/v1",
@@ -424,5 +425,20 @@ describe("INIT-001 plans are tamper-evident", () => {
     expect(() =>
       parsePlan(JSON.stringify({ ...sealPlan(unsigned), effects: ["delete-everything"] })),
     ).toThrow(/invalid/);
+  });
+});
+
+describe("MIGRATE-001 a path inside a directory, whatever its name starts with", () => {
+  it.each([
+    ["..", true],
+    [`..${path.sep}x`, true],
+    ["../x", true],
+    [path.resolve("/elsewhere"), true],
+    ["..next", false],
+    [`..next${path.sep}x`, false],
+    ["x", false],
+    ["", false],
+  ])("%s leaves the directory: %s", (relative, expected) => {
+    expect(leaves(relative)).toBe(expected);
   });
 });

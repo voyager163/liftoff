@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   applyChanges,
@@ -22,6 +22,7 @@ import {
 import { SelectionError } from "../../plugins/registry.ts";
 import type { CommandResult, Io, ParsedArgs } from "../command.ts";
 import { UnsupportedError, UsageError } from "../outcome.ts";
+import { writePlanFile } from "../plan-file.ts";
 import { shown } from "../terminal.ts";
 import { type ProjectPorts, projectDirectory } from "./project-ports.ts";
 
@@ -122,7 +123,7 @@ export async function savePlan(
   if (plan === undefined) return ["", "There is nothing to change, so no plan was saved."];
   const file = path.resolve(io.cwd, out);
   io.signal.throwIfAborted();
-  await writeFile(file, `${JSON.stringify(plan, null, 2)}\n`);
+  await writePlanFile(file, `${JSON.stringify(plan, null, 2)}\n`);
   return [
     "",
     `Saved the plan to ${shown(file)}.`,

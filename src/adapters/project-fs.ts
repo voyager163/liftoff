@@ -12,6 +12,7 @@ import {
   opendir,
   readdir,
   readFile,
+  realpath,
   rename,
   rm,
   rmdir,
@@ -73,12 +74,15 @@ export class LocalProjectFs implements ProjectFsPort {
     await rename(from, to);
   }
 
-  async makeDirectory(target: string): Promise<void> {
+  async makeDirectory(target: string, access?: "private"): Promise<void> {
     try {
-      await mkdir(target);
+      await mkdir(target, access === "private" ? { mode: 0o700 } : undefined);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      return;
     }
+    // Exactly private, whatever the umask leaves of the mode asked for.
+    if (access === "private" && process.platform !== "win32") await chmod(target, 0o700);
   }
 
   copyWithin(directory: string, relative: string, maxBytes: number, to: string): Promise<FileHash> {
@@ -104,6 +108,16 @@ export class LocalProjectFs implements ProjectFsPort {
           ? mode | ((mode & 0o444) >> 2)
           : mode & ~0o111,
     );
+  }
+
+  async realPath(target: string): Promise<string | undefined> {
+    try {
+      return await realpath(target);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+      throw error;
+    }
   }
 
   async directoryIdentity(target: string): Promise<string | undefined> {

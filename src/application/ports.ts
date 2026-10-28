@@ -121,8 +121,12 @@ export interface ProjectFsPort {
    * volume; `to`'s directory must exist. Nothing else happens first.
    */
   moveFile(from: string, to: string): Promise<void>;
-  /** Creates one directory whose parent exists; nothing if it already exists. */
-  makeDirectory(path: string): Promise<void>;
+  /**
+   * Creates one directory whose parent exists, with the usual permissions
+   * for a new directory, or only for this user when `access` is "private";
+   * nothing if it already exists.
+   */
+  makeDirectory(path: string, access?: "private"): Promise<void>;
   /**
    * Copies the regular file at `relative` under `directory`, read as
    * hashWithin reads it, to `to`, which must not exist, with its mode. It
@@ -139,6 +143,11 @@ export interface ProjectFsPort {
    * no such permissions.
    */
   matchPermissions(from: string, to: string, executable: boolean): Promise<void>;
+  /**
+   * The path with every link in it followed, or undefined when it is not
+   * there.
+   */
+  realPath(path: string): Promise<string | undefined>;
   /**
    * What identifies a directory, such as its inode, while it exists, even
    * across the disk being detached and attached again; undefined when it is

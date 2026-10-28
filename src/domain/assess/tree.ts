@@ -49,21 +49,51 @@ const SKIPPED = new Set([
 
 export const isSkippedDirectory = (name: string): boolean => SKIPPED.has(name);
 
+/** Files named for the credentials they hold, wherever they are. */
+const CREDENTIAL_FILES = new Set([
+  ".envrc",
+  ".npmrc",
+  ".pypirc",
+  ".netrc",
+  ".pgpass",
+  ".git-credentials",
+  ".dockercfg",
+  ".htpasswd",
+  ".terraformrc",
+  "terraform.rc",
+  "kubeconfig",
+]);
+
+/** Extensions of files that hold data rather than code, for names that say what the data is. */
+const DATA = /\.(json|ya?ml|toml|ini|env|txt|xml|conf|cfg|properties|plist)$/;
+
 /**
- * Files that may hold secrets or state, such as `.env` or a `.tfstate`. They
- * are noted as present, never read. Examples meant to be committed are not.
+ * Files that may hold secrets or state, such as `.env`, `prod.env`,
+ * `.envrc`, a `.tfstate`, `credentials.json`, `secrets.local.toml` or a
+ * SQLite database. They are noted as present, never read, and never copied.
+ * Examples meant to be committed, whose name ends in "example", "sample" or
+ * "template", perhaps before an extension, are not; nor is code named for
+ * secrets, such as `credentials_test.py`, nor a GitHub workflow, such as
+ * `secret-scan.yml`, which assess reads.
  */
 export function holdsSecretsOrState(file: string): boolean {
   const name = path.posix.basename(file).toLowerCase();
-  if (/\.(example|sample|template)$/.test(name)) return false;
+  if (/[._-](example|sample|template)(\.[^.]+)?$/.test(name)) return false;
+  if (/^\.github\/workflows\/[^/]+\.ya?ml$/i.test(file)) return false;
+  const secretName = /^(secrets?|credentials?|client[-_]secrets?|service[-_]account)([._-]|$)/;
   return (
     name === ".env" ||
-    name.startsWith(".env.") ||
+    /^\.env[._-]/.test(name) ||
+    name.endsWith(".env") ||
+    CREDENTIAL_FILES.has(name) ||
+    (secretName.test(name) && (DATA.test(name) || !name.includes("."))) ||
+    /\.(secrets?)$/.test(name) ||
     /\.tfstate(\.backup)?$/.test(name) ||
-    name.endsWith(".tfvars") ||
-    /\.(pem|key|p12|pfx|jks|keystore)$/.test(name) ||
+    /\.tfvars(\.json)?$/.test(name) ||
+    /\.(pem|key|p8|p12|pfx|ppk|jks|keystore|kdbx)$/.test(name) ||
     /^id_(rsa|dsa|ecdsa|ed25519)$/.test(name) ||
-    [".npmrc", ".pypirc", ".netrc"].includes(name)
+    // A database, and the journal, write-ahead log or shared memory beside it.
+    /\.(sqlite3?|db)(-wal|-shm|-journal)?$/.test(name)
   );
 }
 

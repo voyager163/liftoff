@@ -1,6 +1,5 @@
 import os from "node:os";
 import {
-  type AdoptChoices,
   AdoptOptionError,
   type AdoptPlan,
   isBlocked,
@@ -9,17 +8,7 @@ import {
 } from "../../application/adopt/adopt-project.ts";
 import { AssessError } from "../../application/project/assess-project.ts";
 import { COMPONENTS, type Component } from "../../domain/project/config.ts";
-import { ENVIRONMENTS } from "../../plugins/contracts/project-plugin.ts";
-import {
-  FRONTENDS,
-  GOVERNANCE,
-  INFRASTRUCTURE,
-  NO_FRONTEND,
-  NO_INFRASTRUCTURE,
-  PATTERNS,
-  STACKS,
-} from "../../plugins/registry.ts";
-import type { CommandResult, CommandSpec, ParsedArgs } from "../command.ts";
+import type { CommandResult, CommandSpec } from "../command.ts";
 import { UsageError } from "../outcome.ts";
 import { shown } from "../terminal.ts";
 import {
@@ -34,6 +23,7 @@ import {
   savePlan,
   toCli,
 } from "./changing.ts";
+import { CHOICE_OPTIONS, choicesFrom, proposalLines } from "./choosing.ts";
 import { defaultProjectPorts, type ProjectPorts, projectDirectory } from "./project-ports.ts";
 
 const OWNED = {
@@ -48,11 +38,7 @@ export function renderAdopt(adopt: AdoptPlan, version: string): string[] {
   const blocked = isBlocked(adopt);
   if (adopt.proposal.length > 0) {
     lines.push(`Liftoff ${version} ${blocked ? "would adopt" : "adopts"} ${adopt.directory} as:`);
-    const width = Math.max(...adopt.proposal.map((proposed) => proposed.choice.length));
-    for (const { choice, value, from, evidence } of adopt.proposal) {
-      const why = from === "found" && evidence?.length ? `found: ${evidence.join(", ")}` : from;
-      lines.push(`  ${choice.padEnd(width)}  ${value} (${why})`);
-    }
+    lines.push(...proposalLines(adopt.proposal));
   }
   if (blocked) {
     lines.push(
@@ -108,8 +94,6 @@ const reported = (adopt: AdoptPlan) => ({
   ...(adopt.plan === undefined ? {} : { plan: adopt.plan.hash }),
 });
 
-const list = (value: string | undefined) => (value === undefined ? undefined : [...listed(value)]);
-
 /**
  * The parts --layout binds, as `part=directory` pairs. A trailing slash and
  * a leading "./" are dropped, so "./api/" is "api".
@@ -138,44 +122,8 @@ function layoutFrom(value: string | undefined): Partial<Record<Component, string
   return layout;
 }
 
-/** The choices typed on the command line; anything else is proposed. */
-function choicesFrom(args: ParsedArgs): AdoptChoices {
-  const option = (name: string) =>
-    args.given.has(name) ? (args.options[name] as string | undefined) : undefined;
-  const aiReview = option("ai-review") as AdoptChoices["aiReview"];
-  const values: { [Key in keyof AdoptChoices]-?: AdoptChoices[Key] | undefined } = {
-    name: option("name"),
-    stack: option("stack"),
-    pattern: option("pattern"),
-    frontend: option("frontend"),
-    infrastructure: option("infrastructure"),
-    environments: list(option("environments")),
-    agents: list(option("agents")),
-    governance: option("governance"),
-    aiReview,
-    reviewEngine: option("review-engine"),
-    owners: list(option("owners")),
-    layout: layoutFrom(option("layout")),
-  };
-  return Object.fromEntries(
-    Object.entries(values).filter(([, value]) => value !== undefined),
-  ) as AdoptChoices;
-}
-
-const CHOICE_OPTIONS = [
-  "name",
-  "stack",
-  "pattern",
-  "frontend",
-  "infrastructure",
-  "environments",
-  "agents",
-  "governance",
-  "ai-review",
-  "review-engine",
-  "owners",
-  "layout",
-];
+/** The options that choose what the project is, which a saved plan or recovery already names. */
+const CHOSEN = [...Object.keys(CHOICE_OPTIONS), "layout"];
 
 export function makeAdoptCommand(
   portsFor: (cwd: string) => ProjectPorts = defaultProjectPorts,
@@ -196,69 +144,7 @@ export function makeAdoptCommand(
         description:
           "Project directory. Without it, the current directory must be the root of a Git repository.",
       },
-      name: {
-        type: "string",
-        valueName: "name",
-        description:
-          "Project name: 2 to 50 lowercase letters, digits and single hyphens. Defaults to the old configuration's, or the directory's name.",
-      },
-      stack: {
-        type: "string",
-        valueName: "stack",
-        choices: Object.keys(STACKS),
-        description: "The backend's stack, when the project holds more than one kind.",
-      },
-      pattern: {
-        type: "string",
-        valueName: "pattern",
-        choices: Object.keys(PATTERNS),
-        description: "GenAI pattern, for a PydanticAI backend. Defaults to generic.",
-      },
-      frontend: {
-        type: "string",
-        valueName: "frontend",
-        choices: [NO_FRONTEND, ...Object.keys(FRONTENDS)],
-        description: "Web frontend, or none to leave one found as the project's own.",
-      },
-      infrastructure: {
-        type: "string",
-        valueName: "provider",
-        choices: [NO_INFRASTRUCTURE, ...Object.keys(INFRASTRUCTURE)],
-        description: "Infrastructure as code, or none to leave any found as the project's own.",
-      },
-      environments: {
-        type: "string",
-        valueName: "list",
-        description: `Environments the infrastructure deploys to, comma-separated: ${ENVIRONMENTS.join(", ")}. Defaults to all three.`,
-      },
-      agents: {
-        type: "string",
-        valueName: "list",
-        description:
-          "Coding-agent hosts, comma-separated: copilot, codex, claude. Defaults to those the project is set up for.",
-      },
-      governance: {
-        type: "string",
-        valueName: "profile",
-        choices: Object.keys(GOVERNANCE),
-        description: "Governance profile. Defaults to single-maintainer-gitflow.",
-      },
-      "ai-review": {
-        type: "string",
-        valueName: "mode",
-        choices: ["auto", "on", "off"],
-        description: "Verified AI review in CI; auto turns it on when agents are selected.",
-      },
-      "review-engine": {
-        type: "string",
-        valueName: "host",
-        description: "Which selected agent host runs the verified AI review.",
-      },
-      owners: {
-        type: "string",
-        valueName: "logins",
-        description: "GitHub logins that own the project, comma-separated, for CODEOWNERS.",
-      },
+      ...CHOICE_OPTIONS,
       layout: {
         type: "string",
         valueName: "bindings",
@@ -303,7 +189,7 @@ export function makeAdoptCommand(
       const yes = args.options.yes === true;
       const recover = args.options.recover as "finish" | "undo" | undefined;
       if (recover !== undefined) {
-        const others = given("check", "out", "plan", ...CHOICE_OPTIONS);
+        const others = given("check", "out", "plan", ...CHOSEN);
         if (others.length > 0) {
           throw new UsageError(`--recover goes only with --dir and --yes, not --${others[0]}`);
         }
@@ -317,7 +203,7 @@ export function makeAdoptCommand(
       let adopt: AdoptPlan;
       try {
         if (planFile !== undefined) {
-          const others = given("dir", "check", "out", ...CHOICE_OPTIONS);
+          const others = given("dir", "check", "out", ...CHOSEN);
           if (others.length > 0) {
             throw new UsageError(
               `a saved plan names its project and configuration, so --plan goes without --${others[0]}`,
@@ -328,7 +214,11 @@ export function makeAdoptCommand(
           });
         } else {
           const directory = await projectDirectory(io.cwd, args.options.dir as string);
-          adopt = await planAdopt(ports, directory, version, choicesFrom(args), {
+          const layout = layoutFrom(
+            args.given.has("layout") ? (args.options.layout as string) : undefined,
+          );
+          const choices = { ...choicesFrom(args), ...(layout === undefined ? {} : { layout }) };
+          adopt = await planAdopt(ports, directory, version, choices, {
             named: args.given.has("dir"),
             refused,
           });
@@ -340,6 +230,8 @@ export function makeAdoptCommand(
         return toCli(error);
       }
 
+      // Ctrl+C while planning, even for --check, cancels rather than reporting.
+      io.signal.throwIfAborted();
       const lines = renderAdopt(adopt, version);
       if (isBlocked(adopt)) {
         return {

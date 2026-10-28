@@ -44,3 +44,21 @@ export async function projectDirectory(cwd: string, named: string): Promise<stri
     return absolute;
   }
 }
+
+/**
+ * A directory a command line names for a new project, relative to `cwd`:
+ * the real directory when it is there, or the real directory it would be
+ * made in, so it can be compared with directories that were resolved.
+ */
+export async function newDirectory(cwd: string, named: string): Promise<string> {
+  const absolute = path.resolve(cwd, named);
+  try {
+    return await realpath(absolute);
+  } catch {
+    try {
+      return path.join(await realpath(path.dirname(absolute)), path.basename(absolute));
+    } catch {
+      return absolute;
+    }
+  }
+}

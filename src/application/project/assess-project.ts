@@ -35,6 +35,11 @@ export interface AssessOptions {
    * exactly what was assessed.
    */
   readonly read?: Map<string, string>;
+  /**
+   * Filled with every entry the walk listed, by path, so a migration copies
+   * exactly what was assessed.
+   */
+  readonly walked?: Map<string, EntryKind>;
 }
 
 type Limits = { readonly [Key in keyof typeof LIMITS]: number };
@@ -172,6 +177,8 @@ export async function assessProject(
       }
     }
   }
+
+  for (const [file, kind] of entries) options.walked?.set(file, kind);
 
   const tooLarge = `over ${limits.bytes % 1024 === 0 ? `${limits.bytes / 1024} KiB` : `${limits.bytes} bytes`}, so not read`;
   const texts = new Map<string, Declaration>();

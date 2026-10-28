@@ -10,6 +10,7 @@ import {
   makeGovernanceStatusCommand,
   makeGovernanceVerifyCommand,
 } from "./commands/governance.ts";
+import { makeMigrateCommand } from "./commands/migrate.ts";
 import { makeInitCommand, makePlanCommand } from "./commands/plan-init.ts";
 import { makeRepairCommand } from "./commands/repair.ts";
 import { makeReviewClassifyCommand } from "./commands/review-classify.ts";
@@ -29,6 +30,7 @@ export const REGISTRY: readonly CommandSpec[] = [
   makeDoctorCommand(),
   makeAssessCommand(),
   makeAdoptCommand(),
+  makeMigrateCommand(),
   makeUpdateCommand(),
   makeRepairCommand(),
   makeReviewClassifyCommand(),

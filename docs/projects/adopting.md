@@ -73,6 +73,10 @@ When the project has no backend this release supports, such as an Express
 or Rust application, it exits 6. Applications Liftoff has no stack for,
 beside the parts it adopts, stay the project's and are named.
 
+When a project cannot be adopted in place, [`liftoff migrate`](migrating.md)
+makes a new Liftoff project beside it, with a copy of its files to move
+across, and leaves it unchanged.
+
 ## What it adds, and what it keeps
 
 The plan lists each of Liftoff's files it adds: `liftoff.yaml`,

@@ -30,6 +30,11 @@ approves, never by editing the project's files yourself.
    temporary directory outside the project, with every reference to the old
    path updated (imports, builds, tests, containers, CI and documentation),
    and show it to the person, who reviews and applies it before adopting.
+   When the project has no backend this release supports, or the person
+   would rather start from Liftoff's standard layout, show them
+   `liftoff migrate --check --json` instead: it describes a new project
+   beside this one, with a copy of its files and a checklist of what to
+   move, and changes nothing in this one.
 4. **Give the person the command** to adopt, with the options the proposal
    needs: `liftoff adopt` with, for example, `--name`, `--agents` or
    `--layout`. Say that it shows the plan and asks before changing

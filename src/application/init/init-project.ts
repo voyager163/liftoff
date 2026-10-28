@@ -9,7 +9,7 @@ import {
 } from "../../domain/plan/plan.ts";
 import { type ProjectConfig, validateConfig } from "../../domain/project/config.ts";
 import { MANIFEST_FILE, parseManifest, serializeManifest } from "../../domain/project/manifest.ts";
-import { pathKey, repositoryPathProblem } from "../../domain/project/paths.ts";
+import { leaves, pathKey, repositoryPathProblem } from "../../domain/project/paths.ts";
 import { isExecutable, type ProjectFile } from "../../generators/project.ts";
 import type { WorkflowInitializer } from "../../plugins/contracts/project-plugin.ts";
 import type { Selection } from "../../plugins/registry.ts";
@@ -286,12 +286,17 @@ function withFrameworkFiles(
  * the caller's working directory: publishing replaces the target directory,
  * which would leave the caller's shell in a deleted one.
  */
-async function checkTarget(fs: ProjectFsPort, target: string, cwd?: string): Promise<void> {
+export async function checkTarget(
+  fs: ProjectFsPort,
+  target: string,
+  cwd?: string,
+  command: "init" | "migrate" = "init",
+): Promise<void> {
   if (cwd !== undefined) {
     const inside = path.relative(target, path.resolve(cwd));
-    if (inside === "" || !(inside.startsWith("..") || path.isAbsolute(inside))) {
+    if (inside === "" || !leaves(inside)) {
       throw new InitTargetError(
-        `${target} is the current directory or contains it; run init from the directory that should hold the project`,
+        `${target} is the current directory or contains it; run ${command} from the directory that should hold the project`,
       );
     }
   }

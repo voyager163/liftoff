@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { applyInit, planInit } from "../../application/init/init-project.ts";
 import { type Plan, parsePlan } from "../../domain/plan/plan.ts";
@@ -6,6 +6,7 @@ import { validateConfig } from "../../domain/project/config.ts";
 import { resolveSelection, SelectionError } from "../../plugins/registry.ts";
 import type { CommandResult, CommandSpec, Io, ParsedArgs } from "../command.ts";
 import { UnsupportedError, UsageError } from "../outcome.ts";
+import { writePlanFile } from "../plan-file.ts";
 import { hasProjectOptions, PROJECT_OPTIONS, projectFromOptions } from "../project-options.ts";
 import { askProjectOptions, equivalentCommand } from "../wizard.ts";
 import { defaultProjectPorts, type ProjectPorts } from "./project-ports.ts";
@@ -81,7 +82,7 @@ export function makePlanCommand(
       const lines = summarize(plan);
       if (out !== undefined) {
         const file = path.resolve(io.cwd, out);
-        await writeFile(file, `${JSON.stringify(plan, null, 2)}\n`);
+        await writePlanFile(file, `${JSON.stringify(plan, null, 2)}\n`);
         lines.push(
           "",
           `Saved the plan to ${file}.`,
