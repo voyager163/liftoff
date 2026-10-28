@@ -174,6 +174,12 @@ export interface ProjectFsPort {
   /** Moves the staged directory to `target`, which must be missing or empty. */
   publish(staging: string, target: string): Promise<void>;
   remove(path: string): Promise<void>;
+  /**
+   * Removes a directory only while it is empty, and not a link: false,
+   * changing nothing, when it is not there, holds anything or is not a
+   * directory.
+   */
+  removeEmptyDirectory(path: string): Promise<boolean>;
   /** Every entry under a directory, sorted; links are not followed. */
   listTree(directory: string): Promise<TreeEntry[]>;
 }

@@ -118,8 +118,8 @@ export type MigrateWhere = Pick<AssessOptions, "named" | "refused" | "limits"> &
   readonly signal?: AbortSignal;
 };
 
-const changedWhilePlanned = (file: string) =>
-  `${file} changed while migrating was being planned; plan it again`;
+const changedWhilePlanned = (file: string, doing = "migrating") =>
+  `${file} changed while ${doing} was being planned; plan it again`;
 
 /** Whether `inner` is `outer` or inside it, as macOS and Windows compare names. */
 export function within(inner: string, outer: string): boolean {
@@ -595,15 +595,17 @@ async function sameAsAssessed(
  * it is now, and what it leaves out: Git's data, dependencies, caches and
  * build output; files that may hold secrets or state; records from before
  * the rebuild; links; files over the size it copies; and paths not every
- * system can hold, or that another path takes on macOS and Windows.
+ * system can hold, or that another path takes on macOS and Windows. `doing`
+ * names what is being planned, for a file that changes meanwhile.
  */
-async function copyList(
+export async function copyList(
   fs: ProjectFsPort,
   source: string,
   walked: ReadonlyMap<string, EntryKind>,
   gaps: readonly Gap[],
   legacy: readonly LegacyRecord[],
   signal: AbortSignal | undefined,
+  doing = "migrating",
 ): Promise<{ copies: CopiedFile[]; left: LeftOut[]; closed: string[]; bytes: number }> {
   const records = new Set(legacy.map((record) => pathKey(record.path)));
   const left: LeftOut[] = [];
@@ -682,7 +684,7 @@ async function copyList(
       closed.push(now.via ?? file);
       continue;
     }
-    if (now.kind !== "file") throw new ProjectChangeError(changedWhilePlanned(file));
+    if (now.kind !== "file") throw new ProjectChangeError(changedWhilePlanned(file, doing));
     if (now.sha256 === undefined) {
       left.push({
         path: file,

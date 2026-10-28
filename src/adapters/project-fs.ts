@@ -196,6 +196,21 @@ export class LocalProjectFs implements ProjectFsPort {
     await rm(target, { recursive: true, force: true });
   }
 
+  async removeEmptyDirectory(target: string): Promise<boolean> {
+    // rmdir removes only an empty directory, and never follows a link to one.
+    if ((await this.entry(target)).kind !== "directory") return false;
+    try {
+      await rmdir(target);
+      return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (["ENOTEMPTY", "EEXIST", "ENOENT", "ENOTDIR", "EPERM", "EBUSY"].includes(code ?? "")) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   async listTree(directory: string): Promise<TreeEntry[]> {
     // A recursive listing reports links as links and does not follow them.
     const entries = await readdir(directory, { recursive: true, withFileTypes: true });

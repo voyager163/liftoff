@@ -260,3 +260,132 @@ describe("MIGRATE-003 migrating from the command line", () => {
     );
   });
 });
+
+describe("MIGRATE-004 cleaning up from the command line", () => {
+  it("checks, asks with no as the default, and removes with --yes", async () => {
+    expect((await migrate(["--yes"])).code).toBe(0);
+    const check = await migrate(["--cleanup", "--check"]);
+    expect(check.code).toBe(0);
+    expect(check.out).toContain(`Liftoff 1.0.0 cleans up ${root()}, migrated to ${target()}.\n`);
+    expect(check.out).toContain(
+      "It removes 2 files that the new project holds byte-for-byte copies of:\n  app/main.py (copy: legacy/app/main.py)\n  pyproject.toml (copy: legacy/pyproject.toml)\n",
+    );
+    expect(check.out).toContain("2 paths stay in ");
+    expect(check.out).toContain("  .env: may hold secrets or state");
+    const declined = await migrate(["--cleanup"], { answer: false });
+    expect(declined.code).toBe(4);
+    expect(declined.questions).toEqual([
+      `In ${root()}, remove 2 files the new project holds copies of?`,
+    ]);
+    expect(declined.out).toBe("Nothing was removed.\n");
+    const scripted = await migrate(["--cleanup"]);
+    expect(scripted.code).toBe(2);
+    expect(scripted.err).toContain("migrate --cleanup removes files; pass --yes to confirm");
+    expect(existsSync(at("app/main.py"))).toBe(true);
+
+    const removed = await migrate(["--cleanup", "--yes", "--json"]);
+    expect(removed.code).toBe(0);
+    expect(JSON.parse(removed.out)).toMatchObject({
+      verified: true,
+      removed: ["app/main.py", "pyproject.toml"],
+      directories: ["app"],
+    });
+    expect(Object.keys(snapshot()).sort()).toEqual([".env"]);
+    const again = await migrate(["--cleanup"]);
+    expect(again.code).toBe(0);
+    expect(again.out).toContain("Nothing to remove");
+  });
+
+  it("exits 3 until the new project is verified, 1 when it is not there, and 2 for options it does not take", async () => {
+    expect((await migrate(["--cleanup", "--check"])).code).toBe(1);
+    expect((await migrate(["--yes"])).code).toBe(0);
+    writeFileSync(path.join(target(), CONFIG_FILE), "not: [valid\n");
+    const blocked = await migrate(["--cleanup", "--yes"]);
+    expect(blocked.code).toBe(3);
+    expect(blocked.out).toContain(`${target()} is not verified, so nothing is removed:\n`);
+    expect(existsSync(at("app/main.py"))).toBe(true);
+    for (const [argv, message] of [
+      [["--cleanup", "--stack", "go-huma"], "--cleanup goes only with"],
+      [["--cleanup", "--out", "../x.json"], "--cleanup goes only with"],
+      [["--recover", "undo"], "--recover recovers a cleanup, so it goes with --cleanup"],
+      [["--cleanup", "--recover", "undo", "--check"], "--recover goes only with --cleanup"],
+    ] as const) {
+      const run = await migrate([...argv]);
+      expect(run.code, argv.join(" ")).toBe(2);
+      expect(run.err).toContain(message);
+    }
+  });
+
+  it("says what the finished changes removed when a later one stops", async () => {
+    // One more file than a change removes, so there are two changes.
+    const files = () => {
+      for (let index = 0; index <= 2_000; index++) {
+        write(`data/item-${String(index).padStart(4, "0")}.txt`, `${index}\n`);
+      }
+      write("app/main.py", "from fastapi import FastAPI\n");
+    };
+    files();
+    expect((await migrate(["--yes"])).code).toBe(0);
+    const before = snapshot();
+
+    // The second change stops part way, after the first removed its files.
+    const failing = Object.assign(Object.create(fs) as ProjectFsPort, {
+      moveFile: async (from: string, to: string) => {
+        if (to.includes(`${path.sep}removed${path.sep}`) && to.endsWith("pyproject.toml")) {
+          throw new Error("no space left on the disk");
+        }
+        return fs.moveFile(from, to);
+      },
+    });
+    const stopped = await migrate(["--cleanup", "--yes", "--json"], { port: failing });
+    expect(stopped.code).toBe(5);
+    const report = JSON.parse(stopped.out);
+    expect(report.removed).toHaveLength(2_000);
+    expect(report.stopped).toContain("no space left on the disk");
+    expect((await migrate(["--cleanup", "--recover", "undo", "--yes"])).code).toBe(0);
+    expect(existsSync(at("pyproject.toml"))).toBe(true);
+    expect(existsSync(at("data/item-0000.txt"))).toBe(false);
+
+    // The second change's copy changes once the first change is done.
+    files();
+    expect(snapshot()).toEqual(before);
+    const last = "data/item-2000.txt";
+    let removals = 0;
+    const changing = Object.assign(Object.create(fs) as ProjectFsPort, {
+      moveFile: async (from: string, to: string) => {
+        await fs.moveFile(from, to);
+        if (to.includes(`${path.sep}removed${path.sep}`) && ++removals === 2_000) {
+          writeFileSync(path.join(target(), "legacy", ...last.split("/")), "changed\n");
+        }
+      },
+    });
+    const refused = await migrate(["--cleanup", "--yes"], { port: changing });
+    expect(refused.code).toBe(1);
+    expect(refused.out).toContain(
+      `Removed 2000 files, then stopped: legacy/${last} in the new project changed since the cleanup was planned`,
+    );
+    expect(existsSync(at(last))).toBe(true);
+  }, 120_000);
+
+  it("stops part way recoverably, and undoes the change that stopped", async () => {
+    expect((await migrate(["--yes"])).code).toBe(0);
+    const before = snapshot();
+    let removals = 0;
+    const failing = Object.assign(Object.create(fs) as ProjectFsPort, {
+      moveFile: async (from: string, to: string) => {
+        if (to.includes(`${path.sep}removed${path.sep}`) && ++removals === 2) {
+          throw new Error("no space left on the disk");
+        }
+        return fs.moveFile(from, to);
+      },
+    });
+    const stopped = await migrate(["--cleanup", "--yes"], { port: failing });
+    expect(stopped.code).toBe(5);
+    expect(stopped.out).toContain("The cleanup stopped part way: no space left on the disk");
+    expect(stopped.out).toContain("Finish it with liftoff migrate --cleanup --recover finish");
+    const undone = await migrate(["--cleanup", "--recover", "undo", "--yes"]);
+    expect(undone.code).toBe(0);
+    expect(undone.out).toContain("The cleanup is undone:");
+    expect(snapshot()).toEqual(before);
+  });
+});

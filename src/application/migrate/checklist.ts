@@ -228,6 +228,7 @@ export function renderChecklist(input: ChecklistInput): string {
         ? []
         : [`- [ ] In ${code(quickStart.directory)}, the tests pass: ${code(quickStart.command)}`],
     ),
+    `- [ ] If nothing more is needed from ${code(source)}, run ${code("liftoff migrate --cleanup")} in it, before deleting the copy: it removes from it each file this project holds a byte-for-byte copy of, after asking, and keeps the rest. Name this project with ${code("--to")} if it is not ${code(`${source}-liftoff`)} beside it.`,
     `- [ ] Delete ${code(`${COPY_DIRECTORY}/`)} and this file, and commit.`,
     "",
   );

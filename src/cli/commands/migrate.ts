@@ -18,8 +18,9 @@ import type { CommandResult, CommandSpec } from "../command.ts";
 import { UsageError } from "../outcome.ts";
 import { writePlanFile } from "../plan-file.ts";
 import { shown } from "../terminal.ts";
-import { checkPreview, toCli } from "./changing.ts";
+import { checkPreview, recoverChange, toCli } from "./changing.ts";
 import { CHOICE_OPTIONS, choicesFrom, proposalLines } from "./choosing.ts";
+import { runCleanup } from "./migrate-cleanup.ts";
 import {
   defaultProjectPorts,
   newDirectory,
@@ -161,19 +162,56 @@ export function makeMigrateCommand(
         description:
           "Apply exactly this saved plan, and refuse it if the project or Liftoff changed since.",
       },
-      yes: { type: "boolean", short: "y", description: "Create the new project without asking." },
+      cleanup: {
+        type: "boolean",
+        description:
+          "Instead of migrating, remove from the old project each file the new project, named with --to, holds a byte-for-byte copy of, once the new project is verified. It asks first.",
+      },
+      recover: {
+        type: "string",
+        valueName: "mode",
+        choices: ["finish", "undo"],
+        description: "With --cleanup, finish or undo a cleanup that stopped part way.",
+      },
+      yes: { type: "boolean", short: "y", description: "Create or remove without asking." },
     },
     examples: [
       "liftoff migrate --check",
       "liftoff migrate --dir ../service --to ../service-next --stack node-fastify",
       "liftoff migrate --out ../migrate.plan.json",
       "liftoff migrate --plan ../migrate.plan.json --yes",
+      "liftoff migrate --cleanup --check",
+      "liftoff migrate --cleanup --recover undo",
     ],
     async run(args, { io, version }): Promise<CommandResult> {
       const ports = portsFor(io.cwd);
       const given = (...options: string[]) => options.filter((option) => args.given.has(option));
       const planFile = args.options.plan as string | undefined;
       const out = args.options.out as string | undefined;
+      const recover = args.options.recover as "finish" | "undo" | undefined;
+      if (args.options.cleanup === true) {
+        // Cleaning up removes only what the projects hold; it chooses nothing.
+        const others = given(
+          "out",
+          "plan",
+          ...CHOSEN,
+          ...(recover === undefined ? [] : ["to", "check"]),
+        );
+        if (others.length > 0) {
+          throw new UsageError(
+            recover === undefined
+              ? `--cleanup goes only with --dir, --to, --check, --recover and --yes, not --${others[0]}`
+              : `--recover goes only with --cleanup, --dir and --yes, not --${others[0]}`,
+          );
+        }
+        if (recover !== undefined) {
+          return recoverChange(io, ports, args, recover, "migrate-cleanup");
+        }
+        return runCleanup(io, ports, args, version, [await projectDirectory(io.cwd, home)]);
+      }
+      if (recover !== undefined) {
+        throw new UsageError("--recover recovers a cleanup, so it goes with --cleanup");
+      }
       const { preview } = checkPreview(args);
       const refused = [await projectDirectory(io.cwd, home)];
 
@@ -291,6 +329,7 @@ export function makeMigrateCommand(
         "Next:",
         `  cd ${relative}`,
         `  follow ${CHECKLIST_FILE}, which says what to move from ${COPY_DIRECTORY}/ and how to check it`,
+        `Once the new project is ready, liftoff migrate --cleanup removes from ${migration.source} each file it holds a copy of, after asking.`,
         "",
       ];
       return {

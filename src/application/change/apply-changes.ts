@@ -40,6 +40,7 @@ export const CHANGE_COMMANDS: Record<ChangeOperation, string> = {
   update: "liftoff update",
   repair: "liftoff repair",
   adopt: "liftoff adopt",
+  "migrate-cleanup": "liftoff migrate --cleanup",
   "workflow-set": "liftoff workflow set",
   "profile-set": "liftoff governance profile set",
   "agents-add": "liftoff agents add",

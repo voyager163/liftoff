@@ -31,6 +31,7 @@ const NAMES = {
   update: { a: "An update", the: "The update", no: "No update" },
   repair: { a: "A repair", the: "The repair", no: "No repair" },
   adopt: { a: "An adoption", the: "The adoption", no: "No adoption" },
+  "migrate-cleanup": { a: "A cleanup", the: "The cleanup", no: "No cleanup" },
 } as const;
 export type ChangeCommand = keyof typeof NAMES;
 
@@ -173,7 +174,7 @@ export async function applyApproved(
  * whatever stopped it, and is reported as partial with how to recover.
  * Anything else changed nothing and is rethrown.
  */
-async function stopped(
+export async function stopped(
   error: unknown,
   ports: ProjectPorts,
   planned: Planned,
