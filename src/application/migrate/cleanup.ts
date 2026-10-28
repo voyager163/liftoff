@@ -1,10 +1,17 @@
 import path from "node:path";
 import type { EntryKind } from "../../domain/assess/tree.ts";
+import { journalFor, serializeJournal } from "../../domain/change/journal.ts";
 import { type ChangePlan, sealChangePlan } from "../../domain/plan/change-plan.ts";
 import { PLAN_SCHEMA } from "../../domain/plan/plan.ts";
+import { CONFIG_FILE } from "../../domain/project/config.ts";
 import { MANIFEST_FILE, parseManifest } from "../../domain/project/manifest.ts";
 import { pathKey } from "../../domain/project/paths.ts";
-import { applyChanges, ChangeError, type ChangePorts } from "../change/apply-changes.ts";
+import {
+  applyChanges,
+  ChangeError,
+  type ChangePorts,
+  MAX_JOURNAL_BYTES,
+} from "../change/apply-changes.ts";
 import {
   MAX_RECORD_BYTES,
   ProjectChangeError,
@@ -146,26 +153,58 @@ export async function planCleanup(
   kept.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   if (blocked.length > 0) return { source, target, blocked, removals, kept, plans: [] };
 
-  const plans: ChangePlan[] = [];
-  for (let start = 0; start < removals.length; start += batch) {
-    plans.push(
-      sealChangePlan({
-        schema: PLAN_SCHEMA,
-        operation: "migrate-cleanup",
-        liftoff: liftoffVersion,
-        target: source,
-        // The new project the copies are in, which the plan rests on.
-        config: { migratedTo: target },
-        effects: ["modify-files"],
-        changes: removals.slice(start, start + batch).map((removal) => ({
-          path: removal.path,
-          before: removal.sha256,
-          after: null,
-        })),
-      }),
-    );
-  }
+  const plans = cleanupPlans(removals, liftoffVersion, source, target, batch);
   return { source, target, blocked, removals, kept, plans };
+}
+
+/**
+ * The changes that remove these files, in order: each at most `batch`
+ * files, with a journal small enough for the change engine to write and
+ * read back however long the paths, and each resting on the old project
+ * still having no liftoff.yaml or manifest, so a project adopted meanwhile
+ * is never cleaned up.
+ */
+export function cleanupPlans(
+  removals: readonly Removal[],
+  liftoffVersion: string,
+  source: string,
+  target: string,
+  batch = CLEANUP_BATCH,
+): ChangePlan[] {
+  const seal = (part: readonly Removal[]) =>
+    sealChangePlan({
+      schema: PLAN_SCHEMA,
+      operation: "migrate-cleanup",
+      liftoff: liftoffVersion,
+      target: source,
+      // The new project the copies are in, which the plan rests on.
+      config: { migratedTo: target },
+      effects: ["modify-files"],
+      changes: part.map((removal) => ({ path: removal.path, before: removal.sha256, after: null })),
+      unchanged: [
+        { path: CONFIG_FILE, sha256: null },
+        { path: MANIFEST_FILE, sha256: null },
+      ],
+    });
+  // Measured as the change engine measures it, with a staging name of the
+  // length it gives one.
+  const staging = `.${path.basename(source)}.liftoff-staging-XXXXXX`;
+  const fits = (plan: ChangePlan) =>
+    Buffer.byteLength(serializeJournal(journalFor(plan, staging, new Date(0).toISOString()))) <=
+    MAX_JOURNAL_BYTES;
+  const plans: ChangePlan[] = [];
+  for (let start = 0; start < removals.length; ) {
+    let end = Math.min(start + batch, removals.length);
+    let plan = seal(removals.slice(start, end));
+    // Halved until its journal fits; one file always does, as a path is bounded.
+    while (!fits(plan) && end - start > 1) {
+      end = start + Math.ceil((end - start) / 2);
+      plan = seal(removals.slice(start, end));
+    }
+    plans.push(plan);
+    start = end;
+  }
+  return plans;
 }
 
 /**

@@ -135,9 +135,14 @@ export async function recoverCleanup(
       ? journal.changes.map((change) => change.path)
       : [],
   );
+  const leftovers = [
+    ...((result.report.leftovers as readonly string[] | undefined) ?? []),
+    ...tidied.leftovers,
+  ];
   return {
     ...result,
-    report: { ...result.report, directories: tidied.directories },
+    outcome: leftovers.length > 0 ? "attention" : result.outcome,
+    report: { ...result.report, directories: tidied.directories, leftovers },
     // The recovery's own text is shown as it is; it was escaped already.
     text: [
       result.text.trimEnd(),

@@ -851,10 +851,13 @@ cannot be removed is named for the person to delete, and the command exits
 3. The old project's own directory always stays.
 
 Files are removed as CHANGE-002 to CHANGE-004 say, in changes of at most
-2,000 files each, so each can be finished or undone. Just before each
-change, neither project may now be reached through a link, and every copy
-it rests on in the new project is hashed again; if one changed, that
-change removes nothing and the command says to run it again.
+2,000 files each, and fewer when long paths would make a change's journal
+too large to recover, so each can be finished or undone. Each change rests
+on the old project still having no `liftoff.yaml` or manifest, so a project
+adopted meanwhile is never cleaned up. Just before each change, neither
+project may now be reached through a link, and every copy it rests on in
+the new project is hashed again; if one changed, that change removes
+nothing and the command says to run it again.
 A cleanup that stops part way exits 5, and `liftoff migrate --cleanup
 --recover finish` or `--recover undo` finishes or undoes that change after
 asking, and says that any later changes did not run. Finishing removes the

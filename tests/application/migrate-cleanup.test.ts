@@ -14,17 +14,23 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PackageAssets } from "../../src/adapters/assets.ts";
 import { LocalProcesses } from "../../src/adapters/process.ts";
 import { LocalProjectFs } from "../../src/adapters/project-fs.ts";
-import { recoverChanges } from "../../src/application/change/apply-changes.ts";
+import {
+  ChangeConflictError,
+  MAX_JOURNAL_BYTES,
+  recoverChanges,
+} from "../../src/application/change/apply-changes.ts";
 import { ProjectChangeError } from "../../src/application/change/project-change.ts";
 import {
   applyCleanup,
   type CleanupPlan,
   CleanupStoppedError,
+  cleanupPlans,
   planCleanup,
   withoutCopies,
 } from "../../src/application/migrate/cleanup.ts";
 import { applyMigrate, planMigrate } from "../../src/application/migrate/migrate-project.ts";
 import type { ProjectFsPort } from "../../src/application/ports.ts";
+import { journalFor, serializeJournal } from "../../src/domain/change/journal.ts";
 import { CHANGE_JOURNAL_FILE } from "../../src/domain/plan/change-plan.ts";
 import { CONFIG_FILE } from "../../src/domain/project/config.ts";
 import { MANIFEST_FILE } from "../../src/domain/project/manifest.ts";
@@ -351,6 +357,38 @@ describe("MIGRATE-004 cleaning up the old project is a separate step that asks f
       `${target} now leads to ${path.join(work, "elsewhere")} through a link, so nothing more was removed`,
     );
     expect(old.read("pyproject.toml")).toBe(PYPROJECT);
+  });
+
+  it("keeps each change's journal small enough to recover, however long the paths", () => {
+    const long = Array.from({ length: 10 }, (_, depth) => `${depth}${"d".repeat(199)}`).join("/");
+    const removals = Array.from({ length: 2_000 }, (_, index) => ({
+      path: `${long}/file-${String(index).padStart(4, "0")}.txt`,
+      sha256: "0".repeat(64),
+      bytes: 1,
+      copy: `legacy/file-${index}.txt`,
+    }));
+    const plans = cleanupPlans(removals, VERSION, root, target);
+    expect(plans.length).toBeGreaterThan(1);
+    for (const plan of plans) {
+      const journal = serializeJournal(journalFor(plan, ".shop.liftoff-staging-XXXXXX", "x"));
+      expect(Buffer.byteLength(journal)).toBeLessThanOrEqual(MAX_JOURNAL_BYTES);
+    }
+    expect(plans.flatMap((plan) => plan.changes.map((change) => change.path))).toEqual(
+      removals.map((removal) => removal.path),
+    );
+  });
+
+  it("removes nothing from a project adopted after the cleanup was planned", async () => {
+    await migrated();
+    const plan = await cleanup();
+    // Each change rests on the old project still being no Liftoff project.
+    expect(plan.plans[0]?.unchanged).toEqual([
+      { path: MANIFEST_FILE, sha256: null },
+      { path: CONFIG_FILE, sha256: null },
+    ]);
+    old.write(CONFIG_FILE, "schema: liftoff.config/v1\n");
+    await expect(applyCleanup(ports, plan)).rejects.toThrow(ChangeConflictError);
+    expect(old.read("app/main.py")).toBe("from fastapi import FastAPI\n");
   });
 
   it("keeps what the walk did not reach, and never reads the new project's secrets", async () => {

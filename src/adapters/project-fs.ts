@@ -213,7 +213,8 @@ export class LocalProjectFs implements ProjectFsPort {
       return true;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (["ENOTEMPTY", "EEXIST", "ENOENT", "ENOTDIR", "EBUSY"].includes(code ?? "")) return false;
+      // Anything else, such as a directory in use, is for the caller to name.
+      if (["ENOTEMPTY", "EEXIST", "ENOENT", "ENOTDIR"].includes(code ?? "")) return false;
       throw error;
     }
   }

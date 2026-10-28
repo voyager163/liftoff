@@ -447,9 +447,22 @@ describe("MIGRATE-004 cleaning up from the command line", () => {
     removals = 0;
     expect((await migrate(["--cleanup", "--yes"], { port: failing })).code).toBe(5);
     expect(existsSync(at("app"))).toBe(true);
-    const finished = await migrate(["--cleanup", "--recover", "finish", "--yes"]);
-    expect(finished.code).toBe(0);
-    expect(existsSync(at("app"))).toBe(false);
+    // A directory it cannot remove is named, and the command exits 3.
+    const stuck = Object.assign(Object.create(fs) as ProjectFsPort, {
+      removeEmptyDirectory: (directory: string, relative: string) =>
+        relative === "app"
+          ? Promise.reject(new Error("resource busy"))
+          : fs.removeEmptyDirectory(directory, relative),
+    });
+    const finished = await migrate(["--cleanup", "--recover", "finish", "--yes", "--json"], {
+      port: stuck,
+    });
+    expect(finished.code).toBe(3);
+    expect(JSON.parse(finished.out).leftovers).toEqual([
+      "app is empty but could not be removed (resource busy); delete it",
+    ]);
+    expect(existsSync(at("app"))).toBe(true);
+    rmSync(at("app"), { recursive: true });
     expect(existsSync(at(".liftoff"))).toBe(false);
     expect(Object.keys(snapshot())).toEqual([".env"]);
   });
