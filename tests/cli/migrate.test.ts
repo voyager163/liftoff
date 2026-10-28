@@ -309,6 +309,10 @@ describe("MIGRATE-004 cleaning up from the command line", () => {
       [["--cleanup", "--out", "../x.json"], "--cleanup goes only with"],
       [["--recover", "undo"], "--recover recovers a cleanup, so it goes with --cleanup"],
       [["--cleanup", "--recover", "undo", "--check"], "--recover goes only with --cleanup"],
+      [
+        ["--cleanup", "--check", "--yes"],
+        "--check removes nothing, so --yes has nothing to confirm",
+      ],
     ] as const) {
       const run = await migrate([...argv]);
       expect(run.code, argv.join(" ")).toBe(2);
@@ -383,9 +387,32 @@ describe("MIGRATE-004 cleaning up from the command line", () => {
     expect(stopped.code).toBe(5);
     expect(stopped.out).toContain("The cleanup stopped part way: no space left on the disk");
     expect(stopped.out).toContain("Finish it with liftoff migrate --cleanup --recover finish");
+    // Finishing would remove a file whose copy is gone, so it removes nothing.
+    rmSync(path.join(target(), "legacy"), { recursive: true });
+    const unsafe = await migrate(["--cleanup", "--recover", "finish", "--yes"]);
+    expect(unsafe.code).toBe(3);
+    expect(unsafe.out).toContain(
+      "no longer holds a copy of every file the cleanup would still remove",
+    );
+    expect(unsafe.out).toContain("  pyproject.toml\n");
+    expect(existsSync(at("pyproject.toml"))).toBe(true);
     const undone = await migrate(["--cleanup", "--recover", "undo", "--yes"]);
     expect(undone.code).toBe(0);
     expect(undone.out).toContain("The cleanup is undone:");
+    expect(undone.out).toContain("any after this one did not run");
     expect(snapshot()).toEqual(before);
+    expect(existsSync(at(".liftoff"))).toBe(false);
+  });
+
+  it("refuses overlapping projects and an old project Liftoff has, removing nothing", async () => {
+    expect((await migrate(["--yes"])).code).toBe(0);
+    const overlap = await migrate(["--cleanup", "--check", "--to", "app"]);
+    expect(overlap.code).toBe(1);
+    expect(overlap.err).toContain("overlap");
+    write(CONFIG_FILE, "schema: liftoff.config/v1\n");
+    const liftoff = await migrate(["--cleanup", "--yes"]);
+    expect(liftoff.code).toBe(1);
+    expect(liftoff.err).toContain("so this is a Liftoff project");
+    expect(existsSync(at("app/main.py"))).toBe(true);
   });
 });

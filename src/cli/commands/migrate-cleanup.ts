@@ -1,15 +1,18 @@
 import path from "node:path";
+import { readJournal } from "../../application/change/apply-changes.ts";
 import {
   applyCleanup,
   type CleanupPlan,
   CleanupStoppedError,
   planCleanup,
+  removeEmptyRecords,
+  withoutCopies,
 } from "../../application/migrate/cleanup.ts";
 import { AssessError } from "../../application/project/assess-project.ts";
 import type { CommandResult, Io, ParsedArgs } from "../command.ts";
 import { UsageError } from "../outcome.ts";
 import { shown } from "../terminal.ts";
-import { changePortsFor, leftBehind, stopped, toCli } from "./changing.ts";
+import { changePortsFor, leftBehind, recoverChange, stopped, toCli } from "./changing.ts";
 import { newDirectory, type ProjectPorts, projectDirectory } from "./project-ports.ts";
 
 /** How many files each list in the text shows; the JSON report has every one. */
@@ -63,6 +66,57 @@ const reported = (cleanup: CleanupPlan) => ({
   plans: cleanup.plans.map((plan) => plan.hash),
 });
 
+/** The two projects a cleanup names: the old one, and the new one, by default beside it. */
+async function projectsOf(io: Io, args: ParsedArgs): Promise<{ source: string; target: string }> {
+  const source = await projectDirectory(io.cwd, args.options.dir as string);
+  const to = args.options.to as string | undefined;
+  const target = await newDirectory(
+    io.cwd,
+    to ?? path.join(path.dirname(source), `${path.basename(source)}-liftoff`),
+  );
+  return { source, target };
+}
+
+/**
+ * Finishes or undoes a cleanup change that stopped part way. Finishing
+ * removes the rest of that change's files, so each must still have a copy
+ * in the new project, as when the cleanup was planned; undoing puts back
+ * what it removed, and needs nothing of the new project.
+ */
+export async function recoverCleanup(
+  io: Io,
+  ports: ProjectPorts,
+  args: ParsedArgs,
+  mode: "finish" | "undo",
+): Promise<CommandResult> {
+  const { source, target } = await projectsOf(io, args);
+  if (mode === "finish") {
+    const journal = await readJournal(ports.fs, source).catch(() => undefined);
+    if (journal?.operation === "migrate-cleanup") {
+      const missing = await withoutCopies(ports.fs, source, target, journal.changes);
+      if (missing.length > 0) {
+        const lines = [
+          `${target} no longer holds a copy of every file the cleanup would still remove, so nothing was removed:`,
+          ...listOf(missing),
+          "Undo the cleanup instead with liftoff migrate --cleanup --recover undo, or name the new project with --to.",
+        ];
+        return {
+          outcome: "attention",
+          report: { directory: source, target, recovered: false, mode, missing },
+          text: `${lines.map(shown).join("\n")}\n`,
+        };
+      }
+    }
+  }
+  const result = await recoverChange(io, ports, args, mode, "migrate-cleanup");
+  if (result.outcome !== "success" || result.report.recovered !== true) return result;
+  await removeEmptyRecords(ports.fs, source);
+  return {
+    ...result,
+    text: `${result.text}A cleanup removes its files in changes, and any after this one did not run; liftoff migrate --cleanup --check shows what is left to remove.\n`,
+  };
+}
+
 /**
  * Removes from the old project what the new one holds byte-for-byte copies
  * of, once the new project is verified and the person agrees (MIGRATE-004).
@@ -74,12 +128,7 @@ export async function runCleanup(
   version: string,
   refused: readonly string[],
 ): Promise<CommandResult> {
-  const source = await projectDirectory(io.cwd, args.options.dir as string);
-  const to = args.options.to as string | undefined;
-  const target = await newDirectory(
-    io.cwd,
-    to ?? path.join(path.dirname(source), `${path.basename(source)}-liftoff`),
-  );
+  const { source, target } = await projectsOf(io, args);
   let cleanup: CleanupPlan;
   try {
     cleanup = await planCleanup(ports.fs, source, target, version, {

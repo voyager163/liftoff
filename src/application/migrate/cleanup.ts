@@ -200,6 +200,40 @@ async function unverified(fs: ProjectFsPort, target: string): Promise<string[]> 
 }
 
 /**
+ * The files a stopped cleanup change would still remove whose bytes the new
+ * project no longer holds anywhere its walk reaches, so finishing it must
+ * not remove them. A file already removed, or one that changed since, is
+ * left to recovery, which never removes a changed file.
+ */
+export async function withoutCopies(
+  fs: ProjectFsPort,
+  source: string,
+  target: string,
+  changes: readonly { readonly path: string; readonly before: string | null }[],
+): Promise<string[]> {
+  const remaining: { path: string; sha256: string; size: number }[] = [];
+  for (const change of changes) {
+    if (change.before === null) continue;
+    const now = await fs.hashWithin(source, change.path, MAX_COPIED_BYTES);
+    if (now.kind === "file" && now.sha256 === change.before) {
+      remaining.push({ path: change.path, sha256: now.sha256, size: now.size });
+    }
+  }
+  if (remaining.length === 0) return [];
+  const real = await fs.realPath(target);
+  const usable =
+    real !== undefined &&
+    pathKey(real) === pathKey(target) &&
+    !within(target, source) &&
+    !within(source, target) &&
+    (await fs.directoryIdentity(target)) !== undefined;
+  const held = usable
+    ? await heldInTarget(fs, target, new Set(remaining.map((file) => file.size)), undefined)
+    : new Map<string, string>();
+  return remaining.filter((file) => !held.has(file.sha256)).map((file) => file.path);
+}
+
+/**
  * The files the walk of the new project reaches, by sha256, for the sizes
  * the old project's files have: the first such path, sorted. Files that may
  * hold secrets or state, and Liftoff's own records, are never read.
@@ -232,6 +266,14 @@ async function heldInTarget(
   return held;
 }
 
+/**
+ * Removes the old project's .liftoff once it is empty, as a cleanup, or a
+ * recovery of one, leaves it when it made it for its lock and journal.
+ */
+export async function removeEmptyRecords(fs: ProjectFsPort, source: string): Promise<void> {
+  await fs.removeEmptyDirectory(path.join(source, ".liftoff"));
+}
+
 export interface CleanupResult {
   /** Files removed from the old project. */
   readonly removed: readonly string[];
@@ -257,8 +299,6 @@ export async function applyCleanup(
 ): Promise<CleanupResult> {
   const { fs } = ports;
   const { signal } = options;
-  const records = path.join(cleanup.source, ".liftoff");
-  const hadRecords = (await fs.entry(records)).kind !== "missing";
   const byPath = new Map(cleanup.removals.map((removal) => [removal.path, removal]));
   const removed: string[] = [];
   const leftovers: string[] = [];
@@ -271,6 +311,7 @@ export async function applyCleanup(
     }
     try {
       for (const change of plan.changes) {
+        signal?.throwIfAborted();
         const removal = byPath.get(change.path);
         const now =
           removal === undefined
@@ -287,6 +328,11 @@ export async function applyCleanup(
       leftovers.push(...result.leftovers);
     } catch (error) {
       if (removed.length === 0) throw error;
+      // Ctrl+C before this change touched a file: the finished ones stand.
+      if (signal?.aborted && error === signal.reason) {
+        cancelled = true;
+        break;
+      }
       const message = error instanceof Error ? error.message : String(error);
       throw new CleanupStoppedError(message, plan, removed, error);
     }
@@ -305,7 +351,7 @@ export async function applyCleanup(
       directories.push(directory);
     }
   }
-  // The .liftoff a change made for its lock and journal, if the project had none.
-  if (!hadRecords && removed.length > 0) await fs.removeEmptyDirectory(records);
+  // The .liftoff a change keeps its lock and journal in, once nothing is in it.
+  await removeEmptyRecords(fs, cleanup.source);
   return { removed, directories: directories.sort(), leftovers, cancelled };
 }

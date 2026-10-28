@@ -18,9 +18,9 @@ import type { CommandResult, CommandSpec } from "../command.ts";
 import { UsageError } from "../outcome.ts";
 import { writePlanFile } from "../plan-file.ts";
 import { shown } from "../terminal.ts";
-import { checkPreview, recoverChange, toCli } from "./changing.ts";
+import { checkPreview, toCli } from "./changing.ts";
 import { CHOICE_OPTIONS, choicesFrom, proposalLines } from "./choosing.ts";
-import { runCleanup } from "./migrate-cleanup.ts";
+import { recoverCleanup, runCleanup } from "./migrate-cleanup.ts";
 import {
   defaultProjectPorts,
   newDirectory,
@@ -191,22 +191,18 @@ export function makeMigrateCommand(
       const recover = args.options.recover as "finish" | "undo" | undefined;
       if (args.options.cleanup === true) {
         // Cleaning up removes only what the projects hold; it chooses nothing.
-        const others = given(
-          "out",
-          "plan",
-          ...CHOSEN,
-          ...(recover === undefined ? [] : ["to", "check"]),
-        );
+        const others = given("out", "plan", ...CHOSEN, ...(recover === undefined ? [] : ["check"]));
         if (others.length > 0) {
           throw new UsageError(
             recover === undefined
               ? `--cleanup goes only with --dir, --to, --check, --recover and --yes, not --${others[0]}`
-              : `--recover goes only with --cleanup, --dir and --yes, not --${others[0]}`,
+              : `--recover goes only with --cleanup, --dir, --to and --yes, not --${others[0]}`,
           );
         }
-        if (recover !== undefined) {
-          return recoverChange(io, ports, args, recover, "migrate-cleanup");
+        if (args.options.check === true && args.options.yes === true) {
+          throw new UsageError("--check removes nothing, so --yes has nothing to confirm");
         }
+        if (recover !== undefined) return recoverCleanup(io, ports, args, recover);
         return runCleanup(io, ports, args, version, [await projectDirectory(io.cwd, home)]);
       }
       if (recover !== undefined) {

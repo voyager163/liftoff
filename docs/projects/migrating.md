@@ -139,7 +139,9 @@ liftoff migrate --cleanup            # see it, then approve
 liftoff migrate --cleanup --dir ../service --to ../service-next
 ```
 
-It first checks that the new project was made by `liftoff migrate` and that
+It refuses, and exits 1, when either project is not there, they overlap,
+or the old one is a Liftoff project or has an unfinished change. It then
+checks that the new project was made by `liftoff migrate` and that
 `liftoff validate` finds no error in it; until then it removes nothing and
 exits 3. Then it removes from the old project each file that migrating
 copies and that the new project holds a byte-for-byte copy of, anywhere:
@@ -154,16 +156,22 @@ else stays, and is named:
 - every file the new project holds no copy of, such as one you changed
   while moving it.
 
-Directories left empty are removed; the old project's directory itself
-stays. So run it before deleting `legacy/`, while the copies are still
+Directories left empty are removed, and so is a `.liftoff` left empty; the
+old project's directory itself stays. So run it before deleting `legacy/`, while the copies are still
 there to match.
 
 It asks first; the default answer is no, and without a terminal it needs
 `--yes`. Files are removed in changes of at most 2,000 files, and just
-before each, the new project's copies are checked again. A change that
-stops part way can be finished or undone:
+before each, the new project's copies are checked again. Ctrl+C between
+changes stops with the finished ones done. A change that stops part way can
+be finished or undone:
 
 ```bash
 liftoff migrate --cleanup --recover finish
 liftoff migrate --cleanup --recover undo
 ```
+
+Finishing removes the rest of that change's files only while the new
+project still holds a copy of each, so don't delete `legacy/` to make room
+first; undoing puts back what the change removed. Either way, later changes
+did not run: `liftoff migrate --cleanup --check` shows what is left.

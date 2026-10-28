@@ -21,6 +21,7 @@ import {
   type CleanupPlan,
   CleanupStoppedError,
   planCleanup,
+  withoutCopies,
 } from "../../src/application/migrate/cleanup.ts";
 import { applyMigrate, planMigrate } from "../../src/application/migrate/migrate-project.ts";
 import type { ProjectFsPort } from "../../src/application/ports.ts";
@@ -255,6 +256,45 @@ describe("MIGRATE-004 cleaning up the old project is a separate step that asks f
     });
     expect(result).toMatchObject({ removed: ["README.md", "app/main.py"], cancelled: true });
     expect(old.read("pyproject.toml")).toBe(PYPROJECT);
+  });
+
+  it("stops on Ctrl+C before a later change touches a file, and tidies what the first emptied", async () => {
+    await migrated();
+    const plan = await cleanup(fs, 2);
+    const controller = new AbortController();
+    let hashes = 0;
+    const aborting = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (directory: string, relative: string, max: number) => {
+        // The second change's copies are about to be hashed again.
+        if (directory === target && ++hashes === 3) controller.abort();
+        return fs.hashWithin(directory, relative, max);
+      },
+    });
+    const result = await applyCleanup({ ...ports, fs: aborting }, plan, {
+      signal: controller.signal,
+    });
+    expect(result).toMatchObject({ removed: ["README.md", "app/main.py"], cancelled: true });
+    expect(old.read("pyproject.toml")).toBe(PYPROJECT);
+    expect(existsSync(old.at(CHANGE_JOURNAL_FILE))).toBe(false);
+    expect(existsSync(old.at(".liftoff"))).toBe(false);
+  });
+
+  it("names the files a stopped change would still remove that the new project no longer holds", async () => {
+    await migrated();
+    const plan = await cleanup(fs, 2);
+    const changes = (plan.plans[1] ?? fail()).changes;
+    expect(await withoutCopies(fs, root, target, changes)).toEqual([]);
+    rmSync(made.at("legacy"), { recursive: true });
+    expect(await withoutCopies(fs, root, target, changes)).toEqual([
+      "app/routes/items.py",
+      "pyproject.toml",
+    ]);
+    // A new project that is not there, or overlaps, holds nothing.
+    expect(await withoutCopies(fs, root, path.join(work, "missing"), changes)).toHaveLength(2);
+    expect(await withoutCopies(fs, root, path.join(root, "app"), changes)).toHaveLength(2);
+    // A file already removed is not asked about.
+    rmSync(old.at("pyproject.toml"));
+    expect(await withoutCopies(fs, root, target, changes)).toEqual(["app/routes/items.py"]);
   });
 
   it("keeps what the walk did not reach, and never reads the new project's secrets", async () => {

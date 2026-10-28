@@ -821,13 +821,13 @@ and only after asking: the default answer is no, and without a terminal it
 needs `--yes`. It takes the old project from `--dir` and the new one from
 `--to`, by default as migrating does (MIGRATE-001).
 
-The new project is verified first. It must be a Liftoff project whose
-manifest's history starts with `migrate`, and `liftoff validate` must find
-no error in it. The two projects may not overlap, and no link may lead
-either elsewhere (MIGRATE-001). The old project may not be a Liftoff
-project or have a change that has not finished. Otherwise nothing is
-removed, each reason is named, and the command exits 3, or 1 for a
-directory that is not there.
+Both projects must be directories that are there, may not overlap, and no
+link may lead either elsewhere (MIGRATE-001); the old project may not be a
+Liftoff project or have a change that has not finished. Otherwise the
+command refuses, removes nothing and exits 1. The new project is then
+verified: it must be a Liftoff project whose manifest's history starts
+with `migrate`, and `liftoff validate` must find no error in it. Until it
+is, nothing is removed, each reason is named, and the command exits 3.
 
 A file of the old project is removed only when migrating would copy it
 (MIGRATE-002) and a file with the same sha256 is somewhere the walk of the
@@ -844,7 +844,8 @@ moved from there unchanged. Everything else stays and is named, with why:
   either project.
 
 Directories the cleanup leaves empty are removed, one at a time and only
-while empty. The old project's own directory always stays.
+while empty, and so is the old project's `.liftoff` once nothing is in it.
+The old project's own directory always stays.
 
 Files are removed as CHANGE-002 to CHANGE-004 say, in changes of at most
 2,000 files each, so each can be finished or undone. Just before each
@@ -852,9 +853,12 @@ change, every copy it rests on in the new project is hashed again; if one
 changed, that change removes nothing and the command says to run it again.
 A cleanup that stops part way exits 5, and `liftoff migrate --cleanup
 --recover finish` or `--recover undo` finishes or undoes that change after
-asking. Ctrl+C between changes stops with the files of finished changes
-removed, and exits 4. `--check` shows what would be removed and what stays,
-and removes nothing.
+asking, and says that any later changes did not run. Finishing removes the
+rest of that change's files only while the new project (`--to`) still holds
+a copy of each; otherwise it removes nothing, names those without one, says
+to undo instead, and exits 3. Ctrl+C between changes stops with the files
+of finished changes removed, and exits 4. `--check` shows what would be
+removed and what stays, removes nothing, and goes without `--yes`.
 
 - Given a migrated project whose `legacy/` still holds an unchanged copy of
   `app/main.py`, and an old `.env`, when the old project is cleaned up,
