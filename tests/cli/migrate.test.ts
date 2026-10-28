@@ -404,6 +404,56 @@ describe("MIGRATE-004 cleaning up from the command line", () => {
     expect(existsSync(at(".liftoff"))).toBe(false);
   });
 
+  it("checks the copies again once finishing is approved, and tidies once it finishes", async () => {
+    expect((await migrate(["--yes"])).code).toBe(0);
+    let removals = 0;
+    const failing = Object.assign(Object.create(fs) as ProjectFsPort, {
+      moveFile: async (from: string, to: string) => {
+        if (to.includes(`${path.sep}removed${path.sep}`) && ++removals === 2) {
+          throw new Error("no space left on the disk");
+        }
+        return fs.moveFile(from, to);
+      },
+    });
+    expect((await migrate(["--cleanup", "--yes"], { port: failing })).code).toBe(5);
+    // The copies go while the person is being asked.
+    const io = captureIo(root(), true);
+    const asking = Object.assign(Object.create(io) as typeof io, {
+      confirm: async (question: string) => {
+        io.questions.push(question);
+        rmSync(path.join(target(), "legacy"), { recursive: true });
+        return true;
+      },
+    });
+    const command = makeMigrateCommand(
+      (cwd) => ({ ...defaultProjectPorts(cwd), fs }),
+      path.join(work, "home"),
+    );
+    const code = await runCli(
+      ["migrate", "--cleanup", "--recover", "finish"],
+      asking,
+      [command],
+      "1.0.0",
+    );
+    expect(code).toBe(3);
+    expect(io.questions).toEqual(["Finish it?"]);
+    expect(io.out.join("")).toContain("  pyproject.toml\n");
+    expect(existsSync(at("pyproject.toml"))).toBe(true);
+    expect(existsSync(at(".liftoff/change-journal.json"))).toBe(true);
+    // With the copies back, finishing removes the rest and the directories it emptied.
+    expect((await migrate(["--cleanup", "--recover", "undo", "--yes"])).code).toBe(0);
+    rmSync(target(), { recursive: true });
+    expect((await migrate(["--yes"])).code).toBe(0);
+    removals = 0;
+    expect((await migrate(["--cleanup", "--yes"], { port: failing })).code).toBe(5);
+    expect(existsSync(at("app"))).toBe(true);
+    const finished = await migrate(["--cleanup", "--recover", "finish", "--yes"]);
+    expect(finished.code).toBe(0);
+    expect(existsSync(at("app"))).toBe(false);
+    expect(existsSync(at(".liftoff"))).toBe(false);
+    expect(Object.keys(snapshot())).toEqual([".env"]);
+  });
+
   it("refuses overlapping projects and an old project Liftoff has, removing nothing", async () => {
     expect((await migrate(["--yes"])).code).toBe(0);
     const overlap = await migrate(["--cleanup", "--check", "--to", "app"]);

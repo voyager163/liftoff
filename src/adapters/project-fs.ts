@@ -196,17 +196,24 @@ export class LocalProjectFs implements ProjectFsPort {
     await rm(target, { recursive: true, force: true });
   }
 
-  async removeEmptyDirectory(target: string): Promise<boolean> {
-    // rmdir removes only an empty directory, and never follows a link to one.
-    if ((await this.entry(target)).kind !== "directory") return false;
+  async removeEmptyDirectory(directory: string, relative: string): Promise<boolean> {
+    const parts = relative.split("/");
+    // The project and each directory on the way, checked one at a time, so a
+    // link anywhere, which lstat follows when it is not the last part, is
+    // seen. Node has no rmdir relative to an open directory, so a directory
+    // swapped for a link between this and the rmdir is the one case it
+    // cannot see.
+    for (let depth = 0; depth <= parts.length; depth++) {
+      const seen = await inspect(NODE_CALLS, path.join(directory, ...parts.slice(0, depth)));
+      if (typeof seen === "string" || !seen.isDirectory()) return false;
+    }
     try {
-      await rmdir(target);
+      // rmdir removes only an empty directory.
+      await rmdir(path.join(directory, ...parts));
       return true;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (["ENOTEMPTY", "EEXIST", "ENOENT", "ENOTDIR", "EPERM", "EBUSY"].includes(code ?? "")) {
-        return false;
-      }
+      if (["ENOTEMPTY", "EEXIST", "ENOENT", "ENOTDIR", "EBUSY"].includes(code ?? "")) return false;
       throw error;
     }
   }

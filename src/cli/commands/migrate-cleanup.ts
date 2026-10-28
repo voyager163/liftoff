@@ -4,8 +4,9 @@ import {
   applyCleanup,
   type CleanupPlan,
   CleanupStoppedError,
+  MissingCopiesError,
   planCleanup,
-  removeEmptyRecords,
+  removeEmptied,
   withoutCopies,
 } from "../../application/migrate/cleanup.ts";
 import { AssessError } from "../../application/project/assess-project.ts";
@@ -90,30 +91,62 @@ export async function recoverCleanup(
   mode: "finish" | "undo",
 ): Promise<CommandResult> {
   const { source, target } = await projectsOf(io, args);
-  if (mode === "finish") {
-    const journal = await readJournal(ports.fs, source).catch(() => undefined);
-    if (journal?.operation === "migrate-cleanup") {
-      const missing = await withoutCopies(ports.fs, source, target, journal.changes);
-      if (missing.length > 0) {
-        const lines = [
-          `${target} no longer holds a copy of every file the cleanup would still remove, so nothing was removed:`,
-          ...listOf(missing),
-          "Undo the cleanup instead with liftoff migrate --cleanup --recover undo, or name the new project with --to.",
-        ];
-        return {
-          outcome: "attention",
-          report: { directory: source, target, recovered: false, mode, missing },
-          text: `${lines.map(shown).join("\n")}\n`,
-        };
-      }
-    }
+  const refused = (missing: readonly string[]): CommandResult => {
+    const lines = [
+      `${target} no longer holds a copy of every file the cleanup would still remove, so nothing was removed:`,
+      ...listOf(missing),
+      "Undo the cleanup instead with liftoff migrate --cleanup --recover undo, or name the new project with --to.",
+    ];
+    return {
+      outcome: "attention",
+      report: { directory: source, target, recovered: false, mode, missing },
+      text: `${lines.map(shown).join("\n")}\n`,
+    };
+  };
+  const journal = await readJournal(ports.fs, source).catch(() => undefined);
+  const cleaning = journal?.operation === "migrate-cleanup";
+  // Asked about once before the question, so a doomed finish is not offered,
+  // and again under the lock once it is approved, before any file changes.
+  const copies = async (changes: readonly { path: string; before: string | null }[]) => {
+    const missing = await withoutCopies(ports.fs, source, target, changes);
+    if (missing.length > 0) throw new MissingCopiesError(missing);
+  };
+  let result: CommandResult;
+  try {
+    if (mode === "finish" && cleaning && journal !== undefined) await copies(journal.changes);
+    result = await recoverChange(
+      io,
+      ports,
+      args,
+      mode,
+      "migrate-cleanup",
+      mode === "finish" ? (recovering) => copies(recovering.changes) : undefined,
+    );
+  } catch (error) {
+    if (error instanceof MissingCopiesError) return refused(error.missing);
+    throw error;
   }
-  const result = await recoverChange(io, ports, args, mode, "migrate-cleanup");
   if (result.outcome !== "success" || result.report.recovered !== true) return result;
-  await removeEmptyRecords(ports.fs, source);
+  // Finishing removed the rest of the change's files; undoing put them back.
+  const tidied = await removeEmptied(
+    ports.fs,
+    source,
+    mode === "finish" && cleaning && journal !== undefined
+      ? journal.changes.map((change) => change.path)
+      : [],
+  );
   return {
     ...result,
-    text: `${result.text}A cleanup removes its files in changes, and any after this one did not run; liftoff migrate --cleanup --check shows what is left to remove.\n`,
+    report: { ...result.report, directories: tidied.directories },
+    // The recovery's own text is shown as it is; it was escaped already.
+    text: [
+      result.text.trimEnd(),
+      ...[
+        ...leftBehind(tidied.leftovers),
+        "A cleanup removes its files in changes, and any after this one did not run; liftoff migrate --cleanup --check shows what is left to remove.",
+      ].map(shown),
+      "",
+    ].join("\n"),
   };
 }
 

@@ -175,11 +175,12 @@ export interface ProjectFsPort {
   publish(staging: string, target: string): Promise<void>;
   remove(path: string): Promise<void>;
   /**
-   * Removes a directory only while it is empty, and not a link: false,
-   * changing nothing, when it is not there, holds anything or is not a
-   * directory.
+   * Removes the directory at `relative`, a POSIX path under `directory`,
+   * only while it is empty and only when it, `directory` and every
+   * directory on the way are real directories, never links: false, changing
+   * nothing, when one is not, or it holds anything or is not there.
    */
-  removeEmptyDirectory(path: string): Promise<boolean>;
+  removeEmptyDirectory(directory: string, relative: string): Promise<boolean>;
   /** Every entry under a directory, sorted; links are not followed. */
   listTree(directory: string): Promise<TreeEntry[]>;
 }

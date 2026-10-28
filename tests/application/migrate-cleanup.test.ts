@@ -297,6 +297,62 @@ describe("MIGRATE-004 cleaning up the old project is a separate step that asks f
     expect(await withoutCopies(fs, root, target, changes)).toEqual(["app/routes/items.py"]);
   });
 
+  it("tidies what finished changes emptied when a later one stops, and reports what it cannot remove", async () => {
+    await migrated();
+    const plan = await cleanup(fs, 3);
+    expect(plan.plans.map((change) => change.changes.length)).toEqual([3, 1]);
+    const failing = Object.assign(Object.create(fs) as ProjectFsPort, {
+      moveFile: async (from: string, to: string) => {
+        if (to.includes(`${path.sep}removed${path.sep}`) && from.endsWith("pyproject.toml")) {
+          throw new Error("no space left on the disk");
+        }
+        return fs.moveFile(from, to);
+      },
+    });
+    await expect(applyCleanup({ ...ports, fs: failing }, plan)).rejects.toThrow(
+      CleanupStoppedError,
+    );
+    // The first change emptied app/ and app/routes/, which are gone already.
+    expect(existsSync(old.at("app"))).toBe(false);
+    await recoverChanges(ports, root, "undo");
+
+    // A directory that cannot be removed is left, and said so, not an error.
+    rmSync(target, { recursive: true });
+    rmSync(root, { recursive: true });
+    mkdirSync(root);
+    await migrated();
+    const stuck = Object.assign(Object.create(fs) as ProjectFsPort, {
+      removeEmptyDirectory: (directory: string, relative: string) =>
+        relative === "app"
+          ? Promise.reject(new Error("permission denied"))
+          : fs.removeEmptyDirectory(directory, relative),
+    });
+    const result = await applyCleanup({ ...ports, fs: stuck }, await cleanup());
+    expect(result.removed).toContain("app/main.py");
+    expect(result.directories).toEqual(["app/routes"]);
+    expect(result.leftovers).toEqual([
+      "app is empty but could not be removed (permission denied); delete it",
+    ]);
+  });
+
+  it("removes nothing more once a link leads either project elsewhere", async () => {
+    await migrated();
+    const plan = await cleanup(fs, 2);
+    let calls = 0;
+    const redirected = Object.assign(Object.create(fs) as ProjectFsPort, {
+      realPath: async (directory: string) =>
+        directory === target && ++calls === 2
+          ? path.join(work, "elsewhere")
+          : fs.realPath(directory),
+    });
+    const error = await applyCleanup({ ...ports, fs: redirected }, plan).catch((thrown) => thrown);
+    expect(error).toBeInstanceOf(CleanupStoppedError);
+    expect((error as Error).message).toContain(
+      `${target} now leads to ${path.join(work, "elsewhere")} through a link, so nothing more was removed`,
+    );
+    expect(old.read("pyproject.toml")).toBe(PYPROJECT);
+  });
+
   it("keeps what the walk did not reach, and never reads the new project's secrets", async () => {
     await migrated();
     old.write("closed/notes.md", "private\n");

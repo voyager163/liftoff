@@ -4,7 +4,7 @@ import { type ChangePlan, sealChangePlan } from "../../domain/plan/change-plan.t
 import { PLAN_SCHEMA } from "../../domain/plan/plan.ts";
 import { MANIFEST_FILE, parseManifest } from "../../domain/project/manifest.ts";
 import { pathKey } from "../../domain/project/paths.ts";
-import { applyChanges, type ChangePorts } from "../change/apply-changes.ts";
+import { applyChanges, ChangeError, type ChangePorts } from "../change/apply-changes.ts";
 import {
   MAX_RECORD_BYTES,
   ProjectChangeError,
@@ -267,11 +267,52 @@ async function heldInTarget(
 }
 
 /**
- * Removes the old project's .liftoff once it is empty, as a cleanup, or a
- * recovery of one, leaves it when it made it for its lock and journal.
+ * Removes the directories that removing these files left empty, deepest
+ * first, one at a time and only while empty and reached through no link,
+ * then the old project's .liftoff once nothing is in it: a cleanup, or a
+ * recovery of one, makes it for its lock and journal. The old project's own
+ * directory stays. A directory that cannot be removed is a leftover, for
+ * the person to delete, never an error: the files are already removed.
  */
-export async function removeEmptyRecords(fs: ProjectFsPort, source: string): Promise<void> {
-  await fs.removeEmptyDirectory(path.join(source, ".liftoff"));
+export async function removeEmptied(
+  fs: ProjectFsPort,
+  source: string,
+  files: readonly string[],
+): Promise<{ readonly directories: string[]; readonly leftovers: string[] }> {
+  const emptied = new Set<string>();
+  for (const file of files) {
+    for (let at = path.posix.dirname(file); at !== "."; at = path.posix.dirname(at)) {
+      emptied.add(at);
+    }
+  }
+  const depth = (directory: string) => directory.split("/").length;
+  const directories: string[] = [];
+  const leftovers: string[] = [];
+  for (const directory of [
+    ...[...emptied].sort((a, b) => depth(b) - depth(a) || (a < b ? -1 : 1)),
+    ".liftoff",
+  ]) {
+    try {
+      if ((await fs.removeEmptyDirectory(source, directory)) && directory !== ".liftoff") {
+        directories.push(directory);
+      }
+    } catch (error) {
+      leftovers.push(
+        `${directory} is empty but could not be removed (${(error as Error).message}); delete it`,
+      );
+    }
+  }
+  return { directories: directories.sort(), leftovers };
+}
+
+/** Finishing a stopped cleanup would remove files the new project no longer holds. Nothing changed. */
+export class MissingCopiesError extends ChangeError {
+  override readonly name = "MissingCopiesError";
+  readonly missing: readonly string[];
+  constructor(missing: readonly string[]) {
+    super(`the new project no longer holds a copy of ${missing.join(", ")}`);
+    this.missing = missing;
+  }
 }
 
 export interface CleanupResult {
@@ -287,10 +328,12 @@ export interface CleanupResult {
 
 /**
  * Removes the planned files, one change at a time, through the change
- * engine (CHANGE-002 to CHANGE-004). Before each change, every copy it
- * rests on in the new project is hashed again, and must still hold the
- * same bytes. Directories the cleanup leaves empty are removed afterwards,
- * one at a time and only while empty, never the old project's own.
+ * engine (CHANGE-002 to CHANGE-004). Before each change, neither project
+ * may now be reached through a link, and every copy the change rests on in
+ * the new project is hashed again and must still hold the same bytes.
+ * Directories the cleanup leaves empty are removed afterwards, even when a
+ * later change stopped, one at a time and only while empty, never the old
+ * project's own.
  */
 export async function applyCleanup(
   ports: ChangePorts,
@@ -310,6 +353,14 @@ export async function applyCleanup(
       break;
     }
     try {
+      for (const directory of [cleanup.source, cleanup.target]) {
+        const real = await fs.realPath(directory);
+        if (real === undefined || pathKey(real) !== pathKey(directory)) {
+          throw new ProjectChangeError(
+            `${directory} now leads ${real === undefined ? "nowhere" : `to ${real}`} through a link, so nothing more was removed`,
+          );
+        }
+      }
       for (const change of plan.changes) {
         signal?.throwIfAborted();
         const removal = byPath.get(change.path);
@@ -333,25 +384,17 @@ export async function applyCleanup(
         cancelled = true;
         break;
       }
+      // The finished changes' directories are tidied before saying why it stopped.
+      await removeEmptied(fs, cleanup.source, removed);
       const message = error instanceof Error ? error.message : String(error);
       throw new CleanupStoppedError(message, plan, removed, error);
     }
   }
-  const directories: string[] = [];
-  const emptied = new Set<string>();
-  for (const file of removed) {
-    for (let at = path.posix.dirname(file); at !== "."; at = path.posix.dirname(at)) {
-      emptied.add(at);
-    }
-  }
-  // Deepest first, so a directory is looked at once what was in it is gone.
-  const depth = (directory: string) => directory.split("/").length;
-  for (const directory of [...emptied].sort((a, b) => depth(b) - depth(a) || (a < b ? -1 : 1))) {
-    if (await fs.removeEmptyDirectory(path.join(cleanup.source, ...directory.split("/")))) {
-      directories.push(directory);
-    }
-  }
-  // The .liftoff a change keeps its lock and journal in, once nothing is in it.
-  await removeEmptyRecords(fs, cleanup.source);
-  return { removed, directories: directories.sort(), leftovers, cancelled };
+  const tidied = await removeEmptied(fs, cleanup.source, removed);
+  return {
+    removed,
+    directories: tidied.directories,
+    leftovers: [...leftovers, ...tidied.leftovers],
+    cancelled,
+  };
 }

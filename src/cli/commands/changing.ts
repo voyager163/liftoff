@@ -13,7 +13,7 @@ import {
   UNREADABLE_JOURNAL_ADVICE,
 } from "../../application/change/apply-changes.ts";
 import { ProjectChangeUnsupportedError } from "../../application/change/project-change.ts";
-import { JournalError } from "../../domain/change/journal.ts";
+import { type ChangeJournal, JournalError } from "../../domain/change/journal.ts";
 import {
   CHANGE_JOURNAL_FILE,
   type ChangePlan,
@@ -202,6 +202,7 @@ export async function recoverChange(
   args: ParsedArgs,
   mode: "finish" | "undo",
   command: ChangeCommand,
+  check?: (journal: ChangeJournal) => Promise<void>,
 ): Promise<CommandResult> {
   const names = NAMES[command];
   const directory = await projectDirectory(io.cwd, args.options.dir as string);
@@ -246,6 +247,7 @@ export async function recoverChange(
     result = await recoverChanges(changePortsFor(ports), directory, mode, {
       plan: journal.plan,
       signal: io.signal,
+      ...(check === undefined ? {} : { check }),
     });
   } catch (error) {
     // A refusal, or the cancel recovery raises before any file changed,
