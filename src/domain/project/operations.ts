@@ -3,6 +3,7 @@ export const CHANGE_OPERATIONS = [
   "update",
   "repair",
   "adopt",
+  "migrate-cleanup",
   "workflow-set",
   "profile-set",
   "agents-add",

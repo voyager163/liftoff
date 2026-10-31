@@ -40,6 +40,7 @@ export const CHANGE_COMMANDS: Record<ChangeOperation, string> = {
   update: "liftoff update",
   repair: "liftoff repair",
   adopt: "liftoff adopt",
+  "migrate-cleanup": "liftoff migrate --cleanup",
   "workflow-set": "liftoff workflow set",
   "profile-set": "liftoff governance profile set",
   "agents-add": "liftoff agents add",
@@ -268,10 +269,18 @@ export async function recoverChanges(
   ports: ChangePorts,
   root: string,
   mode: "finish" | "undo",
-  options: { readonly plan?: string; readonly signal?: AbortSignal } = {},
+  options: {
+    readonly plan?: string;
+    readonly signal?: AbortSignal;
+    /**
+     * What else must hold before anything changes, checked under the lock
+     * against the journal being recovered; it throws a ChangeError to refuse.
+     */
+    readonly check?: (journal: ChangeJournal) => Promise<void>;
+  } = {},
 ): Promise<RecoveryResult> {
   const { fs } = ports;
-  const { plan, signal } = options;
+  const { plan, signal, check } = options;
   const leftovers: string[] = [];
   const result = await withChangeLock(ports, root, leftovers, async () => {
     const journal = await readJournal(fs, root).catch((error: unknown) => {
@@ -288,6 +297,7 @@ export async function recoverChanges(
     }
     const staging = path.join(path.dirname(root), journal.staging);
     await checkStaging(fs, root, staging, journal.plan);
+    await check?.(journal);
     const current = new Map<string, FileNow>();
     for (const change of journal.changes) {
       current.set(change.path, await fileNow(fs, root, change.path));

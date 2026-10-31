@@ -13,7 +13,7 @@ import {
   UNREADABLE_JOURNAL_ADVICE,
 } from "../../application/change/apply-changes.ts";
 import { ProjectChangeUnsupportedError } from "../../application/change/project-change.ts";
-import { JournalError } from "../../domain/change/journal.ts";
+import { type ChangeJournal, JournalError } from "../../domain/change/journal.ts";
 import {
   CHANGE_JOURNAL_FILE,
   type ChangePlan,
@@ -31,6 +31,7 @@ const NAMES = {
   update: { a: "An update", the: "The update", no: "No update" },
   repair: { a: "A repair", the: "The repair", no: "No repair" },
   adopt: { a: "An adoption", the: "The adoption", no: "No adoption" },
+  "migrate-cleanup": { a: "A cleanup", the: "The cleanup", no: "No cleanup" },
 } as const;
 export type ChangeCommand = keyof typeof NAMES;
 
@@ -173,7 +174,7 @@ export async function applyApproved(
  * whatever stopped it, and is reported as partial with how to recover.
  * Anything else changed nothing and is rethrown.
  */
-async function stopped(
+export async function stopped(
   error: unknown,
   ports: ProjectPorts,
   planned: Planned,
@@ -201,6 +202,7 @@ export async function recoverChange(
   args: ParsedArgs,
   mode: "finish" | "undo",
   command: ChangeCommand,
+  check?: (journal: ChangeJournal) => Promise<void>,
 ): Promise<CommandResult> {
   const names = NAMES[command];
   const directory = await projectDirectory(io.cwd, args.options.dir as string);
@@ -245,6 +247,7 @@ export async function recoverChange(
     result = await recoverChanges(changePortsFor(ports), directory, mode, {
       plan: journal.plan,
       signal: io.signal,
+      ...(check === undefined ? {} : { check }),
     });
   } catch (error) {
     // A refusal, or the cancel recovery raises before any file changed,

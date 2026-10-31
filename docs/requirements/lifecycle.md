@@ -76,8 +76,8 @@ Verification: test
 ## CHANGE-001 A change plan names every file it changes, before and after
 
 A plan to change an existing project (the operations `update`, `repair`,
-`adopt`, `workflow-set`, `profile-set` and `agents-add`) lists every file it
-changes:
+`adopt`, `migrate-cleanup`, `workflow-set`, `profile-set` and `agents-add`)
+lists every file it changes:
 
 - its repository-relative path;
 - the sha256 of the file as it must be now, or that it must not exist;
@@ -786,6 +786,8 @@ not list it. It lists, as steps to tick off:
   with Liftoff's;
 - how to check the result, with `liftoff validate` and the project's own
   tests;
+- cleaning up the old project with `liftoff migrate --cleanup`
+  (MIGRATE-004) before deleting the copy;
 - deleting `legacy/` and `MIGRATION.md` once done.
 
 Names from the old project, such as file names and stacks, are written with
@@ -808,5 +810,67 @@ it was copied, or one that appeared, means nothing is created. Ctrl+C
 before then leaves nothing and exits 4. Once it is in place, each of its files is read back and
 compared with the plan, and it is validated as `liftoff validate` does.
 Anything different is named, and the command exits 3.
+
+Verification: test
+
+## MIGRATE-004 Cleaning up the old project is a separate step that asks first
+
+Migrating never removes anything from the old project. `liftoff migrate
+--cleanup` does, as a step of its own, once the new project is verified,
+and only after asking: the default answer is no, and without a terminal it
+needs `--yes`. It takes the old project from `--dir` and the new one from
+`--to`, by default as migrating does (MIGRATE-001).
+
+Both projects must be directories that are there and may not overlap; a
+link in the paths named is followed once, as for migrating (MIGRATE-001),
+and after that no link may lead either elsewhere. The old project may not
+be a Liftoff project or have a change that has not finished. Otherwise the
+command refuses, removes nothing and exits 1. The new project is then
+verified: it must be a Liftoff project whose manifest's history starts
+with `migrate`, and `liftoff validate` must find no error in it. Until it
+is, nothing is removed, each reason is named, and the command exits 3.
+
+A file of the old project is removed only when migrating would copy it
+(MIGRATE-002) and a file with the same sha256 is somewhere the walk of the
+new project reaches (ASSESS-002), such as its copy in `legacy/` or a file
+moved from there unchanged. Everything else stays and is named, with why:
+
+- Git's data;
+- files that may hold secrets or state;
+- records from a Liftoff release before the rebuild;
+- links;
+- files over 64 MiB;
+- paths not every system can hold;
+- files the new project holds no copy of, such as one changed since in
+  either project.
+
+Directories the cleanup leaves empty are removed, one at a time, only
+while empty and never through a link, even when a later change stopped,
+and so is the old project's `.liftoff` once nothing is in it. One that
+cannot be removed is named for the person to delete, and the command exits
+3. The old project's own directory always stays.
+
+Files are removed as CHANGE-002 to CHANGE-004 say, in changes of at most
+2,000 files each, and fewer when long paths would make a change's journal
+too large to recover, so each can be finished or undone. Each change rests
+on the old project still having no `liftoff.yaml` or manifest, so a project
+adopted meanwhile is never cleaned up. Just before each change, neither
+project may now be reached through a link, and every copy it rests on in
+the new project is hashed again; if one changed, that change removes
+nothing and the command says to run it again.
+A cleanup that stops part way exits 5, and `liftoff migrate --cleanup
+--recover finish` or `--recover undo` finishes or undoes that change after
+asking, and says that any later changes did not run. Finishing removes the
+rest of that change's files only while the new project (`--to`) still holds
+a copy of each, checked before asking and again once approved, under the
+change lock; otherwise it removes nothing, names those without one, says
+to undo instead, and exits 3. Finishing also removes the directories the
+change left empty. Ctrl+C between changes stops with the files
+of finished changes removed, and exits 4. `--check` shows what would be
+removed and what stays, removes nothing, and goes without `--yes`.
+
+- Given a migrated project whose `legacy/` still holds an unchanged copy of
+  `app/main.py`, and an old `.env`, when the old project is cleaned up,
+  then `app/main.py` is removed from it and `.env` and `.git` stay.
 
 Verification: test

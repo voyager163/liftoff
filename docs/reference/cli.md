@@ -227,7 +227,9 @@ JSON report: `liftoff.migrate/v1`.
 | `--check` | Create nothing; show what migrating would do, and exit 3 when the project cannot be migrated as it is. |
 | `--out <file>` | Save the plan to this file, outside the project, and create nothing; apply it with --plan. |
 | `--plan <file>` | Apply exactly this saved plan, and refuse it if the project or Liftoff changed since. |
-| `--yes` | Create the new project without asking. |
+| `--cleanup` | Instead of migrating, remove from the old project each file the new project, named with --to, holds a byte-for-byte copy of, once the new project is verified. It asks first. |
+| `--recover <mode>` | With --cleanup, finish or undo a cleanup that stopped part way. (one of `finish`, `undo`) |
+| `--yes` | Create or remove without asking. |
 | `--json` | Print one JSON report on stdout. |
 | `--help` | Show help for this command. |
 
@@ -236,6 +238,8 @@ liftoff migrate --check
 liftoff migrate --dir ../service --to ../service-next --stack node-fastify
 liftoff migrate --out ../migrate.plan.json
 liftoff migrate --plan ../migrate.plan.json --yes
+liftoff migrate --cleanup --check
+liftoff migrate --cleanup --recover undo
 ```
 
 ## liftoff update

@@ -196,6 +196,29 @@ export class LocalProjectFs implements ProjectFsPort {
     await rm(target, { recursive: true, force: true });
   }
 
+  async removeEmptyDirectory(directory: string, relative: string): Promise<boolean> {
+    const parts = relative.split("/");
+    // The project and each directory on the way, checked one at a time, so a
+    // link anywhere, which lstat follows when it is not the last part, is
+    // seen. Node has no rmdir relative to an open directory, so a directory
+    // swapped for a link between this and the rmdir is the one case it
+    // cannot see.
+    for (let depth = 0; depth <= parts.length; depth++) {
+      const seen = await inspect(NODE_CALLS, path.join(directory, ...parts.slice(0, depth)));
+      if (typeof seen === "string" || !seen.isDirectory()) return false;
+    }
+    try {
+      // rmdir removes only an empty directory.
+      await rmdir(path.join(directory, ...parts));
+      return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // Anything else, such as a directory in use, is for the caller to name.
+      if (["ENOTEMPTY", "EEXIST", "ENOENT", "ENOTDIR"].includes(code ?? "")) return false;
+      throw error;
+    }
+  }
+
   async listTree(directory: string): Promise<TreeEntry[]> {
     // A recursive listing reports links as links and does not follow them.
     const entries = await readdir(directory, { recursive: true, withFileTypes: true });

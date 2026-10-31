@@ -509,3 +509,39 @@ describe("ASSESS-002 listing a directory follows no link and stays within its li
     await expect(listWithin(work, "dir", 10, failing("EMFILE"))).rejects.toThrow("EMFILE");
   });
 });
+
+describe("MIGRATE-004 removing a directory only while it is empty, and never through a link", () => {
+  it("removes an empty directory, and nothing that holds anything or is reached through a link", async () => {
+    mkdirSync(path.join(work, "project", "app", "routes"), { recursive: true });
+    const project = path.join(work, "project");
+    expect(await fs.removeEmptyDirectory(project, "app")).toBe(false);
+    expect(await fs.removeEmptyDirectory(project, "app/routes")).toBe(true);
+    expect(await fs.removeEmptyDirectory(project, "app/routes")).toBe(false);
+    expect(await fs.removeEmptyDirectory(project, "app")).toBe(true);
+    // A directory on the way that is a link is never followed.
+    const outside = path.join(work, "outside");
+    mkdirSync(path.join(outside, "routes"), { recursive: true });
+    symlinkSync(outside, path.join(project, "linked"), "junction");
+    expect(await fs.removeEmptyDirectory(project, "linked/routes")).toBe(false);
+    expect(await fs.removeEmptyDirectory(project, "linked")).toBe(false);
+    expect(existsSync(path.join(outside, "routes"))).toBe(true);
+    // Nor is the project itself, when it is a link.
+    symlinkSync(project, path.join(work, "alias"), "junction");
+    mkdirSync(path.join(project, "empty"));
+    expect(await fs.removeEmptyDirectory(path.join(work, "alias"), "empty")).toBe(false);
+    expect(existsSync(path.join(project, "empty"))).toBe(true);
+  });
+
+  it("says why when it may not remove an empty directory", async () => {
+    // Windows has no permission bits for this.
+    if (process.platform === "win32") return;
+    const project = path.join(work, "project");
+    mkdirSync(path.join(project, "closed", "empty"), { recursive: true });
+    chmodSync(path.join(project, "closed"), 0o555);
+    try {
+      await expect(fs.removeEmptyDirectory(project, "closed/empty")).rejects.toThrow();
+    } finally {
+      chmodSync(path.join(project, "closed"), 0o755);
+    }
+  });
+});

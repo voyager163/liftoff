@@ -107,8 +107,10 @@ lists, as steps to tick off:
   with Liftoff's;
 - what the copy left out, and what to do about it, such as recreating
   secrets outside Git and installing dependencies again;
-- checking the result with `liftoff validate` and the project's tests, then
-  deleting `legacy/` and `MIGRATION.md`.
+- checking the result with `liftoff validate` and the project's tests;
+- cleaning up the old project with `liftoff migrate --cleanup`, if nothing
+  more is needed from it, before deleting the copy;
+- deleting `legacy/` and `MIGRATION.md`.
 
 The old project, and its Git history, stay where they are.
 
@@ -125,3 +127,51 @@ project is planned again: a file that changed after it was copied, or one
 that appeared, means nothing is created. Ctrl+C before then leaves nothing. Once it is in place, each file is read back and compared with the
 plan, and the project is validated as `liftoff validate` does. Anything
 different is named, and the command exits 3.
+
+## Cleaning up the old project
+
+Migrating never removes anything from the old project. Once the new
+project is ready, `liftoff migrate --cleanup` can, as a separate step:
+
+```bash
+liftoff migrate --cleanup --check    # what would be removed, and what stays
+liftoff migrate --cleanup            # see it, then approve
+liftoff migrate --cleanup --dir ../service --to ../service-next
+```
+
+It refuses, and exits 1, when either project is not there, they overlap,
+or the old one is a Liftoff project or has an unfinished change. It then
+checks that the new project was made by `liftoff migrate` and that
+`liftoff validate` finds no error in it; until then it removes nothing and
+exits 3. Then it removes from the old project each file that migrating
+copies and that the new project holds a byte-for-byte copy of, anywhere:
+its copy in `legacy/`, or a file you moved from there unchanged. Everything
+else stays, and is named:
+
+- `.git` and the project's history;
+- files that may hold secrets or state, such as `.env`;
+- installed dependencies, caches and build output;
+- records from a Liftoff release before the rebuild;
+- links, large files, and paths not every system can hold;
+- every file the new project holds no copy of, such as one you changed
+  while moving it.
+
+Directories left empty are removed, and so is a `.liftoff` left empty; the
+old project's directory itself stays. So run it before deleting `legacy/`, while the copies are still
+there to match.
+
+It asks first; the default answer is no, and without a terminal it needs
+`--yes`. Files are removed in changes of at most 2,000 files, and just
+before each, the new project's copies are checked again. Ctrl+C between
+changes stops with the finished ones done. A change that stops part way can
+be finished or undone:
+
+```bash
+liftoff migrate --cleanup --recover finish
+liftoff migrate --cleanup --recover undo
+```
+
+Finishing removes the rest of that change's files only while the new
+project still holds a copy of each, so don't delete `legacy/` to make room
+first; undoing puts back what the change removed. Either way, later changes
+did not run: `liftoff migrate --cleanup --check` shows what is left.
