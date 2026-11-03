@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -212,5 +220,61 @@ describe("WORKFLOW-003 entering a framework runs its own pinned initializer, apa
     expect(run.err).toContain("failed with exit code 1");
     expect(snapshot()).toEqual(before);
     expect(readdirSync(work)).toEqual(["demo"]);
+  });
+});
+
+describe("WORKFLOW-003 the framework's files, as its initializer wrote them", () => {
+  it("keeps whether each file runs, and refuses one that is not UTF-8 text", async () => {
+    await init("manual");
+    const chmodding = new FakeInitializer(() => ({
+      files: { "openspec/project.md": "# Project\n", "openspec/run.py": "print(1)\n" },
+    }));
+    const run = chmodding.run.bind(chmodding);
+    chmodding.run = async (step, directory, options) => {
+      const outcome = await run(step, directory, options);
+      if (process.platform !== "win32")
+        chmodSync(path.join(directory, "openspec", "run.py"), 0o755);
+      return outcome;
+    };
+    initializer = chmodding;
+    expect((await workflowSet(["workflow", "set", "openspec", "--yes"])).code).toBe(0);
+    if (process.platform !== "win32")
+      expect(statSync(at("openspec/run.py")).mode & 0o111).not.toBe(0);
+    expect(statSync(at("openspec/project.md")).mode & 0o111).toBe(0);
+
+    rmSync(work, { recursive: true, force: true });
+    work = await realpath(mkdtempSync(path.join(tmpdir(), "liftoff-workflow-")));
+    await init("manual");
+    const binary = new FakeInitializer(() => ({ files: { "openspec/project.md": "# Project\n" } }));
+    const runBinary = binary.run.bind(binary);
+    binary.run = async (step, directory, options) => {
+      const outcome = await runBinary(step, directory, options);
+      writeFileSync(
+        path.join(directory, "openspec", "logo.bin"),
+        Buffer.from([0xff, 0xfe, 0x00, 0x80]),
+      );
+      return outcome;
+    };
+    initializer = binary;
+    const before = snapshot();
+    const refused = await workflowSet(["workflow", "set", "openspec", "--yes"]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("openspec/logo.bin, which is not UTF-8 text");
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("says a file Liftoff wrote was removed rather than changed, and counts one file as one", async () => {
+    await init("manual");
+    rmSync(at("AGENTS.md"));
+    const run = await workflowSet(["workflow", "set", "openspec", "--yes"]);
+    expect(run.err).toContain(
+      "  left AGENTS.md: removed since Liftoff wrote it; liftoff repair puts it back\n",
+    );
+    initializer = new FakeInitializer(() => ({ files: { "openspec/project.md": "# Project\n" } }));
+    rmSync(work, { recursive: true, force: true });
+    work = await realpath(mkdtempSync(path.join(tmpdir(), "liftoff-workflow-")));
+    await init("openspec");
+    const left = await workflowSet(["workflow", "set", "manual", "--yes"]);
+    expect(left.err).toContain("OpenSpec's 1 file stay as they are");
   });
 });

@@ -32,7 +32,7 @@ export function renderWorkflowSet(workflow: WorkflowPlan): string[] {
   }
   if (workflow.released.length > 0) {
     lines.push(
-      `${title(workflow.from)}'s ${workflow.released.length} files stay as they are, as the project's own, and nothing is uninstalled.`,
+      `${title(workflow.from)}'s ${workflow.released.length} file${workflow.released.length === 1 ? "" : "s"} stay as they are, as the project's own, and nothing is uninstalled.`,
     );
   }
   if (workflow.initializer !== undefined) {

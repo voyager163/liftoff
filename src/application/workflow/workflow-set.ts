@@ -206,7 +206,9 @@ export async function planWorkflowSet(
         reason:
           entry === undefined
             ? "something is already there"
-            : `changed since Liftoff wrote it, so it still describes ${config.workflow}; bring it up to date by hand`,
+            : disk.kind === "missing"
+              ? "removed since Liftoff wrote it; liftoff repair puts it back"
+              : `changed since Liftoff wrote it, so it still describes ${config.workflow}; bring it up to date by hand`,
       });
     }
   }
@@ -276,6 +278,7 @@ export async function completeWorkflowSet(
     await runInitializer(ports.initializer, framework.initializer, initializer, staging, options);
     const written = await frameworkFiles(ports, staging, pending.generated, framework.initializer);
     const collisions: string[] = [];
+    const unreadable: string[] = [];
     const changes = [...pending.changes];
     const contents = new Map(pending.contents);
     const files = [...pending.manifest.files];
@@ -286,8 +289,16 @@ export async function completeWorkflowSet(
         collisions.push(file.path);
         continue;
       }
+      // Carried as the initializer wrote it: its exact text, and whether it
+      // runs. A change holds text, so a file that is not UTF-8 is refused
+      // rather than written back other than it was.
+      const bytes = await fs.hashWithin(staging, file.path, MAX_CHANGED_BYTES);
       const content = (await fs.readText(path.join(staging, ...file.path.split("/")))) ?? "";
-      const executable = isExecutable(file.path);
+      if (bytes.kind !== "file" || bytes.sha256 !== sha256Hex(content)) {
+        unreadable.push(file.path);
+        continue;
+      }
+      const executable = bytes.executable === true;
       changes.push({
         path: file.path,
         before: null,
@@ -305,6 +316,11 @@ export async function completeWorkflowSet(
     }
     if (collisions.length > 0)
       throw new FrameworkCollisionError(framework.title, collisions.sort());
+    if (unreadable.length > 0) {
+      throw new ProjectChangeError(
+        `${framework.title}'s initializer wrote ${unreadable.sort().join(", ")}, which ${unreadable.length === 1 ? "is" : "are"} not UTF-8 text Liftoff can add as it was written, so nothing was changed`,
+      );
+    }
     return sealProjectChange(pending.project, "workflow-set", liftoffVersion, changes, contents, {
       ...pending.manifest,
       files,
