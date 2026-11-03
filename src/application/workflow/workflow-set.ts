@@ -277,7 +277,12 @@ export async function completeWorkflowSet(
   workflow: WorkflowPlan,
   liftoffVersion: string,
   options: ApplyOptions = {},
-): Promise<{ readonly plan: ChangePlan; readonly contents: ReadonlyMap<string, NewContent> }> {
+): Promise<{
+  readonly plan: ChangePlan;
+  readonly contents: ReadonlyMap<string, NewContent>;
+  /** Empty directories the initializer made, to make once the change applies. */
+  readonly directories: readonly string[];
+}> {
   const { fs } = ports;
   const { pending, initializer } = workflow;
   const framework = WORKFLOWS[workflow.to];
@@ -290,6 +295,21 @@ export async function completeWorkflowSet(
     await runInitializer(ports.initializer, framework.initializer, initializer, staging, options);
     const written = await frameworkFiles(ports, staging, pending.generated, framework.initializer);
     const collisions: string[] = [];
+    // A directory it made with nothing in it is the framework's too, such
+    // as OpenSpec's specs/; nothing that is not a directory may stand in
+    // its way.
+    const tree = await fs.listTree(staging);
+    const directories = tree
+      .filter(
+        (entry) =>
+          entry.kind === "directory" &&
+          !tree.some((other) => other.path.startsWith(`${entry.path}/`)),
+      )
+      .map((entry) => entry.path)
+      .sort();
+    for (const directory of directories) {
+      if (!(await clearForDirectory(fs, workflow.directory, directory))) collisions.push(directory);
+    }
     const unreadable: string[] = [];
     const changes = [...pending.changes];
     const contents = new Map(pending.contents);
@@ -333,11 +353,57 @@ export async function completeWorkflowSet(
         `${framework.title}'s initializer wrote ${unreadable.sort().join(", ")}, which ${unreadable.length === 1 ? "is" : "are"} not UTF-8 text Liftoff can add as it was written, so nothing was changed`,
       );
     }
-    return sealProjectChange(pending.project, "workflow-set", liftoffVersion, changes, contents, {
-      ...pending.manifest,
-      files,
-    });
+    const sealed = sealProjectChange(
+      pending.project,
+      "workflow-set",
+      liftoffVersion,
+      changes,
+      contents,
+      { ...pending.manifest, files },
+    );
+    return { ...sealed, directories };
   } finally {
     await fs.remove(staging);
   }
+}
+
+/** Whether every part of a directory's path is a directory, or missing, in the project: never a file or a link. */
+async function clearForDirectory(
+  fs: ProjectFsPort,
+  root: string,
+  relative: string,
+): Promise<boolean> {
+  const parts = relative.split("/");
+  for (let depth = 1; depth <= parts.length; depth++) {
+    const entry = await fs.entry(path.join(root, ...parts.slice(0, depth)));
+    if (entry.kind === "missing") return true;
+    if (entry.kind !== "directory") return false;
+  }
+  return true;
+}
+
+/**
+ * Makes the empty directories a framework's initializer made, once the
+ * change has applied, one level at a time and never through a link; one
+ * that cannot be made is returned, for the person to make.
+ */
+export async function makeFrameworkDirectories(
+  fs: ProjectFsPort,
+  root: string,
+  directories: readonly string[],
+): Promise<string[]> {
+  const missed: string[] = [];
+  for (const directory of directories) {
+    const parts = directory.split("/");
+    for (let depth = 1; depth <= parts.length; depth++) {
+      const at = path.join(root, ...parts.slice(0, depth));
+      const entry = await fs.entry(at);
+      if (entry.kind === "missing") await fs.makeDirectory(at);
+      else if (entry.kind !== "directory") {
+        missed.push(directory);
+        break;
+      }
+    }
+  }
+  return missed;
 }

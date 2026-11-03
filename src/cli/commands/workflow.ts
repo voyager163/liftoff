@@ -1,5 +1,6 @@
 import {
   completeWorkflowSet,
+  makeFrameworkDirectories,
   planWorkflowSet,
   WorkflowOptionError,
   type WorkflowPlan,
@@ -156,7 +157,7 @@ export function makeWorkflowSetCommand(
       // The framework's files are known only once its initializer has run.
       const change =
         workflow.plan !== undefined
-          ? { plan: workflow.plan, contents: workflow.contents }
+          ? { plan: workflow.plan, contents: workflow.contents, directories: [] }
           : await completeWorkflowSet(ports, workflow, version, { signal: io.signal });
       const result = await applyApproved(
         io,
@@ -166,13 +167,20 @@ export function makeWorkflowSetCommand(
         { yes: true, report: reported(workflow) },
       );
       if ("outcome" in result) return result;
+      const missed = await makeFrameworkDirectories(ports.fs, directory, change.directories);
+      const leftovers = [
+        ...result.leftovers,
+        ...missed.map(
+          (made) => `${made}, an empty directory the framework made, could not be made; make it`,
+        ),
+      ];
       const done = [
         `Switched ${directory} to ${workflow.to}: changed ${changeSummary(change.plan)}.`,
-        ...leftBehind(result.leftovers),
+        ...leftBehind(leftovers),
       ];
       return {
-        outcome: result.leftovers.length > 0 ? "attention" : "success",
-        report: { ...reported(workflow), changed: true, leftovers: result.leftovers },
+        outcome: leftovers.length > 0 ? "attention" : "success",
+        report: { ...reported(workflow), changed: true, leftovers },
         text: `${done.map(shown).join("\n")}\n`,
       };
     },

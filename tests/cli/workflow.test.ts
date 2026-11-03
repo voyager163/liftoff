@@ -308,3 +308,25 @@ describe("WORKFLOW-001 switching back and forth", () => {
     expect((await workflowSet(["validate"])).code).toBe(0);
   });
 });
+
+describe("WORKFLOW-003 the framework's empty directories", () => {
+  it("makes them in the project, and refuses a file in the way of one", async () => {
+    await init("manual");
+    initializer = new FakeInitializer(() => ({
+      files: { "openspec/config.yaml": "schema: spec-driven\n" },
+      directories: ["openspec/specs", "openspec/changes/archive"],
+    }));
+    write("openspec/specs", "not a directory\n");
+    const before = snapshot();
+    const refused = await workflowSet(["workflow", "set", "openspec", "--yes"]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("writes openspec/specs, where the project already has something");
+    expect(snapshot()).toEqual(before);
+
+    rmSync(at("openspec"), { recursive: true });
+    expect((await workflowSet(["workflow", "set", "openspec", "--yes"])).code).toBe(0);
+    expect(statSync(at("openspec/specs")).isDirectory()).toBe(true);
+    expect(statSync(at("openspec/changes/archive")).isDirectory()).toBe(true);
+    expect(read("openspec/config.yaml")).toBe("schema: spec-driven\n");
+  });
+});
