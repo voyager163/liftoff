@@ -2,6 +2,7 @@ import {
   completeWorkflowSet,
   makeFrameworkDirectories,
   planWorkflowSet,
+  removeMadeDirectories,
   WorkflowOptionError,
   type WorkflowPlan,
 } from "../../application/workflow/workflow-set.ts";
@@ -160,14 +161,22 @@ export function makeWorkflowSetCommand(
           ? { plan: workflow.plan, contents: workflow.contents, directories: [] }
           : await completeWorkflowSet(ports, workflow, version, { signal: io.signal });
       // Before any file, so a switch finished later has them too.
-      await makeFrameworkDirectories(ports.fs, directory, change.directories);
-      const result = await applyApproved(
-        io,
-        ports,
-        { directory, plan: change.plan, contents: change.contents },
-        "workflow-set",
-        { yes: true, report: reported(workflow) },
-      );
+      const made = await makeFrameworkDirectories(ports.fs, directory, change.directories);
+      let result: Awaited<ReturnType<typeof applyApproved>>;
+      try {
+        result = await applyApproved(
+          io,
+          ports,
+          { directory, plan: change.plan, contents: change.contents },
+          "workflow-set",
+          { yes: true, report: reported(workflow) },
+        );
+      } catch (error) {
+        // Refused before any file changed: the directories go too. A switch
+        // that stopped part way returns, keeping them for --recover finish.
+        await removeMadeDirectories(ports.fs, directory, made);
+        throw error;
+      }
       if ("outcome" in result) return result;
       const leftovers = result.leftovers;
       const done = [

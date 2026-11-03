@@ -385,28 +385,47 @@ async function clearForDirectory(
 /**
  * Makes the empty directories a framework's initializer made, before any
  * file of the change, one level at a time and never through a link, so a
- * change that stops part way and is finished later has them too. One that
- * cannot be made refuses the switch, with no file changed; directories
- * already made stay, empty, as the change engine leaves those it makes.
+ * change that stops part way and is finished later has them too. It
+ * returns each directory it made, so they can be removed again if the
+ * change is then refused. One that cannot be made refuses the switch, with
+ * no file changed and those it made removed.
  */
 export async function makeFrameworkDirectories(
   fs: ProjectFsPort,
   root: string,
   directories: readonly string[],
-): Promise<void> {
+): Promise<string[]> {
+  const made: string[] = [];
   for (const directory of directories) {
     const parts = directory.split("/");
     for (let depth = 1; depth <= parts.length; depth++) {
+      const relative = parts.slice(0, depth).join("/");
       const at = path.join(root, ...parts.slice(0, depth));
       const entry = await fs.entry(at);
       try {
-        if (entry.kind === "missing") await fs.makeDirectory(at);
-        else if (entry.kind !== "directory") throw new Error("something else is there");
+        if (entry.kind === "missing") {
+          await fs.makeDirectory(at);
+          made.push(relative);
+        } else if (entry.kind !== "directory") throw new Error("something else is there");
       } catch (error) {
+        await removeMadeDirectories(fs, root, made);
         throw new ProjectChangeError(
           `${directory}, an empty directory the framework's initializer made, could not be made (${(error as Error).message}), so no file was changed`,
         );
       }
     }
+  }
+  return made;
+}
+
+/** Removes directories makeFrameworkDirectories made, deepest first, each only while empty. */
+export async function removeMadeDirectories(
+  fs: ProjectFsPort,
+  root: string,
+  made: readonly string[],
+): Promise<void> {
+  const depth = (directory: string) => directory.split("/").length;
+  for (const directory of [...made].sort((a, b) => depth(b) - depth(a))) {
+    await fs.removeEmptyDirectory(root, directory).catch(() => false);
   }
 }

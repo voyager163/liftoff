@@ -370,3 +370,21 @@ describe("WORKFLOW-003 the framework's empty directories, before any file", () =
     expect(snapshot()).toEqual(before);
   });
 });
+
+describe("WORKFLOW-003 a refused switch leaves nothing", () => {
+  it("removes the empty directories it made when the change is refused", async () => {
+    await init("manual");
+    initializer = new FakeInitializer(() => {
+      // Edited while the initializer runs, so the change is refused.
+      write("AGENTS.md", "# Edited meanwhile\n");
+      return {
+        files: { "openspec/config.yaml": "schema: spec-driven\n" },
+        directories: ["openspec/specs"],
+      };
+    });
+    const run = await workflowSet(["workflow", "set", "openspec", "--yes"]);
+    expect(run.code).toBe(1);
+    expect(run.err).toContain("nothing was changed");
+    expect(existsSync(at("openspec"))).toBe(false);
+  });
+});

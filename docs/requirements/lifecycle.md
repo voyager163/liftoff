@@ -930,7 +930,9 @@ goes, nothing changes and each such path is named. An empty directory it
 makes, such as one for specifications, is made in the project before any
 file changes, never through a link, so a switch finished later has it too;
 nothing but a directory may stand in its way, and one that cannot be made
-changes no file. Undoing a switch leaves such directories, empty. The initializer's
+changes no file. A switch refused before any file changed removes the
+directories it made; one that stops part way keeps them for finishing, and
+undoing it leaves them, empty. The initializer's
 directory is removed afterwards, whatever happened.
 
 Verification: test
