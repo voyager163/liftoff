@@ -16,6 +16,7 @@ import { makeRepairCommand } from "./commands/repair.ts";
 import { makeReviewClassifyCommand } from "./commands/review-classify.ts";
 import { makeUpdateCommand } from "./commands/update.ts";
 import { makeDoctorCommand, makeValidateCommand } from "./commands/validate-doctor.ts";
+import { makeWorkflowSetCommand } from "./commands/workflow.ts";
 
 /**
  * Every command Liftoff offers. Help, `capabilities --json` and the CLI
@@ -33,6 +34,7 @@ export const REGISTRY: readonly CommandSpec[] = [
   makeMigrateCommand(),
   makeUpdateCommand(),
   makeRepairCommand(),
+  makeWorkflowSetCommand(),
   makeReviewClassifyCommand(),
   makeGovernanceStatusCommand(),
   makeGovernanceAssessCommand(),

@@ -81,3 +81,33 @@ Liftoff passes `--force` to add them side by side in the new directory.
   the existing-project commands in a later release.
 - Liftoff's CI runs both initializers for real, with every coding agent, on
   macOS arm64, Windows x64 and Linux.
+
+## Switching the workflow
+
+`liftoff workflow set` switches an existing Liftoff project to another
+workflow, as a reviewed change of its own; `liftoff update` never does.
+
+```bash
+liftoff workflow set manual --check   # what switching would do; changes and runs nothing
+liftoff workflow set openspec         # see the change, then approve
+liftoff workflow set --recover undo   # undo a switch that stopped part way
+```
+
+It rewrites `liftoff.yaml` and the manifest. `AGENTS.md` and `README.md`,
+which say how changes are specified, are rewritten only while they are as
+Liftoff wrote them; one you changed is left as it is and named, for you to
+bring up to date.
+
+- **Leaving OpenSpec or Spec Kit** keeps every file the framework wrote,
+  specifications and history included, byte for byte. They become the
+  project's own, and nothing is uninstalled.
+- **Entering OpenSpec or Spec Kit** runs its own initializer at the pinned
+  version, once you approve, in an empty directory beside the project with
+  a temporary home, so your machine's own configuration is untouched. What
+  it writes is added to the project only where nothing is; if the project
+  already has a file where one goes, nothing changes, and that file is
+  named. Install the framework's own CLI yourself, as `liftoff doctor`
+  says.
+
+It asks before changing anything; the default answer is no, and without a
+terminal it needs `--yes`.

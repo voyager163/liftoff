@@ -874,3 +874,59 @@ removed and what stays, removes nothing, and goes without `--yes`.
   then `app/main.py` is removed from it and `.env` and `.git` stay.
 
 Verification: test
+
+## WORKFLOW-001 Switching the workflow is a reviewed change of its own
+
+`liftoff workflow set <workflow>`, where the workflow is `manual`,
+`openspec` or `spec-kit`, switches a Liftoff project's development
+workflow; `liftoff update` never does (UPDATE-002). It refuses a directory
+that is not a Liftoff project, a change that has not finished, a
+`liftoff.yaml` changed since Liftoff wrote it, and a workflow the project's
+coding agents rule out, such as Spec Kit with none; setting the workflow it
+already has changes nothing.
+
+The change (CHANGE-001, operation `workflow-set`) rewrites `liftoff.yaml`
+and the manifest, with the new workflow's plugin and the switch in its
+history. Each other file this release writes differently for the new
+workflow, such as `AGENTS.md` and `README.md`, which describe how changes
+are specified, is replaced only while it is exactly as Liftoff last wrote
+it, and added only where nothing is; otherwise it is left as it is and
+named, for the person to bring up to date. A file the manifest lists as
+kept (ADOPT-003) is never written.
+
+`--check` shows the change and changes nothing. Otherwise it shows the
+change and asks; the default answer is no, and without a terminal it needs
+`--yes`. Files change as CHANGE-002 to CHANGE-004 say; a switch that stops
+part way exits 5, and `liftoff workflow set --recover finish` or
+`--recover undo` finishes or undoes it.
+
+Verification: test
+
+## WORKFLOW-002 Leaving a framework keeps its files and uninstalls nothing
+
+Switching from OpenSpec or Spec Kit to another workflow changes none of the
+framework's files: its specifications, changes and history stay byte for
+byte, as the project's own, and the manifest no longer lists them as the
+framework's. Nothing is uninstalled from the machine, and the framework's
+command-line tool, if installed, stays.
+
+- Given an OpenSpec project with specifications, when its workflow is set
+  to `manual`, then every file under `openspec/` is unchanged and the
+  manifest lists none of them.
+
+Verification: test
+
+## WORKFLOW-003 Entering a framework runs its own pinned initializer, apart from the project
+
+Switching to OpenSpec or Spec Kit runs that framework's own initializer at
+the version this release pins, as `liftoff init` does (INIT-005): only once
+the person approves, in an empty directory beside the project, with
+telemetry off and a temporary home and configuration directories, so
+nothing on the machine outside that directory changes. The question says
+that it runs and downloads the initializer. What it writes is checked as
+INIT-005 says, then added to the project as the framework's files, each
+only where nothing is: if the project already has something where one
+goes, nothing changes and each such path is named. The initializer's
+directory is removed afterwards, whatever happened.
+
+Verification: test

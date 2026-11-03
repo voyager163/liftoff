@@ -25,10 +25,10 @@ export class InitializerError extends Error {
   override readonly name = "InitializerError";
 }
 
-type PlannedInitializer = NonNullable<Plan["initializer"]>;
+export type PlannedInitializer = NonNullable<Plan["initializer"]>;
 
 /** What a plan records about the workflow's initializer: exactly what will run. */
-function plannedInitializer(selection: Selection): PlannedInitializer | undefined {
+export function plannedInitializer(selection: Selection): PlannedInitializer | undefined {
   const initializer = selection.workflow.initializer;
   if (!initializer) return undefined;
   return {
@@ -166,7 +166,7 @@ export async function applyInit(
   }
 }
 
-async function runInitializer(
+export async function runInitializer(
   port: InitializerPort,
   workflow: WorkflowInitializer,
   planned: PlannedInitializer,
@@ -209,7 +209,7 @@ const SHORTEST_MACHINE_PATH = 4;
  * a file of its own, and no path from this machine, since a project's files
  * must work on any machine.
  */
-async function frameworkFiles(
+export async function frameworkFiles(
   ports: { fs: ProjectFsPort; initializer: InitializerPort },
   staging: string,
   liftoff: readonly ProjectFile[],
