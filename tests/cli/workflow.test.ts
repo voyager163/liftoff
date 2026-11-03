@@ -330,3 +330,43 @@ describe("WORKFLOW-003 the framework's empty directories", () => {
     expect(read("openspec/config.yaml")).toBe("schema: spec-driven\n");
   });
 });
+
+describe("WORKFLOW-003 the framework's empty directories, before any file", () => {
+  it("are there when an interrupted switch is finished later, and one that cannot be made changes no file", async () => {
+    await init("manual");
+    initializer = new FakeInitializer(() => ({
+      files: { "openspec/config.yaml": "schema: spec-driven\n" },
+      directories: ["openspec/specs"],
+    }));
+    let moves = 0;
+    const failing = Object.assign(Object.create(fs) as ProjectFsPort, {
+      moveFile: async (from: string, to: string) => {
+        if (++moves === 2) throw new Error("no space left on the disk");
+        return fs.moveFile(from, to);
+      },
+    });
+    expect(
+      (await workflowSet(["workflow", "set", "openspec", "--yes"], { port: failing })).code,
+    ).toBe(5);
+    expect((await workflowSet(["workflow", "set", "--recover", "finish", "--yes"])).code).toBe(0);
+    expect(statSync(at("openspec/specs")).isDirectory()).toBe(true);
+    expect(parseConfig(read(CONFIG_FILE)).workflow).toBe("openspec");
+
+    rmSync(work, { recursive: true, force: true });
+    work = await realpath(mkdtempSync(path.join(tmpdir(), "liftoff-workflow-")));
+    await init("manual");
+    const before = snapshot();
+    const closed = Object.assign(Object.create(fs) as ProjectFsPort, {
+      makeDirectory: (target: string) =>
+        target.endsWith("specs")
+          ? Promise.reject(new Error("permission denied"))
+          : fs.makeDirectory(target),
+    });
+    const refused = await workflowSet(["workflow", "set", "openspec", "--yes"], { port: closed });
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain(
+      "openspec/specs, an empty directory the framework's initializer made, could not be made (permission denied), so no file was changed",
+    );
+    expect(snapshot()).toEqual(before);
+  });
+});

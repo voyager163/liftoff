@@ -159,6 +159,8 @@ export function makeWorkflowSetCommand(
         workflow.plan !== undefined
           ? { plan: workflow.plan, contents: workflow.contents, directories: [] }
           : await completeWorkflowSet(ports, workflow, version, { signal: io.signal });
+      // Before any file, so a switch finished later has them too.
+      await makeFrameworkDirectories(ports.fs, directory, change.directories);
       const result = await applyApproved(
         io,
         ports,
@@ -167,13 +169,7 @@ export function makeWorkflowSetCommand(
         { yes: true, report: reported(workflow) },
       );
       if ("outcome" in result) return result;
-      const missed = await makeFrameworkDirectories(ports.fs, directory, change.directories);
-      const leftovers = [
-        ...result.leftovers,
-        ...missed.map(
-          (made) => `${made}, an empty directory the framework made, could not be made; make it`,
-        ),
-      ];
+      const leftovers = result.leftovers;
       const done = [
         `Switched ${directory} to ${workflow.to}: changed ${changeSummary(change.plan)}.`,
         ...leftBehind(leftovers),

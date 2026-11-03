@@ -383,27 +383,30 @@ async function clearForDirectory(
 }
 
 /**
- * Makes the empty directories a framework's initializer made, once the
- * change has applied, one level at a time and never through a link; one
- * that cannot be made is returned, for the person to make.
+ * Makes the empty directories a framework's initializer made, before any
+ * file of the change, one level at a time and never through a link, so a
+ * change that stops part way and is finished later has them too. One that
+ * cannot be made refuses the switch, with no file changed; directories
+ * already made stay, empty, as the change engine leaves those it makes.
  */
 export async function makeFrameworkDirectories(
   fs: ProjectFsPort,
   root: string,
   directories: readonly string[],
-): Promise<string[]> {
-  const missed: string[] = [];
+): Promise<void> {
   for (const directory of directories) {
     const parts = directory.split("/");
     for (let depth = 1; depth <= parts.length; depth++) {
       const at = path.join(root, ...parts.slice(0, depth));
       const entry = await fs.entry(at);
-      if (entry.kind === "missing") await fs.makeDirectory(at);
-      else if (entry.kind !== "directory") {
-        missed.push(directory);
-        break;
+      try {
+        if (entry.kind === "missing") await fs.makeDirectory(at);
+        else if (entry.kind !== "directory") throw new Error("something else is there");
+      } catch (error) {
+        throw new ProjectChangeError(
+          `${directory}, an empty directory the framework's initializer made, could not be made (${(error as Error).message}), so no file was changed`,
+        );
       }
     }
   }
-  return missed;
 }
