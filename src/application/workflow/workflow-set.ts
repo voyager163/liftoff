@@ -116,13 +116,15 @@ export async function planWorkflowSet(
   const project = await readProject(fs, directory, "workflow-set");
   const { config, configText, manifest } = project;
   const base = { directory, from: config.workflow, to: workflow, contents: new Map() };
-  if (config.workflow === workflow) return { ...base, files: [], released: [] };
+  // Checked first, so a workflow typed into liftoff.yaml by hand is never
+  // taken for one already switched to.
   const written = manifest.files.find((file) => file.path === CONFIG_FILE);
   if (written?.sha256 !== sha256Hex(configText)) {
     throw new ProjectChangeError(
       `${CONFIG_FILE} changed since Liftoff last wrote it, and the workflow is switched only from a configuration Liftoff wrote; put it back as it was first`,
     );
   }
+  if (config.workflow === workflow) return { ...base, files: [], released: [] };
   let next: ProjectConfig;
   try {
     next = validateConfig({ ...config, workflow }, "the new workflow");
@@ -192,9 +194,19 @@ export async function planWorkflowSet(
     if (made !== undefined && entry === undefined && disk.kind === "missing") {
       write(made, null);
       files.push({ path: relative, step: "add" });
+    } else if (made !== undefined && asWritten && entry.sha256 === made.sha256) {
     } else if (made !== undefined && asWritten) {
       write(made, entry.sha256);
       files.push({ path: relative, step: "change" });
+    } else if (made !== undefined && entry !== undefined && disk.kind === "missing") {
+      // Recorded as the new workflow writes it, so liftoff repair can put
+      // back this workflow's version, as for any file Liftoff wrote.
+      recorded.set(key, { ...entry, sha256: made.sha256, plugin: made.plugin });
+      files.push({
+        path: relative,
+        step: "left",
+        reason: `removed since Liftoff wrote it; liftoff repair --restore ${relative} puts it back`,
+      });
     } else if (made === undefined && asWritten) {
       changes.push({ path: relative, before: entry.sha256, after: null });
       recorded.delete(key);
@@ -207,7 +219,7 @@ export async function planWorkflowSet(
           entry === undefined
             ? "something is already there"
             : disk.kind === "missing"
-              ? "removed since Liftoff wrote it; liftoff repair puts it back"
+              ? "removed since Liftoff wrote it, and the new workflow has none"
               : `changed since Liftoff wrote it, so it still describes ${config.workflow}; bring it up to date by hand`,
       });
     }

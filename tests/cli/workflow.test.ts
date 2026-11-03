@@ -15,6 +15,7 @@ import { LocalProjectFs } from "../../src/adapters/project-fs.ts";
 import type { ProjectFsPort } from "../../src/application/ports.ts";
 import { makeInitCommand } from "../../src/cli/commands/plan-init.ts";
 import { defaultProjectPorts } from "../../src/cli/commands/project-ports.ts";
+import { makeRepairCommand } from "../../src/cli/commands/repair.ts";
 import { makeUpdateCommand } from "../../src/cli/commands/update.ts";
 import { makeValidateCommand } from "../../src/cli/commands/validate-doctor.ts";
 import { makeWorkflowSetCommand } from "../../src/cli/commands/workflow.ts";
@@ -67,6 +68,7 @@ const workflowSet = async (
     makeWorkflowSetCommand(ports(options.port)),
     makeValidateCommand(ports(options.port)),
     makeUpdateCommand(ports(options.port)),
+    makeRepairCommand(ports(options.port)),
   ];
   const code = await runCli(argv, io, commands, "1.0.0");
   return { code, out: io.out.join(""), err: io.err.join(""), questions: io.questions };
@@ -268,13 +270,41 @@ describe("WORKFLOW-003 the framework's files, as its initializer wrote them", ()
     rmSync(at("AGENTS.md"));
     const run = await workflowSet(["workflow", "set", "openspec", "--yes"]);
     expect(run.err).toContain(
-      "  left AGENTS.md: removed since Liftoff wrote it; liftoff repair puts it back\n",
+      "  left AGENTS.md: removed since Liftoff wrote it; liftoff repair --restore AGENTS.md puts it back\n",
     );
+    // And it does, with this workflow's version.
+    expect((await workflowSet(["repair", "--restore", "AGENTS.md", "--yes"])).code).toBe(0);
+    expect(read("AGENTS.md")).toContain("OpenSpec");
+    expect((await workflowSet(["repair", "--check"])).code).toBe(0);
     initializer = new FakeInitializer(() => ({ files: { "openspec/project.md": "# Project\n" } }));
     rmSync(work, { recursive: true, force: true });
     work = await realpath(mkdtempSync(path.join(tmpdir(), "liftoff-workflow-")));
     await init("openspec");
     const left = await workflowSet(["workflow", "set", "manual", "--yes"]);
     expect(left.err).toContain("OpenSpec's 1 file stay as they are");
+  });
+});
+
+describe("WORKFLOW-001 switching back and forth", () => {
+  it("never takes a workflow typed into liftoff.yaml by hand for one switched to", async () => {
+    await init("manual");
+    write(CONFIG_FILE, read(CONFIG_FILE).replace("workflow: manual", "workflow: openspec"));
+    const run = await workflowSet(["workflow", "set", "openspec", "--yes"]);
+    expect(run.code).toBe(1);
+    expect(run.err).toContain("changed since Liftoff last wrote it");
+    expect(initializer.runs).toEqual([]);
+  });
+
+  it("switches back when a file left by the first switch was put back as it was", async () => {
+    await init("manual");
+    const original = read("AGENTS.md");
+    write("AGENTS.md", "# Ours\n");
+    expect((await workflowSet(["workflow", "set", "openspec", "--yes"])).code).toBe(0);
+    write("AGENTS.md", original);
+    const back = await workflowSet(["workflow", "set", "manual", "--yes"]);
+    expect(back.code).toBe(0);
+    expect(read("AGENTS.md")).toBe(original);
+    expect(parseConfig(read(CONFIG_FILE)).workflow).toBe("manual");
+    expect((await workflowSet(["validate"])).code).toBe(0);
   });
 });
