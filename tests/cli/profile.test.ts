@@ -205,7 +205,7 @@ describe("PROFILE-001 a round trip with files the person changed", () => {
   it("warns that GitHub's protection stays when switching to none, even from no approvals", async () => {
     const none = await liftoff(["governance", "profile", "set", "none", "--check"]);
     expect(none.out).toContain(
-      "none has no rulesets; until the ones on GitHub are removed there, they still protect the project as single-maintainer-gitflow does.",
+      "remove them there, in the repository's rules settings, or they still protect the project as single-maintainer-gitflow does.",
     );
   });
 
@@ -216,5 +216,37 @@ describe("PROFILE-001 a round trip with files the person changed", () => {
     rmSync(at("GOVERNANCE.md"));
     const check = await liftoff(["governance", "profile", "set", "none", "--check"]);
     expect(check.out).not.toContain("GOVERNANCE.md: something is already there");
+  });
+});
+
+describe("PROFILE-001 what is left in place keeps working", () => {
+  it("keeps a script that an edited workflow left in place still runs", async () => {
+    write(".github/workflows/01-pr-ci.yml", `${read(".github/workflows/01-pr-ci.yml")}# ours\n`);
+    write(
+      ".github/workflows/20-release.yml",
+      `${read(".github/workflows/20-release.yml")}# ours\n`,
+    );
+    const run = await liftoff(["governance", "profile", "set", "none", "--yes"]);
+    expect(run.code).toBe(0);
+    expect(existsSync(at(".github/liftoff/branch-policy.mjs"))).toBe(true);
+    expect(existsSync(at(".github/liftoff/release.mjs"))).toBe(true);
+    expect(run.err).toContain(
+      "  left .github/liftoff/branch-policy.mjs: .github/workflows/01-pr-ci.yml, which is left as it is, still uses it, so it stays the project's own\n",
+    );
+    // A file nothing uses still goes.
+    expect(existsSync(at(".github/workflows/90-governance-drift.yml"))).toBe(false);
+    expect(parseManifest(read(MANIFEST_FILE)).kept).toContain(".github/liftoff/branch-policy.mjs");
+    expect((await liftoff(["validate"])).code).toBe(0);
+  });
+});
+
+describe("PROFILE-002 the notice, every time", () => {
+  it("says GitHub may still differ when the profile is already set", async () => {
+    expect((await liftoff(["governance", "profile", "set", "none", "--yes"])).code).toBe(0);
+    const again = await liftoff(["governance", "profile", "set", "none"]);
+    expect(again.code).toBe(0);
+    expect(again.out).toContain("already uses none; nothing in the project to change.");
+    expect(again.out).toContain("Nothing on GitHub changes");
+    expect(again.out).toContain("does not show those left on GitHub");
   });
 });

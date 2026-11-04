@@ -15,7 +15,7 @@ const github = (profile: ProfilePlan): string[] => [
   ...(profile.weaker
     ? [
         profile.to === "none"
-          ? `none has no rulesets; until the ones on GitHub are removed there, they still protect the project as ${profile.from} does.`
+          ? `none has no rulesets, and liftoff governance assess compares only the rulesets a project has, so it does not show those left on GitHub; remove them there, in the repository's rules settings, or they still protect the project as ${profile.from === "none" ? "before" : profile.from} does.`
           : `${profile.to} requires fewer approvals than ${profile.from}; until the rulesets on GitHub are changed, they still require what ${profile.from} does.`,
       ]
     : []),
@@ -106,10 +106,12 @@ export function makeGovernanceProfileSetCommand(
       }
       io.signal.throwIfAborted();
       if (profile.plan === undefined) {
+        // GitHub may still differ, whatever the project's files say.
+        const notice = github({ ...profile, weaker: profile.to === "none" });
         return {
           outcome: "success",
           report: { ...reported(profile), changed: false },
-          text: `${shown(`${directory} already uses ${profile.to}; nothing to change.`)}\n`,
+          text: `${[`${directory} already uses ${profile.to}; nothing in the project to change.`, ...notice].map(shown).join("\n")}\n`,
         };
       }
       const lines = renderProfileSet(profile);

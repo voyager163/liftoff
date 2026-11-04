@@ -211,6 +211,30 @@ export async function planTransition(
     }
   }
 
+  // A file the switch would remove that a file it leaves in place still
+  // names, such as a script an edited workflow runs, stays too, as the
+  // project's own, so what is left keeps working.
+  const leftTexts: { path: string; text: string }[] = [];
+  for (const file of files.filter((item) => item.step === "left")) {
+    const read = await fs.readWithin(directory, file.path, MAX_CHANGED_BYTES);
+    if (read.kind === "file" && read.text !== undefined) {
+      leftTexts.push({ path: file.path, text: read.text });
+    }
+  }
+  for (const [index, change] of [...changes.entries()].reverse()) {
+    if (change.after !== null) continue;
+    const user = leftTexts.find((left) => left.text.includes(change.path));
+    if (user === undefined) continue;
+    changes.splice(index, 1);
+    keeping.push(change.path);
+    const listed = files.findIndex((item) => item.path === change.path);
+    files.splice(listed, 1, {
+      path: change.path,
+      step: "left",
+      reason: `${user.path}, which is left as it is, still uses it, so it stays the project's own`,
+    });
+  }
+
   // A plugin the new configuration no longer has gives up its files: a
   // framework's stay, as the project's own.
   const making = new Set(after.selection.plugins.map((plugin) => plugin.id));
