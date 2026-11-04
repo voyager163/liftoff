@@ -12,6 +12,7 @@ import {
 } from "./commands/governance.ts";
 import { makeMigrateCommand } from "./commands/migrate.ts";
 import { makeInitCommand, makePlanCommand } from "./commands/plan-init.ts";
+import { makeGovernanceProfileSetCommand } from "./commands/profile.ts";
 import { makeRepairCommand } from "./commands/repair.ts";
 import { makeReviewClassifyCommand } from "./commands/review-classify.ts";
 import { makeUpdateCommand } from "./commands/update.ts";
@@ -42,4 +43,5 @@ export const REGISTRY: readonly CommandSpec[] = [
   makeGovernanceApplyNextCommand(),
   makeGovernanceResumeCommand(),
   makeGovernanceVerifyCommand(),
+  makeGovernanceProfileSetCommand(),
 ];

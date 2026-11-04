@@ -936,3 +936,39 @@ undoing it leaves them, empty. The initializer's
 directory is removed afterwards, whatever happened.
 
 Verification: test
+
+## PROFILE-001 Switching the governance profile is a reviewed change of its own
+
+`liftoff governance profile set <profile>`, where the profile is
+`single-maintainer-gitflow`, `team-gitflow`, `risk-tiered-gitflow` or
+`none`, switches a Liftoff project's governance profile; `liftoff update`
+never does (UPDATE-002). It refuses as `liftoff workflow set` does
+(WORKFLOW-001): a directory that is not a Liftoff project, a change that
+has not finished, and a `liftoff.yaml` changed since Liftoff wrote it, even
+one naming the profile asked for; setting the profile it already has
+changes nothing.
+
+The change (CHANGE-001, operation `profile-set`) rewrites `liftoff.yaml`
+and the manifest. Each other file this release writes differently for the
+new profile, such as the rulesets, the review policy, `GOVERNANCE.md` and,
+for `none`, the release and drift workflows, is replaced or removed only
+while it is exactly as Liftoff last wrote it, and added only where nothing
+is. One removed since is recorded as the new profile writes it, so
+`liftoff repair --restore` can put it back; any other is left and named,
+and one the new profile no longer has stays as the project's own. `--check`,
+the question (default no), `--yes` and `--recover` work as for
+`liftoff workflow set`.
+
+Verification: test
+
+## PROFILE-002 Switching the profile changes nothing on GitHub
+
+Switching the profile changes only the project's files. The rulesets and
+other settings already applied on GitHub stay as they are, and the command
+says so: `liftoff governance status` shows how they now differ from the
+project's, and `liftoff governance plan` and `apply-next` apply the new
+profile as for any project (GOV-005). Switching to a profile that requires
+fewer approvals, or to `none`, says that the protection on GitHub stays
+until it is changed there.
+
+Verification: test
