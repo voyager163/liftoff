@@ -211,28 +211,56 @@ export async function planTransition(
     }
   }
 
-  // A file the switch would remove that a file it leaves in place still
-  // names, such as a script an edited workflow runs, stays too, as the
-  // project's own, so what is left keeps working.
-  const leftTexts: { path: string; text: string }[] = [];
-  for (const file of files.filter((item) => item.step === "left")) {
-    const read = await fs.readWithin(directory, file.path, MAX_CHANGED_BYTES);
-    if (read.kind === "file" && read.text !== undefined) {
-      leftTexts.push({ path: file.path, text: read.text });
+  // A file the switch would remove that a file staying in the project
+  // still names, such as a script a workflow runs, stays too, as the
+  // project's own, so what stays keeps working: any file under .github that
+  // is not removed, and any file left in place, and then, in turn, each file
+  // kept that way.
+  const removing = new Set(
+    changes.filter((change) => change.after === null).map((change) => change.path),
+  );
+  if (removing.size > 0) {
+    const users: { path: string; text: string }[] = [];
+    // A file the switch rewrites is read as it will be, not as it is.
+    const read = async (file: string) => {
+      const written = contents.get(file);
+      if (written !== undefined) {
+        users.push({ path: file, text: written.content });
+        return;
+      }
+      const found = await fs.readWithin(directory, file, MAX_CHANGED_BYTES);
+      if (found.kind === "file" && found.text !== undefined)
+        users.push({ path: file, text: found.text });
+    };
+    const staying = new Set([
+      ...(await filesUnder(fs, directory, ".github")),
+      ...files.filter((item) => item.step === "left").map((item) => item.path),
+    ]);
+    for (const file of [...staying].filter((item) => !removing.has(item)).sort()) await read(file);
+    for (let found = true; found; ) {
+      found = false;
+      for (const path of [...removing].sort()) {
+        const user = users.find((item) => item.text.includes(path));
+        if (user === undefined) continue;
+        removing.delete(path);
+        found = true;
+        changes.splice(
+          changes.findIndex((change) => change.path === path),
+          1,
+        );
+        keeping.push(path);
+        files.splice(
+          files.findIndex((item) => item.path === path),
+          1,
+          {
+            path,
+            step: "left",
+            reason: `${user.path}, which stays, still uses it, so it stays the project's own`,
+          },
+        );
+        await read(path);
+      }
     }
-  }
-  for (const [index, change] of [...changes.entries()].reverse()) {
-    if (change.after !== null) continue;
-    const user = leftTexts.find((left) => left.text.includes(change.path));
-    if (user === undefined) continue;
-    changes.splice(index, 1);
-    keeping.push(change.path);
-    const listed = files.findIndex((item) => item.path === change.path);
-    files.splice(listed, 1, {
-      path: change.path,
-      step: "left",
-      reason: `${user.path}, which is left as it is, still uses it, so it stays the project's own`,
-    });
   }
 
   // A plugin the new configuration no longer has gives up its files: a
@@ -266,4 +294,28 @@ export async function planTransition(
     },
     released,
   };
+}
+
+/** The most entries read from one directory, and the deepest, when looking for what stays. */
+const MAX_LISTED = 10_000;
+const MAX_DEPTH = 12;
+
+/** Every regular file under a directory of the project, reached through no link, within bounds. */
+async function filesUnder(
+  fs: ProjectFsPort,
+  directory: string,
+  relative: string,
+): Promise<string[]> {
+  const found: string[] = [];
+  const walk = async (at: string, depth: number) => {
+    const listing = await fs.listWithin(directory, at, MAX_LISTED);
+    if (listing.kind !== "directory") return;
+    for (const entry of listing.entries) {
+      const child = `${at}/${entry.name}`;
+      if (entry.kind === "file") found.push(child);
+      else if (entry.kind === "directory" && depth < MAX_DEPTH) await walk(child, depth + 1);
+    }
+  };
+  await walk(relative, 1);
+  return found;
 }

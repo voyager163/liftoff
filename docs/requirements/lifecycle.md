@@ -958,8 +958,11 @@ is. One removed since is recorded as the new profile writes it, so
 and one the new profile no longer has stays as the project's own: the
 manifest lists it as kept (ADOPT-003), so neither a switch back nor
 `liftoff update` offers Liftoff's file there. A file the switch would
-remove that a file left in place still names, such as a script an edited
-workflow runs, stays too, kept the same way, so what is left keeps working. `--check`,
+remove that a file staying in the project still names, such as a script a
+workflow runs, stays too, kept the same way, so what stays keeps working:
+every file under `.github` that is not removed, as the switch leaves it,
+and every file left in place counts, and so, in turn, does each file kept
+that way. `--check`,
 the question (default no), `--yes` and `--recover` work as for
 `liftoff workflow set`.
 

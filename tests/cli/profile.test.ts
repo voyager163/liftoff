@@ -231,7 +231,7 @@ describe("PROFILE-001 what is left in place keeps working", () => {
     expect(existsSync(at(".github/liftoff/branch-policy.mjs"))).toBe(true);
     expect(existsSync(at(".github/liftoff/release.mjs"))).toBe(true);
     expect(run.err).toContain(
-      "  left .github/liftoff/branch-policy.mjs: .github/workflows/01-pr-ci.yml, which is left as it is, still uses it, so it stays the project's own\n",
+      "  left .github/liftoff/branch-policy.mjs: .github/workflows/01-pr-ci.yml, which stays, still uses it, so it stays the project's own\n",
     );
     // A file nothing uses still goes.
     expect(existsSync(at(".github/workflows/90-governance-drift.yml"))).toBe(false);
@@ -248,5 +248,71 @@ describe("PROFILE-002 the notice, every time", () => {
     expect(again.out).toContain("already uses none; nothing in the project to change.");
     expect(again.out).toContain("Nothing on GitHub changes");
     expect(again.out).toContain("does not show those left on GitHub");
+  });
+});
+
+describe("PROFILE-001 what stays keeps working, however it uses what would go", () => {
+  it("keeps a script a workflow the profile does not touch runs", async () => {
+    write(
+      ".github/workflows/02-codeql.yml",
+      `${read(".github/workflows/02-codeql.yml")}# runs node .github/liftoff/branch-policy.mjs\n`,
+    );
+    write(
+      ".github/workflows/99-ours.yml",
+      "name: ours\njobs: { a: { runs-on: x, steps: [ { run: node .github/liftoff/release.mjs } ] } }\n",
+    );
+    expect((await liftoff(["governance", "profile", "set", "none", "--yes"])).code).toBe(0);
+    expect(existsSync(at(".github/liftoff/branch-policy.mjs"))).toBe(true);
+    expect(existsSync(at(".github/liftoff/release.mjs"))).toBe(true);
+    expect(existsSync(at(".github/workflows/90-governance-drift.yml"))).toBe(false);
+    expect((await liftoff(["validate"])).code).toBe(0);
+  });
+
+  it("keeps what a kept file uses in turn", async () => {
+    rmSync(work, { recursive: true, force: true });
+    work = await realpath(mkdtempSync(path.join(tmpdir(), "liftoff-profile-")));
+    const io = captureIo(work);
+    const argv = [
+      "init",
+      "--name",
+      "demo",
+      "--workflow",
+      "manual",
+      "--infrastructure",
+      "azure",
+      "--environments",
+      "dev,staging",
+      "--yes",
+    ];
+    expect(await runCli(argv, io, [makeInitCommand(ports())], "1.0.0")).toBe(0);
+    const release = ".github/workflows/20-release.yml";
+    write(release, `${read(release)}# ours\n`);
+    const run = await liftoff(["governance", "profile", "set", "none", "--yes"]);
+    expect(run.code).toBe(0);
+    const kept = parseManifest(read(MANIFEST_FILE)).kept;
+    // The release workflow runs the reusable deploy, which runs resolve-images.sh.
+    expect(kept).toEqual(
+      expect.arrayContaining([
+        ".github/workflows/reusable-deploy.yml",
+        ".github/liftoff/resolve-images.sh",
+      ]),
+    );
+    for (const file of kept.filter((name) => name !== release))
+      expect(existsSync(at(file)), file).toBe(true);
+    // Whatever the release workflow uses stays, and whatever that uses.
+    for (const file of Object.keys(snapshot()).filter((name) => name.startsWith(".github/"))) {
+      for (const used of [
+        ".github/liftoff/release.mjs",
+        ".github/liftoff/resolve-images.sh",
+        "reusable-deploy.yml",
+      ]) {
+        if (read(file).includes(used)) {
+          expect(
+            Object.keys(snapshot()).some((name) => name.endsWith(used)),
+            `${file} uses ${used}`,
+          ).toBe(true);
+        }
+      }
+    }
   });
 });
