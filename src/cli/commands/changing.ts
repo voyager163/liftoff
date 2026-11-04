@@ -145,7 +145,12 @@ export async function applyApproved(
   ports: ProjectPorts,
   planned: Planned,
   command: ChangeCommand,
-  options: { readonly yes: boolean; readonly report: Readonly<Record<string, unknown>> },
+  options: {
+    readonly yes: boolean;
+    readonly report: Readonly<Record<string, unknown>>;
+    /** Run under the change lock, once the files are checked, before any changes. */
+    readonly beforeFiles?: () => Promise<void>;
+  },
 ): Promise<ChangeResult | CommandResult> {
   const { report } = options;
   if (!options.yes) {
@@ -166,6 +171,7 @@ export async function applyApproved(
   try {
     return await applyChanges(changePortsFor(ports), planned.plan, planned.contents, {
       signal: io.signal,
+      ...(options.beforeFiles === undefined ? {} : { beforeFiles: options.beforeFiles }),
     });
   } catch (error) {
     return stopped(error, ports, planned, command, report);

@@ -323,6 +323,30 @@ describe("AGENT-002 in a framework's project, the framework sets the new agent u
     expect(statSync(at("openspec/specs")).isDirectory()).toBe(true);
   });
 
+  it("makes the framework's directories under the change lock, so a stale addition never removes another's", async () => {
+    await init("openspec");
+    rmSync(at("openspec/specs"), { recursive: true });
+    let raced = false;
+    // A stops just before taking the change lock, while B adds the same agent.
+    const pausing = Object.assign(Object.create(fs) as ProjectFsPort, {
+      createExclusive: async (file: string, content: string) => {
+        if (!raced) {
+          raced = true;
+          expect(existsSync(at("openspec/specs"))).toBe(false);
+          expect((await agentsAdd(["agents", "add", "codex", "--yes"])).code).toBe(0);
+        }
+        return fs.createExclusive(file, content);
+      },
+    });
+    const stale = await agentsAdd(["agents", "add", "codex", "--yes"], { port: pausing });
+    expect(raced).toBe(true);
+    expect(stale.code).toBe(1);
+    // B's addition keeps the directory it made, and the project stays whole.
+    expect(statSync(at("openspec/specs")).isDirectory()).toBe(true);
+    expect(parseConfig(read(CONFIG_FILE)).agents).toEqual(["claude", "codex"]);
+    expect((await agentsAdd(["validate"])).code).toBe(0);
+  });
+
   it("changes nothing when the framework's command rewrites a file changed since it wrote it", async () => {
     await init("spec-kit");
     write(REGISTRY, '{"default":"claude","installed":["claude"],"ours":true}\n');

@@ -927,12 +927,13 @@ that it runs and downloads the initializer. What it writes is checked as
 INIT-005 says, then added to the project as the framework's files, each
 only where nothing is: if the project already has something where one
 goes, nothing changes and each such path is named. An empty directory it
-makes, such as one for specifications, is made in the project before any
-file changes, never through a link, so a switch finished later has it too;
-nothing but a directory may stand in its way, and one that cannot be made
-changes no file. A switch refused before any file changed removes the
-directories it made; one that stops part way keeps them for finishing, and
-undoing it leaves them, empty. The initializer's
+makes, such as one for specifications, is made in the project under the
+change lock, once every file is checked to be as planned and before any
+changes, never through a link, so a switch finished later has it too and
+a switch refused as out of date makes none; nothing but a directory may
+stand in its way, and one that cannot be made changes no file, with the
+directories made for it removed. One that stops part way keeps them for
+finishing, and undoing it leaves them, empty. The initializer's
 directory is removed afterwards, whatever happened.
 
 Verification: test

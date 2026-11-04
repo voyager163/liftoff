@@ -4,10 +4,7 @@ import {
   planAgentsAdd,
 } from "../../application/agents/agents-add.ts";
 import { TransitionOptionError } from "../../application/change/config-transition.ts";
-import {
-  makeFrameworkDirectories,
-  removeMadeDirectories,
-} from "../../application/workflow/workflow-set.ts";
+import { makeFrameworkDirectories } from "../../application/workflow/workflow-set.ts";
 import { AGENT_HOSTS } from "../../plugins/builtin/agents/hosts.ts";
 import type { CommandResult, CommandSpec } from "../command.ts";
 import { UsageError } from "../outcome.ts";
@@ -150,23 +147,22 @@ export function makeAgentsAddCommand(
         agents.plan !== undefined
           ? { plan: agents.plan, contents: agents.contents, directories: [], skipped: [] }
           : await completeAgentsAdd(ports, agents, version, { signal: io.signal });
-      // Before any file, so adding finished later has them too.
-      const made = await makeFrameworkDirectories(ports.fs, directory, change.directories);
-      let result: Awaited<ReturnType<typeof applyApproved>>;
-      try {
-        result = await applyApproved(
-          io,
-          ports,
-          { directory, plan: change.plan, contents: change.contents },
-          "agents-add",
-          { yes: true, report: reported(agents) },
-        );
-      } catch (error) {
-        // Refused before any file changed: the directories go too. Adding
-        // that stopped part way returns, keeping them for --recover finish.
-        await removeMadeDirectories(ports.fs, directory, made);
-        throw error;
-      }
+      // Made under the change lock, once the project is checked to be as
+      // planned and before any file, so a stale plan never makes them and a
+      // change finished later has them too.
+      const result = await applyApproved(
+        io,
+        ports,
+        { directory, plan: change.plan, contents: change.contents },
+        "agents-add",
+        {
+          yes: true,
+          report: reported(agents),
+          beforeFiles: async () => {
+            await makeFrameworkDirectories(ports.fs, directory, change.directories);
+          },
+        },
+      );
       if ("outcome" in result) return result;
       const leftovers = result.leftovers;
       const done = [
