@@ -33,6 +33,7 @@ const NAMES = {
   adopt: { a: "An adoption", the: "The adoption", no: "No adoption" },
   "migrate-cleanup": { a: "A cleanup", the: "The cleanup", no: "No cleanup" },
   "workflow-set": { a: "A workflow switch", the: "The workflow switch", no: "No workflow switch" },
+  "profile-set": { a: "A profile switch", the: "The profile switch", no: "No profile switch" },
 } as const;
 export type ChangeCommand = keyof typeof NAMES;
 

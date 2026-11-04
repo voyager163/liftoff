@@ -475,3 +475,26 @@ JSON report: `liftoff.governance-verify/v1`.
 liftoff governance verify
 liftoff governance verify --prove
 ```
+
+## liftoff governance profile set
+
+Switches the project's governance profile as a reviewed change of its own: liftoff.yaml and the manifest are rewritten, and the files Liftoff writes differently for the new profile, such as the rulesets, the review policy, GOVERNANCE.md and the release workflows, change only while they are as Liftoff wrote them; any other is left and named. Nothing on GitHub changes: liftoff governance assess shows how its rulesets differ, and active rulesets are changed there by hand. It shows the change and asks first; the default answer is no. In scripts, pass --yes. A switch that stops part way can be finished or undone with --recover.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.profile-set/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--check` | Change nothing; show what switching would do. |
+| `--recover <mode>` | Finish or undo a switch that stopped part way. (one of `finish`, `undo`) |
+| `--yes` | Switch without asking. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff governance profile set team-gitflow --check
+liftoff governance profile set risk-tiered-gitflow
+liftoff governance profile set --recover undo
+```

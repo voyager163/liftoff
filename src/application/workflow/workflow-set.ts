@@ -1,28 +1,22 @@
 import path from "node:path";
 import type { ChangePlan, FileChange } from "../../domain/plan/change-plan.ts";
 import { sha256Hex } from "../../domain/plan/plan.ts";
-import {
-  CONFIG_FILE,
-  ConfigError,
-  isStandardLayout,
-  type ProjectConfig,
-  validateConfig,
-} from "../../domain/project/config.ts";
-import type { Manifest, ManifestFile } from "../../domain/project/manifest.ts";
-import { pathKey } from "../../domain/project/paths.ts";
-import { isExecutable, type ProjectFile } from "../../generators/project.ts";
-import { resolveSelection, SelectionError, WORKFLOWS } from "../../plugins/registry.ts";
+import type { ProjectConfig } from "../../domain/project/config.ts";
+import type { Manifest } from "../../domain/project/manifest.ts";
+import type { ProjectFile } from "../../generators/project.ts";
+import { WORKFLOWS } from "../../plugins/registry.ts";
 import { MAX_CHANGED_BYTES, type NewContent } from "../change/apply-changes.ts";
 import {
-  isAdopted,
+  planTransition,
+  type Transition,
+  type TransitionFile,
+  TransitionOptionError,
+} from "../change/config-transition.ts";
+import {
   ProjectChangeError,
-  ProjectChangeUnsupportedError,
   type ProjectRecords,
-  RECORDS,
-  readProject,
   sealProjectChange,
 } from "../change/project-change.ts";
-import { generate } from "../init/generation.ts";
 import {
   type ApplyOptions,
   frameworkFiles,
@@ -32,18 +26,8 @@ import {
 } from "../init/init-project.ts";
 import type { AssetPort, InitializerPort, ProjectFsPort } from "../ports.ts";
 
-/**
- * What switching the workflow does with one of Liftoff's files:
- * - change: as Liftoff last wrote it, so it is rewritten for the new workflow;
- * - add: one the new workflow has that the project does not, added;
- * - remove: one only the old workflow had, as Liftoff last wrote it, removed;
- * - left: one the new workflow writes differently, left as it is, with why.
- */
-export interface WorkflowFile {
-  readonly path: string;
-  readonly step: "change" | "add" | "remove" | "left";
-  readonly reason?: string;
-}
+/** What switching the workflow does with one of Liftoff's files. */
+export type WorkflowFile = TransitionFile;
 
 /** A workflow option this project cannot take. */
 export class WorkflowOptionError extends ProjectChangeError {
@@ -107,150 +91,40 @@ export async function planWorkflowSet(
   liftoffVersion: string,
   workflow: string,
 ): Promise<WorkflowPlan> {
-  const { fs } = ports;
   if (!Object.hasOwn(WORKFLOWS, workflow)) {
     throw new WorkflowOptionError(
       `unknown workflow "${workflow}"; available: ${Object.keys(WORKFLOWS).join(", ")}`,
     );
   }
-  const project = await readProject(fs, directory, "workflow-set");
-  const { config, configText, manifest } = project;
-  const base = { directory, from: config.workflow, to: workflow, contents: new Map() };
-  // Checked first, so a workflow typed into liftoff.yaml by hand is never
-  // taken for one already switched to.
-  const written = manifest.files.find((file) => file.path === CONFIG_FILE);
-  if (written?.sha256 !== sha256Hex(configText)) {
-    throw new ProjectChangeError(
-      `${CONFIG_FILE} changed since Liftoff last wrote it, and the workflow is switched only from a configuration Liftoff wrote; put it back as it was first`,
-    );
-  }
-  if (config.workflow === workflow) return { ...base, files: [], released: [] };
-  let next: ProjectConfig;
+  let transition: Transition | undefined;
   try {
-    next = validateConfig({ ...config, workflow }, "the new workflow");
-    resolveSelection(next);
+    transition = await planTransition(ports, directory, liftoffVersion, "workflow-set", {
+      name: "workflow",
+      field: "workflow",
+      to: workflow,
+    });
   } catch (error) {
-    if (!(error instanceof ConfigError || error instanceof SelectionError)) throw error;
-    throw new WorkflowOptionError(error.message);
+    if (error instanceof TransitionOptionError) throw new WorkflowOptionError(error.message);
+    throw error;
   }
-  const application = !isAdopted(manifest);
-  if (application && !isStandardLayout(config)) {
-    throw new ProjectChangeUnsupportedError(
-      "this release switches the workflow of a project it made only in the standard layout, but liftoff.yaml binds parts to other directories",
-    );
-  }
-  const before = await generate(ports.assets, config, liftoffVersion, { application });
-  const after = await generate(ports.assets, next, liftoffVersion, { application });
-  const was = new Map(before.files.map((file) => [pathKey(file.path), file]));
-  const now = new Map(after.files.map((file) => [pathKey(file.path), file]));
-  const entries = new Map(manifest.files.map((entry) => [pathKey(entry.path), entry]));
-  const kept = new Set(manifest.kept.map(pathKey));
-
-  const files: WorkflowFile[] = [];
-  const changes: FileChange[] = [];
-  const contents = new Map<string, NewContent>();
-  const recorded = new Map<string, ManifestFile>(
-    manifest.files.map((entry) => [pathKey(entry.path), entry]),
-  );
-  const write = (file: ProjectFile, before: string | null) => {
-    const executable = isExecutable(file.path);
-    changes.push({
-      path: file.path,
-      before,
-      after: file.sha256,
-      ownership: file.ownership,
-      executable,
-    });
-    contents.set(file.path, { content: file.content, executable });
-    recorded.set(pathKey(file.path), {
-      path: file.path,
-      ownership: file.ownership,
-      sha256: file.sha256,
-      plugin: file.plugin,
-    });
-  };
-  for (const key of [...new Set([...was.keys(), ...now.keys()])].sort()) {
-    const old = was.get(key);
-    const made = now.get(key);
-    if (old?.sha256 === made?.sha256) continue;
-    const relative = made?.path ?? old?.path ?? key;
-    if (key === pathKey(CONFIG_FILE) && made !== undefined) {
-      write(made, sha256Hex(configText));
-      files.push({ path: relative, step: "change" });
-      continue;
-    }
-    if (RECORDS.has(key)) continue;
-    if (kept.has(key)) {
-      files.push({
-        path: relative,
-        step: "left",
-        reason: "the project's own, kept in place of Liftoff's",
-      });
-      continue;
-    }
-    const entry = entries.get(key);
-    const disk = await fs.hashWithin(directory, relative, MAX_CHANGED_BYTES);
-    const asWritten = entry !== undefined && disk.kind === "file" && disk.sha256 === entry.sha256;
-    if (made !== undefined && entry === undefined && disk.kind === "missing") {
-      write(made, null);
-      files.push({ path: relative, step: "add" });
-    } else if (made !== undefined && asWritten && entry.sha256 === made.sha256) {
-    } else if (made !== undefined && asWritten) {
-      write(made, entry.sha256);
-      files.push({ path: relative, step: "change" });
-    } else if (made !== undefined && entry !== undefined && disk.kind === "missing") {
-      // Recorded as the new workflow writes it, so liftoff repair can put
-      // back this workflow's version, as for any file Liftoff wrote.
-      recorded.set(key, { ...entry, sha256: made.sha256, plugin: made.plugin });
-      files.push({
-        path: relative,
-        step: "left",
-        reason: `removed since Liftoff wrote it; liftoff repair --restore ${relative} puts it back`,
-      });
-    } else if (made === undefined && asWritten) {
-      changes.push({ path: relative, before: entry.sha256, after: null });
-      recorded.delete(key);
-      files.push({ path: relative, step: "remove" });
-    } else {
-      files.push({
-        path: relative,
-        step: "left",
-        reason:
-          entry === undefined
-            ? "something is already there"
-            : disk.kind === "missing"
-              ? "removed since Liftoff wrote it, and the new workflow has none"
-              : `changed since Liftoff wrote it, so it still describes ${config.workflow}; bring it up to date by hand`,
-      });
-    }
-  }
-
-  // The old framework's files stay, as the project's own.
-  const oldPlugin = before.selection.workflow.id;
-  const released = manifest.files
-    .filter((entry) => entry.ownership === "framework" && entry.plugin === oldPlugin)
-    .map((entry) => entry.path)
-    .sort();
-  for (const file of released) recorded.delete(pathKey(file));
-  const plugins = [
-    ...manifest.plugins.filter((plugin) => plugin.id !== oldPlugin),
-    { id: after.selection.workflow.id, version: after.selection.workflow.version },
-  ];
-  const { history: _, ...rest } = manifest;
+  const base = { directory, to: workflow, contents: new Map() };
+  if (transition === undefined) return { ...base, from: workflow, files: [], released: [] };
+  const { project, changes, contents, manifest, generated } = transition;
   const pending: Pending = {
     project,
-    config: next,
-    generated: after.files,
+    config: transition.config,
+    generated: generated.files,
     changes,
     contents,
-    manifest: { ...rest, plugins, files: [...recorded.values()] },
+    manifest,
   };
-  const initializer = plannedInitializer(after.selection);
   const planned = {
     ...base,
-    files: files.sort((a, b) => a.path.localeCompare(b.path)),
-    released,
+    from: project.config.workflow,
+    files: transition.files,
+    released: transition.released,
   };
+  const initializer = plannedInitializer(generated.selection);
   if (initializer !== undefined) return { ...planned, initializer, pending };
   const sealed = sealProjectChange(
     project,
@@ -258,7 +132,7 @@ export async function planWorkflowSet(
     liftoffVersion,
     changes,
     contents,
-    pending.manifest,
+    manifest,
   );
   return { ...planned, plan: sealed.plan, contents: sealed.contents, pending };
 }

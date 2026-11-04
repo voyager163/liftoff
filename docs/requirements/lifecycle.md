@@ -936,3 +936,55 @@ undoing it leaves them, empty. The initializer's
 directory is removed afterwards, whatever happened.
 
 Verification: test
+
+## PROFILE-001 Switching the governance profile is a reviewed change of its own
+
+`liftoff governance profile set <profile>`, where the profile is
+`single-maintainer-gitflow`, `team-gitflow`, `risk-tiered-gitflow` or
+`none`, switches a Liftoff project's governance profile; `liftoff update`
+never does (UPDATE-002). It refuses as `liftoff workflow set` does
+(WORKFLOW-001): a directory that is not a Liftoff project, a change that
+has not finished, and a `liftoff.yaml` changed since Liftoff wrote it, even
+one naming the profile asked for; setting the profile it already has
+changes nothing.
+
+The change (CHANGE-001, operation `profile-set`) rewrites `liftoff.yaml`
+and the manifest. Each other file this release writes differently for the
+new profile, such as the rulesets, the review policy, `GOVERNANCE.md` and,
+for `none`, the release and drift workflows, is replaced or removed only
+while it is exactly as Liftoff last wrote it, and added only where nothing
+is. One removed since is recorded as the new profile writes it, so
+`liftoff repair --restore` can put it back; any other is left and named,
+and one the new profile no longer has stays as the project's own: the
+manifest lists it as kept (ADOPT-003), so neither a switch back nor
+`liftoff update` offers Liftoff's file there. A file the switch would
+remove that a file staying in the project still names, such as a script a
+workflow runs, stays too, kept the same way, so what stays keeps working.
+What counts is a workflow, script or configuration file (YAML, JSON, shell,
+PowerShell, JavaScript, TypeScript, Python or Ruby) that names the file's
+whole path: every one under `.github` that is not removed, as the switch
+leaves it, other than installed dependencies, and every one left in place;
+and so, in turn, does each file kept that way. Prose, such as a Markdown
+file that mentions `GOVERNANCE.md`, does not. Names are compared as macOS and Windows compare them. If Liftoff
+cannot see all of that, such as a directory listed only in part, closed to
+this user or too deep, or a file it cannot read whole, nothing changes and
+it says why; a file that is not there uses nothing. `--check`,
+the question (default no), `--yes` and `--recover` work as for
+`liftoff workflow set`.
+
+Verification: test
+
+## PROFILE-002 Switching the profile changes nothing on GitHub
+
+Switching the profile changes only the project's files. The rulesets and
+other settings already applied on GitHub stay as they are, and the command
+says so: `liftoff governance assess` shows how they now differ from the
+project's, and rulesets already active on GitHub are changed there by
+hand, as Liftoff never changes an active ruleset (GOV-005). Switching to a
+profile that requires fewer approvals, or to `none`, says that the
+protection on GitHub stays until it is changed there; for `none`, which has
+no rulesets for `liftoff governance assess` to compare, it says to remove
+the live ones on GitHub. The notice is shown even when the project already
+has the profile asked for.
+
+Verification: test

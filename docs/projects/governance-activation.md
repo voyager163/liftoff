@@ -109,3 +109,28 @@ changes at all.
   policy's always-human paths and CODEOWNERS cover workflow changes.
 - These commands have been tested against a simulated GitHub, not yet
   against a real repository, which GOV-005 tracks.
+
+## Switching the profile
+
+`liftoff governance profile set` switches the project to another governance
+profile, as a reviewed change of its own; `liftoff update` never does.
+
+```bash
+liftoff governance profile set team-gitflow --check   # what switching would do
+liftoff governance profile set team-gitflow           # see the change, then approve
+liftoff governance profile set --recover undo         # undo a switch that stopped part way
+```
+
+It rewrites `liftoff.yaml` and the manifest, and the files Liftoff writes
+differently for the new profile: the rulesets, the review policy and
+`GOVERNANCE.md`, and, for `none`, the release and drift workflows, which
+`none` has no use for. Each is replaced or removed only while it is exactly
+as Liftoff wrote it, and added only where nothing is; one you changed is
+left as it is and named. One removed since is recorded as the new profile
+writes it, so `liftoff repair --restore` can put it back.
+
+It changes nothing on GitHub. The rulesets already applied there stay as
+they are, including when the new profile requires fewer approvals or none.
+`liftoff governance assess` shows how they now differ from the project's.
+Liftoff never changes a ruleset that is already active, so change or remove
+those on GitHub yourself, then run `liftoff governance verify`.
