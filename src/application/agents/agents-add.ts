@@ -104,8 +104,9 @@ export async function planAgentsAdd(
   // each skill is written once, in a directory every agent reads, so a
   // Copilot-only project's .github/skills moves to the new agent's, which
   // Copilot reads too. Should anything else ever go, nothing changes.
-  // A skill has moved only where the change writes its new copy, or the
-  // project already has it as Liftoff writes it: never where it is left.
+  // A skill has moved only where the change writes its new copy, or where
+  // Liftoff's own copy is already there as it writes it; never where the
+  // new copy is left, even one the project made the same by hand.
   const left = new Set(
     transition.files.filter((file) => file.step === "left").map((file) => pathKey(file.path)),
   );
@@ -231,7 +232,12 @@ export async function completeAgentsAdd(
         throw new ProjectChangeError(
           `${entry.path}, one of ${who}'s files, could not be read whole, so nothing was changed`,
         );
-      } else copied.set(pathKey(entry.path), { entry, sha256: there.sha256 });
+      } else {
+        // Hashed as text, as the manifest and the framework's files are, so
+        // a file that is not UTF-8 compares as itself.
+        const text = await fs.readText(path.join(staging, ...entry.path.split("/")));
+        copied.set(pathKey(entry.path), { entry, sha256: sha256Hex(text ?? "") });
+      }
     }
     await runInitializer(ports.initializer, framework, initializer, staging, options);
     const written = await frameworkFiles(ports, staging, pending.generated, framework);

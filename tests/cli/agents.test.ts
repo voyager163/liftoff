@@ -371,6 +371,23 @@ describe("AGENT-002 in a framework's project, the framework sets the new agent u
     expect(snapshot()).toEqual(before);
   });
 
+  it("leaves a framework file that is not UTF-8 text be when the command leaves it as it is", async () => {
+    initializer = new FakeInitializer((step, directory) => {
+      if (step.args.includes("init")) {
+        mkdirSync(path.join(directory, ".specify"), { recursive: true });
+        writeFileSync(
+          path.join(directory, ".specify/logo.bin"),
+          Buffer.from([0x89, 0xff, 0xfe, 0x00]),
+        );
+      }
+      return specKit(step, directory);
+    });
+    await init("spec-kit");
+    const run = await agentsAdd(["agents", "add", "codex", "--yes"]);
+    expect(run.code).toBe(0);
+    expect(readFileSync(at(".specify/logo.bin"))).toEqual(Buffer.from([0x89, 0xff, 0xfe, 0x00]));
+  });
+
   it("changes nothing when the framework's command rewrites a file changed since it wrote it", async () => {
     await init("spec-kit");
     write(REGISTRY, '{"default":"claude","installed":["claude"],"ours":true}\n');

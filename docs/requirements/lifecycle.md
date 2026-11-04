@@ -934,7 +934,9 @@ a switch refused as out of date makes none; nothing but a directory may
 stand in its way, and one that cannot be made changes no file, with the
 directories made for it removed, as does Ctrl+C before the first file
 changes. One that stops part way keeps them for
-finishing, and undoing it leaves them, empty. The initializer's
+finishing, and undoing it leaves them, empty. They are made once the
+change's journal is written, so a change stopped by a hard kill in that
+moment, before they are all made, is finished without them, and they can be made by hand. The initializer's
 directory is removed afterwards, whatever happened.
 
 Verification: test
