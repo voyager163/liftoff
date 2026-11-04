@@ -962,7 +962,10 @@ remove that a file staying in the project still names, such as a script a
 workflow runs, stays too, kept the same way, so what stays keeps working:
 every file under `.github` that is not removed, as the switch leaves it,
 and every file left in place counts, and so, in turn, does each file kept
-that way. `--check`,
+that way. Names are compared as macOS and Windows compare them. If Liftoff
+cannot see all of that, such as a directory listed only in part, closed to
+this user or too deep, or a file it cannot read whole, nothing changes and
+it says why. `--check`,
 the question (default no), `--yes` and `--recover` work as for
 `liftoff workflow set`.
 

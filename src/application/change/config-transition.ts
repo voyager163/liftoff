@@ -221,22 +221,29 @@ export async function planTransition(
   );
   if (removing.size > 0) {
     const users: { path: string; text: string }[] = [];
-    // A file the switch rewrites is read as it will be, not as it is.
+    // A file the switch rewrites is read as it will be, not as it is, by
+    // the name macOS and Windows compare.
+    const rewritten = new Map([...contents].map(([file, content]) => [pathKey(file), content]));
     const read = async (file: string) => {
-      const written = contents.get(file);
+      const written = rewritten.get(pathKey(file));
       if (written !== undefined) {
         users.push({ path: file, text: written.content });
         return;
       }
       const found = await fs.readWithin(directory, file, MAX_CHANGED_BYTES);
-      if (found.kind === "file" && found.text !== undefined)
-        users.push({ path: file, text: found.text });
+      if (found.kind !== "file" || found.text === undefined) {
+        throw new ProjectChangeError(
+          `${file} could not be read whole, so Liftoff cannot tell whether it uses a file the switch removes; nothing was changed`,
+        );
+      }
+      users.push({ path: file, text: found.text });
     };
+    const removed = (file: string) => [...removing].some((path) => pathKey(path) === pathKey(file));
     const staying = new Set([
       ...(await filesUnder(fs, directory, ".github")),
       ...files.filter((item) => item.step === "left").map((item) => item.path),
     ]);
-    for (const file of [...staying].filter((item) => !removing.has(item)).sort()) await read(file);
+    for (const file of [...staying].filter((item) => !removed(item)).sort()) await read(file);
     for (let found = true; found; ) {
       found = false;
       for (const path of [...removing].sort()) {
@@ -300,20 +307,34 @@ export async function planTransition(
 const MAX_LISTED = 10_000;
 const MAX_DEPTH = 12;
 
-/** Every regular file under a directory of the project, reached through no link, within bounds. */
+/**
+ * Every regular file under a directory of the project, reached through no
+ * link. What it cannot see whole, a directory listed only in part, closed
+ * to this user, changed meanwhile or deeper than the bound, refuses the
+ * switch rather than being taken to use nothing.
+ */
 async function filesUnder(
   fs: ProjectFsPort,
   directory: string,
   relative: string,
 ): Promise<string[]> {
   const found: string[] = [];
+  const unseen = (at: string, why: string) =>
+    new ProjectChangeError(
+      `${at} ${why}, so Liftoff cannot tell whether a file there uses one the switch removes; nothing was changed`,
+    );
   const walk = async (at: string, depth: number) => {
     const listing = await fs.listWithin(directory, at, MAX_LISTED);
-    if (listing.kind !== "directory") return;
+    if (listing.kind === "missing" && at === relative) return;
+    if (listing.kind !== "directory") throw unseen(at, "could not be listed");
+    if (!listing.complete) throw unseen(at, `has more than ${MAX_LISTED} entries`);
     for (const entry of listing.entries) {
       const child = `${at}/${entry.name}`;
       if (entry.kind === "file") found.push(child);
-      else if (entry.kind === "directory" && depth < MAX_DEPTH) await walk(child, depth + 1);
+      else if (entry.kind === "directory") {
+        if (depth >= MAX_DEPTH) throw unseen(child, `is deeper than ${MAX_DEPTH} directories`);
+        await walk(child, depth + 1);
+      }
     }
   };
   await walk(relative, 1);

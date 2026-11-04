@@ -316,3 +316,44 @@ describe("PROFILE-001 what stays keeps working, however it uses what would go", 
     }
   });
 });
+
+describe("PROFILE-001 what stays is seen whole, or nothing changes", () => {
+  it("takes a workflow named in other letter case for the one the switch removes", async () => {
+    const listing = Object.assign(Object.create(fs) as ProjectFsPort, {
+      listWithin: async (directory: string, relative: string, max: number) => {
+        const found = await fs.listWithin(directory, relative, max);
+        if (found.kind !== "directory" || relative !== ".github/workflows") return found;
+        // As a volume that keeps the case a file was renamed to would list it.
+        return {
+          ...found,
+          entries: found.entries.map((entry) =>
+            entry.name === "20-release.yml" ? { ...entry, name: "20-RELEASE.yml" } : entry,
+          ),
+        };
+      },
+    });
+    expect(
+      (await liftoff(["governance", "profile", "set", "none", "--yes"], { port: listing })).code,
+    ).toBe(0);
+    expect(existsSync(at(".github/liftoff/release.mjs"))).toBe(false);
+  });
+
+  it("refuses when a directory under .github cannot be seen whole", async () => {
+    write(".github/scripts/use.sh", "node .github/liftoff/release.mjs\n");
+    const before = snapshot();
+    const partial = Object.assign(Object.create(fs) as ProjectFsPort, {
+      listWithin: async (directory: string, relative: string, max: number) => {
+        const found = await fs.listWithin(directory, relative, max);
+        return found.kind === "directory" && relative === ".github/scripts"
+          ? { ...found, entries: [], complete: false }
+          : found;
+      },
+    });
+    const run = await liftoff(["governance", "profile", "set", "none", "--yes"], { port: partial });
+    expect(run.code).toBe(1);
+    expect(run.err).toContain(
+      ".github/scripts has more than 10000 entries, so Liftoff cannot tell whether a file there uses one the switch removes; nothing was changed",
+    );
+    expect(snapshot()).toEqual(before);
+  });
+});
