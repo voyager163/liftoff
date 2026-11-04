@@ -99,9 +99,11 @@ export interface ChangeOptions {
   /**
    * Runs under the change lock once every file is checked to be as the
    * plan says, before the first changes, such as making the empty
-   * directories a framework needs. If it fails, nothing changes.
+   * directories a framework needs. If it fails, nothing changes. What it
+   * returns undoes it, and runs if the change is then cancelled before the
+   * first file.
    */
-  readonly beforeFiles?: () => Promise<void>;
+  readonly beforeFiles?: () => Promise<() => Promise<void>>;
 }
 
 export interface ChangeResult {
@@ -205,9 +207,11 @@ export async function applyChanges(
       await fs.remove(staging);
       throw new ChangeConflictError(problems);
     }
+    let undoBefore: (() => Promise<void>) | undefined;
     if (options.beforeFiles !== undefined) {
       try {
-        await options.beforeFiles();
+        signal?.throwIfAborted();
+        undoBefore = await options.beforeFiles();
       } catch (error) {
         await fs.remove(journalPath);
         await fs.remove(staging);
@@ -218,6 +222,7 @@ export async function applyChanges(
     for (const [index, change] of plan.changes.entries()) {
       if (signal?.aborted) {
         if (index === 0) {
+          await undoBefore?.();
           await fs.remove(journalPath);
           await fs.remove(staging);
           signal.throwIfAborted();

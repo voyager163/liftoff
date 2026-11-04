@@ -2,6 +2,7 @@ import {
   completeWorkflowSet,
   makeFrameworkDirectories,
   planWorkflowSet,
+  removeMadeDirectories,
   WorkflowOptionError,
   type WorkflowPlan,
 } from "../../application/workflow/workflow-set.ts";
@@ -171,7 +172,8 @@ export function makeWorkflowSetCommand(
           yes: true,
           report: reported(workflow),
           beforeFiles: async () => {
-            await makeFrameworkDirectories(ports.fs, directory, change.directories);
+            const made = await makeFrameworkDirectories(ports.fs, directory, change.directories);
+            return () => removeMadeDirectories(ports.fs, directory, made);
           },
         },
       );

@@ -347,6 +347,30 @@ describe("AGENT-002 in a framework's project, the framework sets the new agent u
     expect((await agentsAdd(["validate"])).code).toBe(0);
   });
 
+  it("removes the framework's directories it made when cancelled before the first file", async () => {
+    await init("openspec");
+    rmSync(at("openspec/specs"), { recursive: true });
+    const before = snapshot();
+    const io = captureIo(root());
+    // Ctrl+C just as the directory is made, before any file changes.
+    const cancelling = Object.assign(Object.create(fs) as ProjectFsPort, {
+      makeDirectory: async (directory: string, access?: "private") => {
+        await fs.makeDirectory(directory, access);
+        if (directory === at("openspec/specs")) io.controller.abort();
+      },
+    });
+    const code = await runCli(
+      ["agents", "add", "codex", "--yes"],
+      io,
+      [makeAgentsAddCommand(ports(cancelling))],
+      "1.0.0",
+    );
+    expect(code).toBe(4);
+    expect(existsSync(at("openspec/specs"))).toBe(false);
+    expect(existsSync(at(CHANGE_JOURNAL_FILE))).toBe(false);
+    expect(snapshot()).toEqual(before);
+  });
+
   it("changes nothing when the framework's command rewrites a file changed since it wrote it", async () => {
     await init("spec-kit");
     write(REGISTRY, '{"default":"claude","installed":["claude"],"ours":true}\n');

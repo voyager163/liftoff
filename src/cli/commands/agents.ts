@@ -4,7 +4,10 @@ import {
   planAgentsAdd,
 } from "../../application/agents/agents-add.ts";
 import { TransitionOptionError } from "../../application/change/config-transition.ts";
-import { makeFrameworkDirectories } from "../../application/workflow/workflow-set.ts";
+import {
+  makeFrameworkDirectories,
+  removeMadeDirectories,
+} from "../../application/workflow/workflow-set.ts";
 import { AGENT_HOSTS } from "../../plugins/builtin/agents/hosts.ts";
 import type { CommandResult, CommandSpec } from "../command.ts";
 import { UsageError } from "../outcome.ts";
@@ -159,7 +162,8 @@ export function makeAgentsAddCommand(
           yes: true,
           report: reported(agents),
           beforeFiles: async () => {
-            await makeFrameworkDirectories(ports.fs, directory, change.directories);
+            const made = await makeFrameworkDirectories(ports.fs, directory, change.directories);
+            return () => removeMadeDirectories(ports.fs, directory, made);
           },
         },
       );

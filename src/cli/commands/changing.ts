@@ -149,7 +149,7 @@ export async function applyApproved(
     readonly yes: boolean;
     readonly report: Readonly<Record<string, unknown>>;
     /** Run under the change lock, once the files are checked, before any changes. */
-    readonly beforeFiles?: () => Promise<void>;
+    readonly beforeFiles?: () => Promise<() => Promise<void>>;
   },
 ): Promise<ChangeResult | CommandResult> {
   const { report } = options;
