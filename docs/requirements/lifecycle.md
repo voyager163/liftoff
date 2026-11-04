@@ -955,7 +955,9 @@ for `none`, the release and drift workflows, is replaced or removed only
 while it is exactly as Liftoff last wrote it, and added only where nothing
 is. One removed since is recorded as the new profile writes it, so
 `liftoff repair --restore` can put it back; any other is left and named,
-and one the new profile no longer has stays as the project's own. `--check`,
+and one the new profile no longer has stays as the project's own: the
+manifest lists it as kept (ADOPT-003), so neither a switch back nor
+`liftoff update` offers Liftoff's file there. `--check`,
 the question (default no), `--yes` and `--recover` work as for
 `liftoff workflow set`.
 
@@ -965,10 +967,10 @@ Verification: test
 
 Switching the profile changes only the project's files. The rulesets and
 other settings already applied on GitHub stay as they are, and the command
-says so: `liftoff governance status` shows how they now differ from the
-project's, and `liftoff governance plan` and `apply-next` apply the new
-profile as for any project (GOV-005). Switching to a profile that requires
-fewer approvals, or to `none`, says that the protection on GitHub stays
-until it is changed there.
+says so: `liftoff governance assess` shows how they now differ from the
+project's, and rulesets already active on GitHub are changed there by
+hand, as Liftoff never changes an active ruleset (GOV-005). Switching to a
+profile that requires fewer approvals, or to `none`, says that the
+protection on GitHub stays until it is changed there.
 
 Verification: test

@@ -17,18 +17,19 @@ export interface ProfilePlan {
   readonly to: string;
   /** Each of Liftoff's files the switch writes, or would, sorted by path. */
   readonly files: readonly TransitionFile[];
-  /** Whether the new profile asks for fewer approvals, at any tier, than the old. */
+  /** Whether the new profile asks for fewer approvals, at any tier, than the old, or is none. */
   readonly weaker: boolean;
   /** The change, or undefined when the project already has the profile. */
   readonly plan?: ChangePlan;
   readonly contents: ReadonlyMap<string, NewContent>;
 }
 
-/** Whether `to` requires fewer approvals than `from` anywhere. */
+/** Whether `to` requires fewer approvals than `from` anywhere, or is none, which has no rulesets. */
 function weakens(from: ProfileId, to: ProfileId): boolean {
   const was = PROFILES[from];
   const now = PROFILES[to];
   return (
+    to === "none" ||
     now.alwaysHumanMinimum < was.alwaysHumanMinimum ||
     (Object.keys(was.approvals) as (keyof typeof was.approvals)[]).some(
       (tier) => now.approvals[tier] < was.approvals[tier],

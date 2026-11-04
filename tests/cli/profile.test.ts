@@ -186,3 +186,35 @@ describe("PROFILE-002 switching the profile changes nothing on GitHub", () => {
     );
   });
 });
+
+describe("PROFILE-001 a round trip with files the person changed", () => {
+  it("keeps them the project's own, so switching back and updating leave them be", async () => {
+    write("GOVERNANCE.md", "# Our own rules\n");
+    write(".github/workflows/20-release.yml", "name: ours\n");
+    expect((await liftoff(["governance", "profile", "set", "none", "--yes"])).code).toBe(0);
+    expect(parseManifest(read(MANIFEST_FILE)).kept).toEqual(
+      expect.arrayContaining(["GOVERNANCE.md", ".github/workflows/20-release.yml"]),
+    );
+    expect(
+      (await liftoff(["governance", "profile", "set", "single-maintainer-gitflow", "--yes"])).code,
+    ).toBe(0);
+    expect(read("GOVERNANCE.md")).toBe("# Our own rules\n");
+    await clean();
+  });
+
+  it("warns that GitHub's protection stays when switching to none, even from no approvals", async () => {
+    const none = await liftoff(["governance", "profile", "set", "none", "--check"]);
+    expect(none.out).toContain(
+      "none has no rulesets; until the ones on GitHub are removed there, they still protect the project as single-maintainer-gitflow does.",
+    );
+  });
+
+  it("says nothing of a file that is neither Liftoff's nor there", async () => {
+    write("GOVERNANCE.md", "# Our own rules\n");
+    expect((await liftoff(["governance", "profile", "set", "none", "--yes"])).code).toBe(0);
+    expect((await liftoff(["governance", "profile", "set", "team-gitflow", "--yes"])).code).toBe(0);
+    rmSync(at("GOVERNANCE.md"));
+    const check = await liftoff(["governance", "profile", "set", "none", "--check"]);
+    expect(check.out).not.toContain("GOVERNANCE.md: something is already there");
+  });
+});

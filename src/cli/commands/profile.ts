@@ -11,10 +11,12 @@ const STEPS = { change: "rewrite", add: "add", remove: "remove" } as const;
 
 /** What the switch leaves on GitHub, said every time. */
 const github = (profile: ProfilePlan): string[] => [
-  "Nothing on GitHub changes: the rulesets already applied there stay as they are. liftoff governance status shows how they differ from the project's, and liftoff governance plan and apply-next apply the new profile.",
+  "Nothing on GitHub changes: the rulesets already applied there stay as they are. liftoff governance assess shows how they differ from the project's; change rulesets that are already active on GitHub by hand, as Liftoff never changes an active ruleset.",
   ...(profile.weaker
     ? [
-        `${profile.to} requires fewer approvals than ${profile.from}; until the rulesets on GitHub are changed, they still require what ${profile.from} does.`,
+        profile.to === "none"
+          ? `none has no rulesets; until the ones on GitHub are removed there, they still protect the project as ${profile.from} does.`
+          : `${profile.to} requires fewer approvals than ${profile.from}; until the rulesets on GitHub are changed, they still require what ${profile.from} does.`,
       ]
     : []),
 ];
@@ -49,7 +51,7 @@ export function makeGovernanceProfileSetCommand(
     path: ["governance", "profile", "set"],
     summary: "Switch a Liftoff project's governance profile.",
     description:
-      "Switches the project's governance profile as a reviewed change of its own: liftoff.yaml and the manifest are rewritten, and the files Liftoff writes differently for the new profile, such as the rulesets, the review policy, GOVERNANCE.md and the release workflows, change only while they are as Liftoff wrote them; any other is left and named. Nothing on GitHub changes: apply the new profile there with liftoff governance plan and apply-next. It shows the change and asks first; the default answer is no. In scripts, pass --yes. A switch that stops part way can be finished or undone with --recover.",
+      "Switches the project's governance profile as a reviewed change of its own: liftoff.yaml and the manifest are rewritten, and the files Liftoff writes differently for the new profile, such as the rulesets, the review policy, GOVERNANCE.md and the release workflows, change only while they are as Liftoff wrote them; any other is left and named. Nothing on GitHub changes: liftoff governance assess shows how its rulesets differ, and active rulesets are changed there by hand. It shows the change and asks first; the default answer is no. In scripts, pass --yes. A switch that stops part way can be finished or undone with --recover.",
     readOnly: false,
     reportSchema: "liftoff.profile-set/v1",
     positionals: [

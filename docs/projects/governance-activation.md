@@ -130,7 +130,7 @@ left as it is and named. One removed since is recorded as the new profile
 writes it, so `liftoff repair --restore` can put it back.
 
 It changes nothing on GitHub. The rulesets already applied there stay as
-they are, including when the new profile requires fewer approvals or none:
-`liftoff governance status` shows how they now differ from the project's,
-and `liftoff governance plan` and `apply-next` apply the new profile, as
-for any project.
+they are, including when the new profile requires fewer approvals or none.
+`liftoff governance assess` shows how they now differ from the project's.
+Liftoff never changes a ruleset that is already active, so change or remove
+those on GitHub yourself, then run `liftoff governance verify`.

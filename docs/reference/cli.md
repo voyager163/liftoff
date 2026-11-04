@@ -478,7 +478,7 @@ liftoff governance verify --prove
 
 ## liftoff governance profile set
 
-Switches the project's governance profile as a reviewed change of its own: liftoff.yaml and the manifest are rewritten, and the files Liftoff writes differently for the new profile, such as the rulesets, the review policy, GOVERNANCE.md and the release workflows, change only while they are as Liftoff wrote them; any other is left and named. Nothing on GitHub changes: apply the new profile there with liftoff governance plan and apply-next. It shows the change and asks first; the default answer is no. In scripts, pass --yes. A switch that stops part way can be finished or undone with --recover.
+Switches the project's governance profile as a reviewed change of its own: liftoff.yaml and the manifest are rewritten, and the files Liftoff writes differently for the new profile, such as the rulesets, the review policy, GOVERNANCE.md and the release workflows, change only while they are as Liftoff wrote them; any other is left and named. Nothing on GitHub changes: liftoff governance assess shows how its rulesets differ, and active rulesets are changed there by hand. It shows the change and asks first; the default answer is no. In scripts, pass --yes. A switch that stops part way can be finished or undone with --recover.
 
 Changes files; asks first unless `--yes` is given.
 

@@ -120,6 +120,7 @@ export async function planTransition(
   const kept = new Set(manifest.kept.map(pathKey));
 
   const files: TransitionFile[] = [];
+  const keeping: string[] = [];
   const changes: FileChange[] = [];
   const contents = new Map<string, NewContent>();
   const recorded = new Map<string, ManifestFile>(
@@ -188,6 +189,8 @@ export async function planTransition(
     } else if (made === undefined && entry !== undefined && disk.kind === "missing") {
       // Already gone, as the new configuration has it.
       recorded.delete(key);
+    } else if (made === undefined && entry === undefined) {
+      // Neither Liftoff's nor the new configuration's: nothing to do with it.
     } else {
       files.push({
         path: relative,
@@ -199,8 +202,12 @@ export async function planTransition(
               ? `changed since Liftoff wrote it, and the new ${choice.name} has none; it stays the project's own`
               : `changed since Liftoff wrote it, so it still describes ${from}; bring it up to date by hand`,
       });
-      // A file the new configuration no longer has, left in place, is the project's now.
-      if (made === undefined) recorded.delete(key);
+      // A file the new configuration no longer has, left in place, is the
+      // project's now, kept, so a later switch back or update leaves it be.
+      if (made === undefined) {
+        recorded.delete(key);
+        keeping.push(relative);
+      }
     }
   }
 
@@ -227,7 +234,12 @@ export async function planTransition(
     files: files.sort((a, b) => a.path.localeCompare(b.path)),
     changes,
     contents,
-    manifest: { ...rest, plugins, files: [...recorded.values()] },
+    manifest: {
+      ...rest,
+      plugins,
+      files: [...recorded.values()],
+      kept: [...new Set([...manifest.kept, ...keeping])],
+    },
     released,
   };
 }
