@@ -301,6 +301,29 @@ liftoff repair --patch fix.diff --paths backend/app
 liftoff repair --recover undo
 ```
 
+## liftoff workflow set
+
+Switches the project to manual development, OpenSpec or Spec Kit, as a reviewed change of its own: liftoff.yaml and the manifest are rewritten, and the files Liftoff writes differently for the new workflow, such as AGENTS.md and README.md, change only while they are as Liftoff wrote them. Leaving a framework keeps its files byte for byte, as the project's own, and uninstalls nothing. Entering one runs its own initializer at a pinned version, once approved, in an empty directory beside the project with a temporary home, and adds what it writes only where the project has nothing. It shows the change and asks first; the default answer is no. In scripts, pass --yes. A switch that stops part way can be finished or undone with --recover.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.workflow-set/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--check` | Change nothing and run nothing; show what switching would do. |
+| `--recover <mode>` | Finish or undo a switch that stopped part way. (one of `finish`, `undo`) |
+| `--yes` | Switch without asking. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff workflow set manual --check
+liftoff workflow set openspec
+liftoff workflow set --recover undo
+```
+
 ## liftoff review classify
 
 Classifies the change on this branch against its base with the repository's review policy (.github/review-policy.yml, read from the base branch). Reports the risk tier, review depth, required human approvals and why. It is the same check CI runs, so the result predicts what the pull request will need.
