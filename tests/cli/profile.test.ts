@@ -215,7 +215,9 @@ describe("PROFILE-001 a round trip with files the person changed", () => {
     expect((await liftoff(["governance", "profile", "set", "team-gitflow", "--yes"])).code).toBe(0);
     rmSync(at("GOVERNANCE.md"));
     const check = await liftoff(["governance", "profile", "set", "none", "--check"]);
+    expect(check.code).toBe(0);
     expect(check.out).not.toContain("GOVERNANCE.md: something is already there");
+    expect(check.out).toContain("  remove .github/workflows/20-release.yml\n");
   });
 });
 
@@ -355,5 +357,36 @@ describe("PROFILE-001 what stays is seen whole, or nothing changes", () => {
       ".github/scripts has more than 10000 entries, so Liftoff cannot tell whether a file there uses one the switch removes; nothing was changed",
     );
     expect(snapshot()).toEqual(before);
+  });
+});
+
+describe("PROFILE-001 only what runs counts as using a file", () => {
+  it("switches when a file Liftoff wrote was removed", async () => {
+    rmSync(at("README.md"));
+    const check = await liftoff(["governance", "profile", "set", "none", "--check"]);
+    expect(check.code).toBe(0);
+  });
+
+  it("does not keep a file that prose mentions, or one named only as part of a longer name", async () => {
+    write(".github/CONTRIBUTING.md", "See GOVERNANCE.md and .github/liftoff/release.mjs.\n");
+    write(
+      ".github/workflows/99-ours.yml",
+      "name: ours\n# backs up .github/liftoff/release.mjs.bak\n",
+    );
+    write(
+      ".github/tools/node_modules/x/index.js",
+      "require('../../../liftoff/branch-policy.mjs'); // .github/liftoff/branch-policy.mjs\n",
+    );
+    expect((await liftoff(["governance", "profile", "set", "none", "--yes"])).code).toBe(0);
+    for (const file of [
+      "GOVERNANCE.md",
+      ".github/rulesets/develop.json",
+      ".github/rulesets/main.json",
+      ".github/liftoff/release.mjs",
+      ".github/liftoff/branch-policy.mjs",
+    ]) {
+      expect(existsSync(at(file)), file).toBe(false);
+    }
+    expect(parseManifest(read(MANIFEST_FILE)).kept).toEqual([]);
   });
 });

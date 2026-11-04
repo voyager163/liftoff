@@ -959,13 +959,16 @@ and one the new profile no longer has stays as the project's own: the
 manifest lists it as kept (ADOPT-003), so neither a switch back nor
 `liftoff update` offers Liftoff's file there. A file the switch would
 remove that a file staying in the project still names, such as a script a
-workflow runs, stays too, kept the same way, so what stays keeps working:
-every file under `.github` that is not removed, as the switch leaves it,
-and every file left in place counts, and so, in turn, does each file kept
-that way. Names are compared as macOS and Windows compare them. If Liftoff
+workflow runs, stays too, kept the same way, so what stays keeps working.
+What counts is a workflow, script or configuration file (YAML, JSON, shell,
+PowerShell, JavaScript, TypeScript, Python or Ruby) that names the file's
+whole path: every one under `.github` that is not removed, as the switch
+leaves it, other than installed dependencies, and every one left in place;
+and so, in turn, does each file kept that way. Prose, such as a Markdown
+file that mentions `GOVERNANCE.md`, does not. Names are compared as macOS and Windows compare them. If Liftoff
 cannot see all of that, such as a directory listed only in part, closed to
 this user or too deep, or a file it cannot read whole, nothing changes and
-it says why. `--check`,
+it says why; a file that is not there uses nothing. `--check`,
 the question (default no), `--yes` and `--recover` work as for
 `liftoff workflow set`.
 

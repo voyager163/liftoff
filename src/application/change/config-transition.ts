@@ -1,3 +1,5 @@
+import path from "node:path";
+import { isSkippedDirectory } from "../../domain/assess/tree.ts";
 import type { FileChange } from "../../domain/plan/change-plan.ts";
 import { sha256Hex } from "../../domain/plan/plan.ts";
 import {
@@ -230,8 +232,14 @@ export async function planTransition(
         users.push({ path: file, text: written.content });
         return;
       }
-      const found = await fs.readWithin(directory, file, MAX_CHANGED_BYTES);
-      if (found.kind !== "file" || found.text === undefined) {
+      // Nothing there, such as a file removed since Liftoff wrote it, uses nothing.
+      const entry = await fs.entry(path.join(directory, ...file.split("/")));
+      if (entry.kind === "missing" || entry.kind === "directory") return;
+      const found =
+        entry.kind === "file" && entry.size <= MAX_CHANGED_BYTES
+          ? await fs.readWithin(directory, file, Math.max(entry.size, 1))
+          : undefined;
+      if (found?.kind !== "file" || found.text === undefined) {
         throw new ProjectChangeError(
           `${file} could not be read whole, so Liftoff cannot tell whether it uses a file the switch removes; nothing was changed`,
         );
@@ -239,33 +247,35 @@ export async function planTransition(
       users.push({ path: file, text: found.text });
     };
     const removed = (file: string) => [...removing].some((path) => pathKey(path) === pathKey(file));
-    const staying = new Set([
-      ...(await filesUnder(fs, directory, ".github")),
-      ...files.filter((item) => item.step === "left").map((item) => item.path),
-    ]);
+    const staying = new Set(
+      [
+        ...(await filesUnder(fs, directory, ".github")),
+        ...files.filter((item) => item.step === "left").map((item) => item.path),
+      ].filter(runs),
+    );
     for (const file of [...staying].filter((item) => !removed(item)).sort()) await read(file);
     for (let found = true; found; ) {
       found = false;
-      for (const path of [...removing].sort()) {
-        const user = users.find((item) => item.text.includes(path));
+      for (const file of [...removing].sort()) {
+        const user = users.find((item) => names(item.text, file));
         if (user === undefined) continue;
-        removing.delete(path);
+        removing.delete(file);
         found = true;
         changes.splice(
-          changes.findIndex((change) => change.path === path),
+          changes.findIndex((change) => change.path === file),
           1,
         );
-        keeping.push(path);
+        keeping.push(file);
         files.splice(
-          files.findIndex((item) => item.path === path),
+          files.findIndex((item) => item.path === file),
           1,
           {
-            path,
+            path: file,
             step: "left",
             reason: `${user.path}, which stays, still uses it, so it stays the project's own`,
           },
         );
-        await read(path);
+        if (runs(file)) await read(file);
       }
     }
   }
@@ -303,6 +313,21 @@ export async function planTransition(
   };
 }
 
+/**
+ * Whether a file is one that runs or configures what runs, a workflow or a
+ * script, whose naming another file is a use of it. Prose, such as a
+ * Markdown file mentioning GOVERNANCE.md, is not.
+ */
+const runs = (file: string): boolean => /\.(ya?ml|json|sh|bash|ps1|m?[jt]s|cjs|py|rb)$/i.test(file);
+
+/** Whether text names a path whole: not as part of a longer name, such as release.mjs in release.mjs.bak. */
+function names(text: string, file: string): boolean {
+  const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Before it, anything but a letter, digit, dot or hyphen, so ./ counts;
+  // after it, nothing that would make a longer name.
+  return new RegExp(`(^|[^\\w.-])${escaped}(?![\\w./-])`).test(text);
+}
+
 /** The most entries read from one directory, and the deepest, when looking for what stays. */
 const MAX_LISTED = 10_000;
 const MAX_DEPTH = 12;
@@ -331,6 +356,8 @@ async function filesUnder(
     for (const entry of listing.entries) {
       const child = `${at}/${entry.name}`;
       if (entry.kind === "file") found.push(child);
+      // Installed dependencies, caches and build output are not the project's to run.
+      else if (entry.kind === "directory" && isSkippedDirectory(entry.name)) continue;
       else if (entry.kind === "directory") {
         if (depth >= MAX_DEPTH) throw unseen(child, `is deeper than ${MAX_DEPTH} directories`);
         await walk(child, depth + 1);
