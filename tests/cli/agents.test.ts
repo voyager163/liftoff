@@ -180,6 +180,18 @@ describe("AGENT-001 adding a coding agent is additive, as a reviewed change of i
     expect((await agentsAdd(["validate"])).code).toBe(0);
   });
 
+  it("never removes a Copilot skill whose new copy is not written", async () => {
+    await init("manual", "copilot");
+    write(".agents/skills/liftoff-verify/SKILL.md", "# Our verify skill\n");
+    const before = snapshot();
+    const run = await agentsAdd(["agents", "add", "codex", "--yes"]);
+    expect(run.code).toBe(1);
+    expect(run.err).toContain(
+      "adding codex would remove .github/skills/liftoff-verify/SKILL.md, and adding an agent removes nothing but a skill whose new copy it writes; nothing was changed",
+    );
+    expect(snapshot()).toEqual(before);
+  });
+
   it("refuses what it cannot add, changing nothing", async () => {
     await init("manual");
     const before = snapshot();

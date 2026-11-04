@@ -75,7 +75,8 @@ export const openspecWorkflow: WorkflowPlugin = {
       },
     ],
     // Run again in a project it has set up, OpenSpec adds the tools it does
-    // not have yet and leaves the files of the others byte for byte.
+    // not have yet and writes the others' skills and commands again, so one
+    // changed since it wrote it refuses the addition.
     addHosts(present, added) {
       return this.steps([...present, ...added]);
     },

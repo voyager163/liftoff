@@ -104,13 +104,20 @@ export async function planAgentsAdd(
   // each skill is written once, in a directory every agent reads, so a
   // Copilot-only project's .github/skills moves to the new agent's, which
   // Copilot reads too. Should anything else ever go, nothing changes.
-  const making = new Set(generated.files.map((file) => pathKey(file.path)));
+  // A skill has moved only where the change writes its new copy, or the
+  // project already has it as Liftoff writes it: never where it is left.
+  const left = new Set(
+    transition.files.filter((file) => file.step === "left").map((file) => pathKey(file.path)),
+  );
+  const making = new Set(
+    generated.files.map((file) => pathKey(file.path)).filter((file) => !left.has(file)),
+  );
   const lost = changes
     .filter((change) => change.after === null && !moves(change.path, from, making))
     .map((change) => change.path);
   if (lost.length > 0) {
     throw new ProjectChangeError(
-      `adding ${added.join(", ")} would remove ${lost.join(", ")}, and adding an agent removes nothing; nothing was changed`,
+      `adding ${added.join(", ")} would remove ${lost.join(", ")}, and adding an agent removes nothing but a skill whose new copy it writes; nothing was changed${lost.some((file) => file.includes("/skills/")) ? ". Move aside what is where the new copy goes, or put it back as Liftoff wrote it, and add again" : ""}`,
     );
   }
   const pending: Pending = {
@@ -146,8 +153,9 @@ export async function planAgentsAdd(
 
 /**
  * Whether a file is one of Liftoff's skills in a directory the project's
- * agents read, and the new configuration writes the same skill in another
- * directory that every agent reading the first reads too.
+ * agents read, and the change writes the same skill, or the project has it
+ * as Liftoff writes it, in another directory that every agent reading the
+ * first reads too.
  */
 function moves(file: string, agents: readonly string[], making: ReadonlySet<string>): boolean {
   const hosts = agents.map((agent) => AGENT_HOSTS[agent as AgentHostId]);

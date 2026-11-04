@@ -1010,7 +1010,9 @@ skill is written once, in a directory every agent reads, so a GitHub
 Copilot-only project's skills in `.github/skills` move to `.agents/skills`
 or `.claude/skills`, which Copilot reads too, when Codex or Claude Code is
 added. Each moves only while it is exactly as Liftoff last wrote it; one
-changed since stays as the project's own, kept (ADOPT-003). Nothing Liftoff
+changed since stays as the project's own, kept (ADOPT-003). If a skill's
+new copy would not be written, because something else is where it goes,
+nothing changes and the command says why. Nothing Liftoff
 did not write, such as another tool's integration or the project's own
 skills, is touched. A
 file the manifest lists as kept (ADOPT-003) is never written. `--check`,

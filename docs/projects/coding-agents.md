@@ -37,7 +37,9 @@ a copy of its files in an empty directory beside the project, with a
 temporary home, so your machine's own configuration is untouched:
 
 - OpenSpec runs its initializer again with every agent the project then
-  has. That adds the new agent's files and leaves the others' as they are.
+  has. That adds the new agent's files and writes the others' again, so if
+  you changed one of OpenSpec's skills or commands, adding is refused until
+  it is back as OpenSpec wrote it.
 - Spec Kit runs `specify integration install` for each new agent. That
   keeps its default agent.
 
