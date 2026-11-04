@@ -10,8 +10,9 @@ import { ProcessError, run } from "./process.ts";
 const OUTPUT_TAIL = 4000;
 
 /**
- * The environment an initializer runs with: the user's own, with telemetry
- * and update checks off and no prompts or colors. Its home, configuration,
+ * The environment an initializer runs with: the user's own, without the
+ * frameworks' own settings, with telemetry and update checks off and no
+ * prompts or colors. Its home, configuration,
  * data and Codex directories are in `scratch`, so nothing it writes there,
  * such as telemetry settings or the clean-up of another tool's global
  * prompts, reaches the user's machine. It still reads the user's npm and Git
@@ -36,8 +37,15 @@ export function initializerEnv(
   const npmrc = userFile("npm_config_userconfig", ".npmrc");
   const gitconfig = userFile("GIT_CONFIG_GLOBAL", ".gitconfig");
   const posix = platform !== "win32";
+  // A framework's own settings, such as SPECIFY_INIT_DIR, which points Spec
+  // Kit at another project, never come from the user's environment: the
+  // framework works only on the directory it runs in. Windows names
+  // variables in any case.
+  const own = Object.fromEntries(
+    Object.entries(base).filter(([key]) => !/^(specify|openspec)_/i.test(key)),
+  );
   return {
-    ...base,
+    ...own,
     CI: "1",
     DO_NOT_TRACK: "1",
     OPENSPEC_TELEMETRY: "0",
