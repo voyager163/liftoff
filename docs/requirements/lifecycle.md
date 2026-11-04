@@ -988,3 +988,59 @@ the live ones on GitHub. The notice is shown even when the project already
 has the profile asked for.
 
 Verification: test
+
+## AGENT-001 Adding a coding agent is additive, as a reviewed change of its own
+
+`liftoff agents add <agents>`, naming one or more of `copilot`, `codex`
+and `claude` separated by commas, adds coding agents to a Liftoff project;
+`liftoff update` never does (UPDATE-002). It refuses as `liftoff workflow
+set` does (WORKFLOW-001): a directory that is not a Liftoff project, a
+change that has not finished, and a `liftoff.yaml` changed since Liftoff
+wrote it. The agents the project has stay, in their order, and the new ones
+follow, so the first, which Spec Kit takes as its default agent, stays
+first; adding only agents it already has changes nothing.
+
+The change (CHANGE-001, operation `agents-add`) rewrites `liftoff.yaml` and
+the manifest. Liftoff's files for the new agents, such as their skills and
+instructions, are added only where nothing is, and each file this release
+writes differently with them, such as the AI review workflow, is replaced
+only while it is exactly as Liftoff last wrote it; otherwise it is left as
+it is and named. Nothing is removed but Liftoff's skills that move: each
+skill is written once, in a directory every agent reads, so a GitHub
+Copilot-only project's skills in `.github/skills` move to `.agents/skills`
+or `.claude/skills`, which Copilot reads too, when Codex or Claude Code is
+added. Each moves only while it is exactly as Liftoff last wrote it; one
+changed since stays as the project's own, kept (ADOPT-003). Nothing Liftoff
+did not write, such as another tool's integration or the project's own
+skills, is touched. A
+file the manifest lists as kept (ADOPT-003) is never written. `--check`,
+the question (default no), `--yes` and `--recover` work as for
+`liftoff workflow set`.
+
+- Given a Claude Code project with its own `.cursor/rules/team.md`, when
+  Codex is added, then `liftoff.yaml` lists `claude` then `codex`, the
+  Codex skills are added, and `.cursor/rules/team.md` and every Claude Code
+  file are unchanged.
+
+Verification: test
+
+## AGENT-002 In a framework's project, the framework sets the new agent up itself
+
+In an OpenSpec or Spec Kit project, adding an agent also runs the
+framework's own command for it, at the version this release pins, once the
+person approves: OpenSpec's initializer again, with every agent the project
+then has, and Spec Kit's `integration install` for each new agent, which
+keeps its default agent as it is. It runs on a copy of the framework's
+files, in an empty directory beside the project, with telemetry off and a
+temporary home and configuration directories, as INIT-005 says, and the
+question says that it runs and downloads it. What it writes is checked as
+INIT-005 says. A file it adds becomes the framework's, added only where the
+project has nothing; a file of the framework's it rewrites, such as Spec
+Kit's list of its integrations, is replaced only while it is exactly as the
+framework wrote it. Otherwise, and if it removes one of the framework's
+files, nothing changes and each such path is named. A file of the
+framework's the project no longer has is not added back, and the command
+says so. Empty directories it makes are made as WORKFLOW-003 says, and its
+directory is removed afterwards, whatever happened.
+
+Verification: test

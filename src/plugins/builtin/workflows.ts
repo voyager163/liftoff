@@ -74,6 +74,11 @@ export const openspecWorkflow: WorkflowPlugin = {
         ],
       },
     ],
+    // Run again in a project it has set up, OpenSpec adds the tools it does
+    // not have yet and leaves the files of the others byte for byte.
+    addHosts(present, added) {
+      return this.steps([...present, ...added]);
+    },
   },
   artifacts: () => [],
 };
@@ -82,6 +87,7 @@ const SPEC_KIT_VERSION = "1.2.1";
 /** The commit tagged v1.2.1, so a moved tag cannot change what runs. */
 const SPEC_KIT_SOURCE =
   "git+https://github.com/github/spec-kit.git@9dca9bf42a031765ee5e5f2371137f2f26967e11";
+const SPECIFY = ["--from", SPEC_KIT_SOURCE, "specify"];
 
 /**
  * Spec Kit: a constitution, then for each feature a specification, a plan,
@@ -117,28 +123,39 @@ export const specKitWorkflow: WorkflowPlugin = {
     version: SPEC_KIT_VERSION,
     needs: "uv and Git",
     steps(hosts) {
-      const specify = ["--from", SPEC_KIT_SOURCE, "specify"];
-      // Spec Kit installs integrations side by side only when it declares
-      // each one safe to combine; Copilot is not, so that is asked for
-      // explicitly. In a new directory there is nothing else to overwrite.
-      const force = hosts.includes("copilot") ? ["--force"] : [];
-      // The first host is set up with the project and becomes the default.
-      return hosts.map((host, index) => ({
+      const [first, ...rest] = hosts;
+      return [
+        ...(first === undefined
+          ? []
+          : [
+              {
+                command: "uvx",
+                args: [
+                  ...SPECIFY,
+                  "init",
+                  "--here",
+                  "--non-interactive",
+                  "--ignore-agent-tools",
+                  "--script",
+                  "py",
+                  "--integration",
+                  first,
+                ],
+              },
+            ]),
+        ...this.addHosts(first === undefined ? [] : [first], rest),
+      ];
+    },
+    // The first host, set up with the project, is the default; one installed
+    // later sits beside it and leaves the default as it is. Spec Kit
+    // installs integrations side by side only when it declares each one
+    // safe to combine; Copilot is not, so with Copilot among them that is
+    // asked for explicitly.
+    addHosts(present, added) {
+      const force = [...present, ...added].includes("copilot") ? ["--force"] : [];
+      return added.map((host) => ({
         command: "uvx",
-        args:
-          index === 0
-            ? [
-                ...specify,
-                "init",
-                "--here",
-                "--non-interactive",
-                "--ignore-agent-tools",
-                "--script",
-                "py",
-                "--integration",
-                host,
-              ]
-            : [...specify, "integration", "install", host, ...force],
+        args: [...SPECIFY, "integration", "install", host, ...force],
       }));
     },
   },

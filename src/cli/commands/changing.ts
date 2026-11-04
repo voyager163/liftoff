@@ -34,6 +34,7 @@ const NAMES = {
   "migrate-cleanup": { a: "A cleanup", the: "The cleanup", no: "No cleanup" },
   "workflow-set": { a: "A workflow switch", the: "The workflow switch", no: "No workflow switch" },
   "profile-set": { a: "A profile switch", the: "The profile switch", no: "No profile switch" },
+  "agents-add": { a: "An agent addition", the: "The agent addition", no: "No agent addition" },
 } as const;
 export type ChangeCommand = keyof typeof NAMES;
 

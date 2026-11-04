@@ -172,15 +172,7 @@ export async function completeWorkflowSet(
     // A directory it made with nothing in it is the framework's too, such
     // as OpenSpec's specs/; nothing that is not a directory may stand in
     // its way.
-    const tree = await fs.listTree(staging);
-    const directories = tree
-      .filter(
-        (entry) =>
-          entry.kind === "directory" &&
-          !tree.some((other) => other.path.startsWith(`${entry.path}/`)),
-      )
-      .map((entry) => entry.path)
-      .sort();
+    const directories = emptyDirectories(await fs.listTree(staging));
     for (const directory of directories) {
       if (!(await clearForDirectory(fs, workflow.directory, directory))) collisions.push(directory);
     }
@@ -241,8 +233,22 @@ export async function completeWorkflowSet(
   }
 }
 
+/** The directories of a tree with nothing in them, sorted. */
+export function emptyDirectories(
+  tree: readonly { readonly path: string; readonly kind: string }[],
+): string[] {
+  return tree
+    .filter(
+      (entry) =>
+        entry.kind === "directory" &&
+        !tree.some((other) => other.path.startsWith(`${entry.path}/`)),
+    )
+    .map((entry) => entry.path)
+    .sort();
+}
+
 /** Whether every part of a directory's path is a directory, or missing, in the project: never a file or a link. */
-async function clearForDirectory(
+export async function clearForDirectory(
   fs: ProjectFsPort,
   root: string,
   relative: string,
