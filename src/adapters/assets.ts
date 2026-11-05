@@ -15,6 +15,16 @@ export const defaultAssetRoot = (): string =>
 export const defaultBundleRoot = (): string =>
   fileURLToPath(new URL("../../.github/liftoff/", import.meta.url));
 
+// npm leaves every .gitignore out of a package, so the assets keep each one
+// as _gitignore, and Liftoff reads it under its real name.
+const STORED: Record<string, string> = { ".gitignore": "_gitignore" };
+const SHIPPED: Record<string, string> = { _gitignore: ".gitignore" };
+const renamed = (relative: string, names: Record<string, string>): string => {
+  const slash = relative.lastIndexOf("/");
+  const name = names[relative.slice(slash + 1)];
+  return name === undefined ? relative : `${relative.slice(0, slash + 1)}${name}`;
+};
+
 /** Reads assets shipped with Liftoff. Paths must stay inside the asset root. */
 export class PackageAssets implements AssetPort {
   private readonly root: string;
@@ -27,7 +37,7 @@ export class PackageAssets implements AssetPort {
 
   async list(relativeDirectory: string): Promise<string[]> {
     const entries = await readdir(this.resolve(relativeDirectory));
-    return entries.sort();
+    return entries.map((name) => renamed(name, SHIPPED)).sort();
   }
 
   async listTree(relativeDirectory: string): Promise<string[]> {
@@ -36,13 +46,19 @@ export class PackageAssets implements AssetPort {
     return entries
       .filter((entry) => entry.isFile())
       .map((entry) =>
-        path.relative(this.root, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"),
+        renamed(
+          path
+            .relative(this.root, path.join(entry.parentPath, entry.name))
+            .split(path.sep)
+            .join("/"),
+          SHIPPED,
+        ),
       )
       .sort();
   }
 
   async readText(relativePath: string): Promise<string> {
-    return readFile(this.resolve(relativePath), "utf8");
+    return readFile(this.resolve(renamed(relativePath, STORED)), "utf8");
   }
 
   async ciBundles(): Promise<Record<string, string>> {

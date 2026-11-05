@@ -627,8 +627,27 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Build the bundle
-        run: node scripts/package/build-bundle.ts
+      - name: Pack the npm package
+        run: node scripts/package/pack.ts
+      - name: Run Liftoff from the npm package outside the checkout
+        run: |
+          tarball="$(cd out && ls voyager163-liftoff-*.tgz)"
+          # A POSIX path: Git Bash on Windows would read the backslashes in
+          # RUNNER_TEMP (D:\a\_temp) inside npm's shell shims as escapes.
+          prefix="$(cd "$RUNNER_TEMP" && pwd)/npm-prefix"
+          # "./" keeps npm from reading out/... as a GitHub repository.
+          (cd out && npm install -g --prefix "$prefix" --no-audit --no-fund "./$tarball")
+          mkdir -p "$RUNNER_TEMP/npm-smoke"
+          cd "$RUNNER_TEMP/npm-smoke"
+          # npm links bin/ on macOS and the prefix itself on Windows.
+          export PATH="$prefix/bin:$prefix:$PATH"
+          liftoff --version
+          liftoff init --name smoke --workflow manual --agents claude --yes
+          liftoff validate --dir smoke
+          test -f smoke/.gitignore
+          test -f smoke/backend/.gitignore
+      - name: Build the bundle from the same package
+        run: node scripts/package/build-bundle.ts --package "out/$(cd out && ls voyager163-liftoff-*.tgz)"
       # A tar archive keeps the executable bit and dotfiles, such as
       # lib/app/.github/liftoff and the templates' .github directories, which
       # upload-artifact would drop.
@@ -655,10 +674,18 @@ jobs:
           liftoff validate --dir smoke
           test -f smoke/.github/workflows/01-pr-ci.yml
           test -f smoke/backend/.python-version
+          test -f smoke/.gitignore
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.bundle }}
           path: out/${{ matrix.bundle }}.tar.gz
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: matrix.name == 'macOS arm64'
+        with:
+          name: npm-package
+          path: out/voyager163-liftoff-*.tgz
           retention-days: 7
           if-no-files-found: error
 
