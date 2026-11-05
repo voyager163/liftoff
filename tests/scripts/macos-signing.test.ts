@@ -27,15 +27,18 @@ const thin = (filetype: number) => {
   header.writeUInt32LE(filetype, 12);
   return header;
 };
-/** A fat file whose first slice, at 4096, is `slice`. */
-const fat = (slice: Buffer, slices = 2) => {
-  const header = Buffer.alloc(4096 + slice.length);
+/** A fat file whose first slice, at `at`, is `slice`. */
+const fat = (slice: Buffer, slices = 2, at = 4096) => {
+  const header = Buffer.alloc(at + slice.length);
   header.writeUInt32BE(0xcafebabe, 0);
   header.writeUInt32BE(slices, 4);
-  header.writeUInt32BE(4096, 16);
-  slice.copy(header, 4096);
+  header.writeUInt32BE(at, 16);
+  slice.copy(header, at);
   return header;
 };
+/** Reads a buffer as machOKind reads a file. */
+const kind = (bytes: Buffer) =>
+  machOKind((offset, length) => bytes.subarray(offset, offset + length));
 
 describe("DIST-005 the macOS bundle is signed and notarized", () => {
   const all = Object.fromEntries(SIGNING_SECRETS.map((name) => [name, `${name}-value`]));
@@ -66,13 +69,18 @@ describe("DIST-005 the macOS bundle is signed and notarized", () => {
   });
 
   it("finds every Mach-O file, libraries before the executable that loads them", () => {
-    expect(machOKind(thin(2))).toBe("executable");
-    expect(machOKind(thin(8))).toBe("library");
-    expect(machOKind(fat(thin(2)))).toBe("executable");
+    expect(kind(thin(2))).toBe("executable");
+    expect(kind(thin(8))).toBe("library");
+    expect(kind(fat(thin(2)))).toBe("executable");
+    // However far in the first slice starts.
+    expect(kind(fat(thin(8), 2, 0x10000))).toBe("library");
+    expect(kind(fat(thin(8), 2, 0x40000))).toBe("library");
     // A Java class file starts as a fat file does, with a version for a count.
-    expect(machOKind(fat(thin(2), 52))).toBeNull();
-    expect(machOKind(Buffer.from("#!/bin/sh\necho not a Mach-O binary at all\n"))).toBeNull();
-    expect(machOKind(Buffer.alloc(8))).toBeNull();
+    expect(kind(fat(thin(2), 52))).toBeNull();
+    // A fat header pointing past the end of the file.
+    expect(kind(fat(thin(2)).subarray(0, 64))).toBeNull();
+    expect(kind(Buffer.from("#!/bin/sh\necho not a Mach-O binary at all\n"))).toBeNull();
+    expect(kind(Buffer.alloc(8))).toBeNull();
 
     const bundle = realpathSync(mkdtempSync(path.join(tmpdir(), "liftoff-macho-")));
     temporary.push(bundle);
@@ -82,7 +90,7 @@ describe("DIST-005 the macOS bundle is signed and notarized", () => {
     };
     write("bin/liftoff", thin(2));
     write("lib/app/node_modules/a/build/addon.node", thin(8));
-    write("lib/app/node_modules/b/lib.dylib", fat(thin(6)));
+    write("lib/app/node_modules/b/lib.dylib", fat(thin(6), 2, 0x10000));
     write("lib/app/dist/cli/main.js", Buffer.from("export {};\n".repeat(8)));
     expect(machOFiles(bundle).map(({ file, kind }) => [path.relative(bundle, file), kind])).toEqual(
       [

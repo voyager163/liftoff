@@ -45,30 +45,36 @@ export function developerIdentity(listing: string): { hash: string; name: string
 
 const MH_EXECUTE = 2;
 
+/** Reads up to `bytes` bytes of a file from `offset`; fewer past its end. */
+export type ReadAt = (offset: number, bytes: number) => Buffer;
+
 /**
- * What a file's first bytes say it is: a Mach-O executable, another Mach-O
- * (a library or a native addon), or neither. A fat file's first slice
- * decides. Java class files share the fat magic, but never with so few
- * slices.
+ * What a file's bytes say it is: a Mach-O executable, another Mach-O (a
+ * library or a native addon), or neither. A fat file's first slice decides,
+ * read at the offset its header gives, however far in. Java class files
+ * share the fat magic, but never with so few slices.
  */
-export function machOKind(header: Buffer): "executable" | "library" | null {
-  if (header.length < 32) return null;
+export function machOKind(read: ReadAt): "executable" | "library" | null {
   const thin = (at: number): "executable" | "library" | null => {
-    const magic = header.readUInt32LE(at);
+    const header = read(at, 16);
+    if (header.length < 16) return null;
+    const magic = header.readUInt32LE(0);
     if (magic === 0xfeedfacf || magic === 0xfeedface) {
-      return header.readUInt32LE(at + 12) === MH_EXECUTE ? "executable" : "library";
+      return header.readUInt32LE(12) === MH_EXECUTE ? "executable" : "library";
     }
     return null;
   };
+  const header = read(0, 32);
+  if (header.length < 16) return null;
   const magic = header.readUInt32BE(0);
   if (magic === 0xcafebabe || magic === 0xcafebabf) {
     const slices = header.readUInt32BE(4);
-    if (slices === 0 || slices > 16) return null;
+    if (slices === 0 || slices > 16 || header.length < 24) return null;
     // The first fat_arch (or fat_arch_64) follows the 8-byte fat header;
     // its slice offset is the third field.
     const offset =
       magic === 0xcafebabf ? Number(header.readBigUInt64BE(16)) : header.readUInt32BE(16);
-    return offset + 16 <= header.length ? thin(offset) : null;
+    return Number.isSafeInteger(offset) && offset >= 8 ? thin(offset) : null;
   }
   return thin(0);
 }
@@ -79,7 +85,7 @@ export function machOKind(header: Buffer): "executable" | "library" | null {
  */
 export function machOFiles(
   root: string,
-  read: (file: string, bytes: number) => Buffer = readHead,
+  kindOf: (file: string) => "executable" | "library" | null = fileKind,
 ): { file: string; kind: "executable" | "library" }[] {
   const found: { file: string; kind: "executable" | "library" }[] = [];
   const walk = (directory: string) => {
@@ -87,8 +93,7 @@ export function machOFiles(
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) walk(file);
       else if (entry.isFile()) {
-        // Room for a fat header and its first slice's header.
-        const kind = machOKind(read(file, 64 * 1024));
+        const kind = kindOf(file);
         if (kind !== null) found.push({ file, kind });
       }
     }
@@ -103,11 +108,13 @@ export function machOFiles(
   );
 }
 
-const readHead = (file: string, bytes: number): Buffer => {
-  const buffer = Buffer.alloc(bytes);
+const fileKind = (file: string): "executable" | "library" | null => {
   const descriptor = openSync(file, "r");
   try {
-    return buffer.subarray(0, readSync(descriptor, buffer, 0, bytes, 0));
+    return machOKind((offset, bytes) => {
+      const buffer = Buffer.alloc(bytes);
+      return buffer.subarray(0, readSync(descriptor, buffer, 0, bytes, offset));
+    });
   } finally {
     closeSync(descriptor);
   }
