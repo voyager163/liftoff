@@ -327,7 +327,10 @@ Windows alike. `--workflow manual` runs nothing.
 - Init runs them first, alone in the empty staging directory, with telemetry
   off and a temporary home, configuration, data and Codex directory, so
   nothing on the user's machine outside the project changes. They still read
-  the user's npm and Git settings and use their package caches.
+  the user's npm and Git settings and use their package caches, but none of
+  the frameworks' own settings (variables named `SPECIFY_…` or `OPENSPEC_…`,
+  in any case), such as `SPECIFY_INIT_DIR`, which points Spec Kit at another
+  project.
 - Every file they write is recorded in the manifest as framework-owned, and
   `liftoff validate` never reports changes to those files.
 - README and AGENTS.md say how to work with the framework, and

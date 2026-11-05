@@ -160,23 +160,23 @@ export function makeWorkflowSetCommand(
         workflow.plan !== undefined
           ? { plan: workflow.plan, contents: workflow.contents, directories: [] }
           : await completeWorkflowSet(ports, workflow, version, { signal: io.signal });
-      // Before any file, so a switch finished later has them too.
-      const made = await makeFrameworkDirectories(ports.fs, directory, change.directories);
-      let result: Awaited<ReturnType<typeof applyApproved>>;
-      try {
-        result = await applyApproved(
-          io,
-          ports,
-          { directory, plan: change.plan, contents: change.contents },
-          "workflow-set",
-          { yes: true, report: reported(workflow) },
-        );
-      } catch (error) {
-        // Refused before any file changed: the directories go too. A switch
-        // that stopped part way returns, keeping them for --recover finish.
-        await removeMadeDirectories(ports.fs, directory, made);
-        throw error;
-      }
+      // Made under the change lock, once the project is checked to be as
+      // planned and before any file, so a stale plan never makes them and a
+      // change finished later has them too.
+      const result = await applyApproved(
+        io,
+        ports,
+        { directory, plan: change.plan, contents: change.contents },
+        "workflow-set",
+        {
+          yes: true,
+          report: reported(workflow),
+          beforeFiles: async () => {
+            const made = await makeFrameworkDirectories(ports.fs, directory, change.directories);
+            return () => removeMadeDirectories(ports.fs, directory, made);
+          },
+        },
+      );
       if ("outcome" in result) return result;
       const leftovers = result.leftovers;
       const done = [

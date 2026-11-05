@@ -140,6 +140,8 @@ for what `--frontend vue` adds, and
 [Azure infrastructure](projects/azure-infrastructure.md) for what
 `--infrastructure azure` adds. [Specification workflows](projects/spec-workflows.md)
 covers OpenSpec, Spec Kit and manual development.
+[Coding agents](projects/coding-agents.md) covers the agents' skills and
+adding an agent later with `liftoff agents add`.
 [The release flow](projects/release-flow.md) covers how GitFlow projects build,
 release and publish their images.
 [Activating governance](projects/governance-activation.md) covers applying the

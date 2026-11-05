@@ -324,6 +324,29 @@ liftoff workflow set openspec
 liftoff workflow set --recover undo
 ```
 
+## liftoff agents add
+
+Adds GitHub Copilot, Codex or Claude Code to the project as a reviewed change of its own, keeping the agents it has: liftoff.yaml and the manifest are rewritten, Liftoff's skills and instructions for the new agents are added where nothing is, and the files Liftoff writes differently with them, such as the AI review workflow, change only while they are as Liftoff wrote them. Nothing is removed but a Copilot-only project's skills in .github/skills, which move to the new agent's skill directory, which Copilot reads too; nothing Liftoff did not write, such as another tool's integration, is touched. In an OpenSpec or Spec Kit project, the framework's own command sets the new agents up, at its pinned version, once approved, on a copy of its files beside the project; Spec Kit's default agent stays as it is. It shows the change and asks first; the default answer is no. In scripts, pass --yes. An addition that stops part way can be finished or undone with --recover.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.agents-add/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--dir <path>` | Project directory. (default `.`) |
+| `--check` | Change nothing and run nothing; show what adding would do. |
+| `--recover <mode>` | Finish or undo an addition that stopped part way. (one of `finish`, `undo`) |
+| `--yes` | Add without asking. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff agents add codex --check
+liftoff agents add copilot,claude
+liftoff agents add --recover undo
+```
+
 ## liftoff review classify
 
 Classifies the change on this branch against its base with the repository's review policy (.github/review-policy.yml, read from the base branch). Reports the risk tier, review depth, required human approvals and why. It is the same check CI runs, so the result predicts what the pull request will need.

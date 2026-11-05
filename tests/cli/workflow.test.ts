@@ -372,7 +372,7 @@ describe("WORKFLOW-003 the framework's empty directories, before any file", () =
 });
 
 describe("WORKFLOW-003 a refused switch leaves nothing", () => {
-  it("removes the empty directories it made when the change is refused", async () => {
+  it("makes none of the framework's directories when the change is refused as out of date", async () => {
     await init("manual");
     initializer = new FakeInitializer(() => {
       // Edited while the initializer runs, so the change is refused.

@@ -80,13 +80,14 @@ export async function planTransition(
   ports: { readonly assets: AssetPort; readonly fs: ProjectFsPort },
   directory: string,
   liftoffVersion: string,
-  operation: "workflow-set" | "profile-set",
+  operation: "workflow-set" | "profile-set" | "agents-add",
   choice: {
     /** How the choice is named in text, such as "governance profile". */
     readonly name: string;
     /** The field of liftoff.yaml that holds it. */
-    readonly field: "workflow" | "governance";
-    readonly to: string;
+    readonly field: "workflow" | "governance" | "agents";
+    /** The new value, or how it is made from the configuration the project has. */
+    readonly to: string | readonly string[] | ((config: ProjectConfig) => readonly string[]);
   },
 ): Promise<Transition | undefined> {
   const { fs } = ports;
@@ -95,14 +96,16 @@ export async function planTransition(
   const written = manifest.files.find((file) => file.path === CONFIG_FILE);
   if (written?.sha256 !== sha256Hex(configText)) {
     throw new ProjectChangeError(
-      `${CONFIG_FILE} changed since Liftoff last wrote it, and the ${choice.name} is switched only from a configuration Liftoff wrote; put it back as it was first`,
+      `${CONFIG_FILE} changed since Liftoff last wrote it, and the ${choice.name} ${choice.field === "agents" ? "are changed" : "is switched"} only from a configuration Liftoff wrote; put it back as it was first`,
     );
   }
   const from = config[choice.field];
-  if (from === choice.to) return undefined;
+  const to = typeof choice.to === "function" ? choice.to(config) : choice.to;
+  if (JSON.stringify(from) === JSON.stringify(to)) return undefined;
+  const described = typeof from === "string" ? from : from.join(", ") || "no coding agent";
   let next: ProjectConfig;
   try {
-    next = validateConfig({ ...config, [choice.field]: choice.to }, `the new ${choice.name}`);
+    next = validateConfig({ ...config, [choice.field]: to }, `the new ${choice.name}`);
     resolveSelection(next);
   } catch (error) {
     if (!(error instanceof ConfigError || error instanceof SelectionError)) throw error;
@@ -201,8 +204,8 @@ export async function planTransition(
           entry === undefined
             ? "something is already there"
             : made === undefined
-              ? `changed since Liftoff wrote it, and the new ${choice.name} has none; it stays the project's own`
-              : `changed since Liftoff wrote it, so it still describes ${from}; bring it up to date by hand`,
+              ? `changed since Liftoff wrote it, and the new ${choice.name} ${choice.field === "agents" ? "have" : "has"} none; it stays the project's own`
+              : `changed since Liftoff wrote it, so it still describes ${described}; bring it up to date by hand`,
       });
       // A file the new configuration no longer has, left in place, is the
       // project's now, kept, so a later switch back or update leaves it be.

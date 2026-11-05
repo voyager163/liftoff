@@ -197,6 +197,13 @@ export interface WorkflowInitializer {
   readonly needs: string;
   /** The commands to run, in order, for the selected coding-agent hosts. */
   steps(hosts: readonly AgentHostId[]): InitializerStep[];
+  /**
+   * The commands that set up more hosts in a project the framework already
+   * has, run on a copy of its files: `present` are the hosts it has, in
+   * order, and `added` those to set up. They add the new hosts' files and
+   * keep what is there, such as the framework's default host.
+   */
+  addHosts(present: readonly AgentHostId[], added: readonly AgentHostId[]): InitializerStep[];
 }
 
 /**

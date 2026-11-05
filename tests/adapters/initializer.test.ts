@@ -95,6 +95,26 @@ describe("PROJ-020 initializers run apart from the user's configuration", () => 
     expect(windows).not.toHaveProperty("GIT_CONFIG_GLOBAL");
   });
 
+  it("drops the frameworks' own settings, so none points them at another project", () => {
+    const env = initializerEnv(
+      {
+        PATH: "/bin",
+        SPECIFY_INIT_DIR: "/elsewhere/project",
+        specify_feature_directory: "/elsewhere/specs/001",
+        OpenSpec_Concurrency: "8",
+        SPECIFIER: "kept",
+      },
+      "/scratch",
+      "/users/ada",
+      "win32",
+      () => false,
+    );
+    expect(Object.keys(env).filter((key) => /^(specify|openspec)_/i.test(key))).toEqual([
+      "OPENSPEC_TELEMETRY",
+    ]);
+    expect(env).toMatchObject({ PATH: "/bin", SPECIFIER: "kept", OPENSPEC_TELEMETRY: "0" });
+  });
+
   it("runs a step in the directory and removes its scratch directory afterwards", async () => {
     const outcome = await new LocalInitializer(home).run(
       node(
