@@ -1,0 +1,280 @@
+# Builds a Liftoff release once, from one commit on main, into a draft
+# GitHub prerelease, then checks the draft's assets as a user would get them
+# (DIST-003). Nothing is published here: the draft has no tag and no one but
+# the repository's writers can see it. Promote publishes it.
+#
+# Run it from the Actions tab on main with the version that package.json
+# says. The commit must have passed ci-gate, and the release environment
+# must exist with a required reviewer and only main allowed.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, as in package.json (for example 0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# One Release at a time. GitHub keeps one waiting run per group, so a third
+# dispatch while one runs and one waits replaces the waiting one.
+concurrency:
+  group: release-build
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  check:
+    name: Check the release may be built
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Check the version, commit, ci-gate, tag and environment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/check-build.ts "$VERSION"
+
+  package:
+    name: Pack the npm package
+    needs: check
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Pack the package once, from this commit
+        run: node scripts/package/pack.ts
+      - name: Describe what the bundles install
+        # The production dependencies the bundles install from the lockfile.
+        run: npm sbom --sbom-format cyclonedx --omit dev --package-lock-only > "out/liftoff-$VERSION.cdx.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package
+          path: |
+            out/voyager163-liftoff-${{ inputs.version }}.tgz
+            out/liftoff-${{ inputs.version }}.cdx.json
+          retention-days: 7
+          if-no-files-found: error
+
+  bundle:
+    name: Build the bundle (${{ matrix.name }})
+    needs: package
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: macOS arm64
+            os: macos-15
+            bundle: liftoff-package-aarch64-apple-darwin
+            archive: liftoff-package-aarch64-apple-darwin.tar.gz
+          - name: Windows x64
+            os: windows-latest
+            bundle: liftoff-package-x86_64-pc-windows-msvc
+            archive: liftoff-package-x86_64-pc-windows-msvc.zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUNDLE: ${{ matrix.bundle }}
+      ARCHIVE: ${{ matrix.archive }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # setup-node's runtime is an official nodejs.org build, which the
+      # bundle's launcher needs.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package
+          path: out
+      - name: Build the bundle from the package
+        run: node scripts/package/build-bundle.ts --package "out/voyager163-liftoff-$VERSION.tgz"
+      # Signing (DIST-005, DIST-006) goes here, before the archive is made.
+      - name: Archive the bundle
+        working-directory: out
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            7z a -tzip -bso0 "$ARCHIVE" "$BUNDLE"
+          else
+            tar -czf "$ARCHIVE" "$BUNDLE"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.bundle }}
+          path: out/${{ matrix.archive }}
+          retention-days: 7
+          if-no-files-found: error
+
+  draft:
+    name: Make the draft release
+    needs: [check, package, bundle]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: assets
+          merge-multiple: true
+      - name: List the assets' checksums
+        working-directory: assets
+        run: |
+          shopt -s nullglob
+          files=(*)
+          [ "${#files[@]}" -eq 4 ] || { echo "expected 4 assets, found ${files[*]}"; exit 1; }
+          sha256sum -- "${files[@]}" > SHA256SUMS
+          cat SHA256SUMS
+      - name: Attest how the assets were built
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: assets/*
+      # The SBOM describes what the bundles install from the lockfile. An npm
+      # install resolves its dependencies afresh, so the tarball has none.
+      - name: Attest what the bundles contain
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: assets/liftoff-package-*
+          sbom-path: assets/liftoff-${{ inputs.version }}.cdx.json
+      # The check job cannot see drafts (they are listed only to a token that
+      # can push), so a draft left by an earlier run is looked for here.
+      - name: Check no release or draft of this version exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tags="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name')"
+          if grep -Fxq "v$VERSION" <<< "$tags"; then
+            echo "::error::a release or draft v$VERSION already exists; delete the draft or release a new version"
+            exit 1
+          fi
+      - name: Create the draft prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" assets/* \
+            --repo "$GITHUB_REPOSITORY" --draft --prerelease --target "$GITHUB_SHA" \
+            --title "Liftoff $VERSION" \
+            --notes "Built from $GITHUB_SHA by Release run $GITHUB_RUN_ID; every asset's provenance names that run."
+
+  verify:
+    name: Verify the draft (${{ matrix.name }})
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            os: macos-15
+            bundle: liftoff-package-aarch64-apple-darwin
+            archive: liftoff-package-aarch64-apple-darwin.tar.gz
+          - name: Windows x64
+            os: windows-latest
+            bundle: liftoff-package-x86_64-pc-windows-msvc
+            archive: liftoff-package-x86_64-pc-windows-msvc.zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    # Reading a draft's assets needs write access; nothing here writes.
+    permissions:
+      contents: write
+      attestations: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUNDLE: ${{ matrix.bundle }}
+      ARCHIVE: ${{ matrix.archive }}
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+      - name: Download the draft's assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/assets"
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/assets"
+      - name: Check the checksums and attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: ${{ runner.temp }}/assets
+        run: |
+          # Exactly the assets the draft job made, nothing added since.
+          expected="$(printf '%s\n' SHA256SUMS "liftoff-$VERSION.cdx.json" \
+            liftoff-package-aarch64-apple-darwin.tar.gz liftoff-package-x86_64-pc-windows-msvc.zip \
+            "voyager163-liftoff-$VERSION.tgz")"
+          actual="$(printf '%s\n' * | LC_ALL=C sort)"
+          [ "$actual" = "$expected" ] || { echo "::error::the draft's assets are not the five Release made: $actual"; exit 1; }
+          if command -v sha256sum >/dev/null; then sha256sum -c SHA256SUMS; else shasum -a 256 -c SHA256SUMS; fi
+          # Made by this workflow, on main, at this commit, and nowhere else.
+          signer=(--repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
+            --source-ref refs/heads/main --source-digest "$GITHUB_SHA")
+          for file in voyager163-liftoff-*.tgz liftoff-package-* liftoff-*.cdx.json SHA256SUMS; do
+            gh attestation verify "$file" "${signer[@]}"
+          done
+          for file in liftoff-package-*; do
+            gh attestation verify "$file" "${signer[@]}" --predicate-type https://cyclonedx.org/bom
+          done
+      - name: Run Liftoff from the bundle with no Node on PATH
+        run: |
+          install="$(cd "$RUNNER_TEMP" && pwd)/install"
+          mkdir -p "$install" "$RUNNER_TEMP/smoke"
+          cp "$RUNNER_TEMP/assets/$ARCHIVE" "$install/"
+          if [ "$RUNNER_OS" = Windows ]; then
+            (cd "$install" && 7z x -bso0 "$ARCHIVE")
+          else
+            (cd "$install" && tar -xzf "$ARCHIVE")
+          fi
+          node -e '
+            const identity = require(process.argv[1]);
+            const want = { version: process.env.VERSION, commit: process.env.GITHUB_SHA };
+            for (const [key, value] of Object.entries(want)) {
+              if (identity[key] !== value) { console.error("release.json " + key + " is " + identity[key] + ", not " + value); process.exit(1); }
+            }
+          ' "$install/$BUNDLE/release.json"
+          cd "$RUNNER_TEMP/smoke"
+          export PATH="$install/$BUNDLE/bin:/usr/bin:/bin"
+          if command -v node; then echo "node is still on PATH"; exit 1; fi
+          liftoff --version | grep -Fx "$VERSION"
+          liftoff init --name smoke --workflow manual --agents claude --yes
+          liftoff validate --dir smoke
+          test -f smoke/.gitignore
+      - name: Run Liftoff from the npm package outside any checkout
+        run: |
+          prefix="$(cd "$RUNNER_TEMP" && pwd)/npm-prefix"
+          (cd "$RUNNER_TEMP/assets" && npm install -g --prefix "$prefix" --no-audit --no-fund "./voyager163-liftoff-$VERSION.tgz")
+          mkdir -p "$RUNNER_TEMP/npm-smoke"
+          cd "$RUNNER_TEMP/npm-smoke"
+          export PATH="$prefix/bin:$prefix:$PATH"
+          liftoff --version | grep -Fx "$VERSION"
+          liftoff init --name smoke --workflow manual --agents claude --yes
+          liftoff validate --dir smoke
+          test -f smoke/.gitignore
