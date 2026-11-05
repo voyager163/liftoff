@@ -1,0 +1,7 @@
+# Copy to backend.hcl, which Git ignores, using the values bootstrap outputs,
+# then run: tofu init -backend-config=backend.hcl
+resource_group_name  = "rg-{{liftoff.name}}"
+storage_account_name = "<bootstrap's state_storage_account output>"
+container_name       = "tfstate"
+key                  = "{{liftoff.environment}}.tfstate"
+use_azuread_auth     = true

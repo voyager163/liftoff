@@ -1,0 +1,11 @@
+- package-ecosystem: opentofu
+  directories:
+    - /{{liftoff.infrastructurePrefix}}bootstrap
+    - /{{liftoff.infrastructurePrefix}}environments/*
+  schedule:
+    interval: weekly
+  cooldown:
+    default-days: 7
+  groups:
+    opentofu:
+      patterns: ["*"]

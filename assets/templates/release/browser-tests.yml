@@ -1,0 +1,13 @@
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: {{liftoff.frontendPrefix}}.node-version
+          cache: npm
+          cache-dependency-path: {{liftoff.frontendPrefix}}package-lock.json
+      - name: Run the browser tests against staging
+        working-directory: {{liftoff.frontendDirectory}}
+        env:
+          E2E_BASE_URL: ${{ vars.APP_URL }}
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          npm run test:e2e

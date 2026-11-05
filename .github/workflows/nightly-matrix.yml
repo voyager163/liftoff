@@ -1,0 +1,104 @@
+# Nightly combination matrix. Pull requests already check every supported
+# combination's files (tests/generators/matrix.test.ts) and one project per
+# stack. Each night this also lints every distinct workflow and script any
+# combination generates, and creates the widest project of each stack with a
+# framework's real initializer, then runs its checks natively on macOS, Windows
+# and Linux. That catches changes in the registries and tools projects use
+# between pull requests.
+name: Nightly matrix
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generated-workflows:
+    name: Every generated workflow and script
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Write each distinct generated workflow and script
+        run: node scripts/matrix/write-distinct.ts generated
+      - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          version: 1.7.12
+          files: generated/**/*.yml
+      - name: Check the generated shell scripts
+        run: find generated -name '*.sh' -print0 | xargs -0 shellcheck
+
+  projects:
+    name: Widest ${{ matrix.project.stack }} project (${{ matrix.platform.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: macOS arm64
+            os: macos-15
+          - name: Windows x64
+            os: windows-latest
+          - name: Linux x64
+            os: ubuntu-latest
+        project:
+          - stack: python-fastapi
+            options: --frontend vue --infrastructure azure --workflow spec-kit --governance risk-tiered-gitflow
+          - stack: node-fastify
+            options: --frontend vue --infrastructure azure --workflow openspec --governance team-gitflow
+          - stack: go-huma
+            options: --frontend vue --infrastructure azure --workflow openspec --governance risk-tiered-gitflow
+          - stack: python-pydanticai
+            options: --workload genai --pattern workflow --workflow spec-kit --governance team-gitflow
+    runs-on: ${{ matrix.platform.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      STACK: ${{ matrix.project.stack }}
+      OPTIONS: ${{ matrix.project.options }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.1"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: matrix.project.stack == 'go-huma'
+        with:
+          go-version-file: assets/plugins/stack-go-huma/files/backend/go.mod
+          cache-dependency-path: assets/plugins/stack-go-huma/files/backend/go.sum
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        if: runner.os == 'Linux'
+        with:
+          tofu_version: 1.13.2
+          tofu_wrapper: false
+      - run: npm ci
+      - name: Create the project with every agent host
+        run: |
+          read -ra options <<< "$OPTIONS"
+          node src/cli/main.ts init --name demo --stack "$STACK" "${options[@]}" \
+            --agents copilot,codex,claude --owners voyager163,octocat \
+            --dir "$RUNNER_TEMP/demo" --yes
+      - name: Run the project's checks
+        env:
+          # OpenTofu is installed on Linux, so the infrastructure must be checked there.
+          REQUIRE_TOFU: ${{ runner.os == 'Linux' && '1' || '' }}
+        run: bash scripts/matrix/check-project.sh "$RUNNER_TEMP/demo"
+      - name: Validate the generated project
+        run: node src/cli/main.ts validate --dir "$RUNNER_TEMP/demo"

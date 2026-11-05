@@ -1,0 +1,16 @@
+- package-ecosystem: uv
+  directory: {{liftoff.backendFromRoot}}
+  schedule:
+    interval: weekly
+  cooldown:
+    default-days: 7
+  groups:
+    python:
+      patterns: ["*"]
+
+- package-ecosystem: docker
+  directory: {{liftoff.backendFromRoot}}
+  schedule:
+    interval: weekly
+  cooldown:
+    default-days: 7

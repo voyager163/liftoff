@@ -1,0 +1,8 @@
+{
+  "kind": "seeded",
+  "patch": "change.patch",
+  "description": "Simplify the rules that decide which approvals count.",
+  "file": "src/domain/risk-policy/approvals.ts",
+  "line": 57,
+  "summary": "Removes the check that bot approvals never count, so a bot can satisfy a required human approval."
+}

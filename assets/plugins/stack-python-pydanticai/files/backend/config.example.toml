@@ -1,0 +1,12 @@
+# Example settings file. Copy it, edit it and point APP_CONFIG_FILE at it.
+# Environment variables (APP_*) override anything set here. Model keys, such
+# as OPENAI_API_KEY, belong in the environment, never in this file.
+environment = "local"
+host = "127.0.0.1"
+port = 8000
+docs_enabled = true
+log_level = "info"
+model = "test"
+model_timeout_seconds = 60
+instructions = "You are a helpful assistant. Answer briefly and accurately."
+tracing = "none"

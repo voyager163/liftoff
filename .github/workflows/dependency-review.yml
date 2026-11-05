@@ -1,0 +1,31 @@
+# Blocks pull requests that add dependencies with known high or critical
+# vulnerabilities, or with licenses incompatible with GPL-3.0-only.
+name: Dependency review
+
+on:
+  pull_request:
+    branches: [develop, main]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Explain merge queue runs
+        if: github.event_name == 'merge_group'
+        run: echo "Dependencies were reviewed on each pull request before it entered the queue."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        if: github.event_name == 'pull_request'
+        with:
+          fail-on-severity: high
+          deny-licenses: AGPL-3.0-only, AGPL-3.0-or-later, SSPL-1.0, BUSL-1.1
+          comment-summary-in-pr: on-failure

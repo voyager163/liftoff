@@ -1,0 +1,49 @@
+import type { CommandSpec } from "./command.ts";
+import { makeAdoptCommand } from "./commands/adopt.ts";
+import { makeAgentsAddCommand } from "./commands/agents.ts";
+import { makeAssessCommand } from "./commands/assess.ts";
+import { capabilitiesCommand } from "./commands/capabilities.ts";
+import {
+  makeGovernanceApplyNextCommand,
+  makeGovernanceAssessCommand,
+  makeGovernancePlanCommand,
+  makeGovernanceResumeCommand,
+  makeGovernanceStatusCommand,
+  makeGovernanceVerifyCommand,
+} from "./commands/governance.ts";
+import { makeMigrateCommand } from "./commands/migrate.ts";
+import { makeInitCommand, makePlanCommand } from "./commands/plan-init.ts";
+import { makeGovernanceProfileSetCommand } from "./commands/profile.ts";
+import { makeRepairCommand } from "./commands/repair.ts";
+import { makeReviewClassifyCommand } from "./commands/review-classify.ts";
+import { makeUpdateCommand } from "./commands/update.ts";
+import { makeDoctorCommand, makeValidateCommand } from "./commands/validate-doctor.ts";
+import { makeWorkflowSetCommand } from "./commands/workflow.ts";
+
+/**
+ * Every command Liftoff offers. Help, `capabilities --json` and the CLI
+ * reference in docs/ are all generated from this list, so a command that is
+ * not here does not exist.
+ */
+export const REGISTRY: readonly CommandSpec[] = [
+  capabilitiesCommand,
+  makePlanCommand(),
+  makeInitCommand(),
+  makeValidateCommand(),
+  makeDoctorCommand(),
+  makeAssessCommand(),
+  makeAdoptCommand(),
+  makeMigrateCommand(),
+  makeUpdateCommand(),
+  makeRepairCommand(),
+  makeWorkflowSetCommand(),
+  makeAgentsAddCommand(),
+  makeReviewClassifyCommand(),
+  makeGovernanceStatusCommand(),
+  makeGovernanceAssessCommand(),
+  makeGovernancePlanCommand(),
+  makeGovernanceApplyNextCommand(),
+  makeGovernanceResumeCommand(),
+  makeGovernanceVerifyCommand(),
+  makeGovernanceProfileSetCommand(),
+];

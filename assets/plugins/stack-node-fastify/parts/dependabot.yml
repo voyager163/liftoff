@@ -1,0 +1,16 @@
+- package-ecosystem: npm
+  directory: {{liftoff.backendFromRoot}}
+  schedule:
+    interval: weekly
+  cooldown:
+    default-days: 7
+  groups:
+    npm:
+      patterns: ["*"]
+
+- package-ecosystem: docker
+  directory: {{liftoff.backendFromRoot}}
+  schedule:
+    interval: weekly
+  cooldown:
+    default-days: 7

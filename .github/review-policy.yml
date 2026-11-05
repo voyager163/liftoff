@@ -1,0 +1,60 @@
+# Review policy for Liftoff's own repository.
+#
+# The change sets the tier, not the author. Each changed file takes the
+# highest tier of every rule it matches; files no rule matches take
+# default_tier; the pull request takes the highest file tier. Changes to this
+# file, workflows, rulesets, CODEOWNERS and AI-review instructions are always
+# high and always need a person, whatever these rules say.
+#
+# CI reads this file from the base branch, so a pull request cannot lower its
+# own tier. Check a change locally with: liftoff review classify
+version: 1
+profile: single-maintainer-gitflow
+trusted_authors:
+  - voyager163
+default_tier: medium
+untrusted_author_tier: medium
+large_change:
+  lines: 1000
+  tier: high
+depth:
+  low: quick
+  medium: standard
+  high: deep
+rules:
+  - paths: ["docs/**", "*.md", ".github/ISSUE_TEMPLATE/**", ".github/PULL_REQUEST_TEMPLATE.md"]
+    tier: low
+    reason: documentation and issue forms
+  - paths: ["tests/**", "evals/**"]
+    tier: low
+    reason: tests and review evals; coverage gates still apply
+  - paths: ["package.json", "package-lock.json", ".npmrc", ".node-version"]
+    tier: high
+    reason: dependencies, toolchain and supply chain
+  - paths:
+      - "src/adapters/process.ts"
+      - "src/adapters/installers/**"
+      - "src/application/upgrade/**"
+      - "distribution/**"
+      - "scripts/release/**"
+    tier: high
+    always_human: true
+    reason: installers, self-upgrade, release and process control
+  - paths:
+      - "src/domain/risk-policy/**"
+      - "src/ci/**"
+      - "src/domain/governance/**"
+      - "assets/skills/**"
+      - "assets/agents/**"
+      - "assets/governance/**"
+    tier: high
+    always_human: true
+    reason: review and governance rules that generated projects inherit
+  - paths: ["src/**/telemetry/**", "services/telemetry-ingest/**"]
+    tier: high
+    always_human: true
+    reason: privacy-sensitive telemetry
+  - paths: ["infrastructure/**"]
+    tier: high
+    always_human: true
+    reason: cloud infrastructure

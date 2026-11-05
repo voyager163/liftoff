@@ -1,0 +1,186 @@
+// What GitHub says about a release, read with the GitHub CLI and the
+// workflow's token. Failures other than "not found" stop the release.
+import { execFileSync, spawnSync } from "node:child_process";
+
+const gh = (args: string[]): string => execFileSync("gh", args, { encoding: "utf8" });
+
+/**
+ * The release tagged v<version>, or null. Drafts are listed only to a token
+ * that can push, so a job asking about drafts needs contents: write.
+ */
+export function releaseOf(
+  repository: string,
+  version: string,
+): { draft: boolean; prerelease: boolean; target: string } | null {
+  // The version goes into a jq filter, so only version characters may.
+  if (!/^[0-9A-Za-z.-]+$/.test(version)) throw new Error(`${version} is not a version`);
+  // Filtered by gh, page by page, so only the matching release's few fields
+  // are buffered however long the release history grows.
+  const matching = gh([
+    "api",
+    "--paginate",
+    `repos/${repository}/releases?per_page=100`,
+    "--jq",
+    `.[] | select(.tag_name == "v${version}") | {draft, prerelease, target_commitish}`,
+  ])
+    .split("\n")
+    .filter(Boolean)
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          draft: boolean;
+          prerelease: boolean;
+          target_commitish: string;
+        },
+    );
+  if (matching.length > 1) throw new Error(`there are ${matching.length} releases v${version}`);
+  const [release] = matching;
+  return release === undefined
+    ? null
+    : {
+        draft: release.draft,
+        prerelease: release.prerelease,
+        target: release.target_commitish,
+      };
+}
+
+/** A workflow run, as Promote checks it, or null when there is none. */
+export function runOf(
+  repository: string,
+  id: string,
+): {
+  path: string;
+  event: string;
+  headBranch: string;
+  headSha: string;
+  conclusion: string | null;
+} | null {
+  const result = spawnSync("gh", ["api", `repos/${repository}/actions/runs/${id}`], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    if (/HTTP 404|Not Found/.test(`${result.stdout}${result.stderr}`)) return null;
+    throw new Error(`cannot read run ${id}: ${result.stderr.trim()}`);
+  }
+  const run = JSON.parse(result.stdout) as {
+    path: string;
+    event: string;
+    head_branch: string;
+    head_sha: string;
+    status: string;
+    conclusion: string | null;
+  };
+  return {
+    path: run.path,
+    event: run.event,
+    headBranch: run.head_branch,
+    headSha: run.head_sha,
+    conclusion: run.status === "completed" ? run.conclusion : null,
+  };
+}
+
+/** Whether main contains the commit. */
+export function onMain(repository: string, sha: string): boolean {
+  // Only the two fields, never the commits and files the comparison lists.
+  const comparison = JSON.parse(
+    gh(["api", `repos/${repository}/compare/${sha}...main`, "--jq", "{status, behind_by}"]),
+  ) as {
+    status: string;
+    behind_by: number;
+  };
+  return (
+    (comparison.status === "identical" || comparison.status === "ahead") &&
+    comparison.behind_by === 0
+  );
+}
+
+/** Whether the tag v<version> exists. */
+export function tagExists(repository: string, version: string): boolean {
+  const result = spawnSync("gh", ["api", `repos/${repository}/git/ref/tags/v${version}`], {
+    encoding: "utf8",
+  });
+  if (result.status === 0) return true;
+  if (/HTTP 404|Not Found/.test(`${result.stdout}${result.stderr}`)) return false;
+  throw new Error(`cannot tell whether v${version} exists: ${result.stderr.trim()}`);
+}
+
+/** The commit the tag v<version> points at, through any tag objects, or null. */
+export function tagCommitOf(repository: string, version: string): string | null {
+  const result = spawnSync("gh", ["api", `repos/${repository}/git/ref/tags/v${version}`], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    if (/HTTP 404|Not Found/.test(`${result.stdout}${result.stderr}`)) return null;
+    throw new Error(`cannot read the tag v${version}: ${result.stderr.trim()}`);
+  }
+  let object = (JSON.parse(result.stdout) as { object: { type: string; sha: string } }).object;
+  // An annotated tag points at a tag object; follow it to the commit.
+  for (let depth = 0; object.type === "tag"; depth++) {
+    if (depth > 5) throw new Error(`the tag v${version} does not lead to a commit`);
+    object = (
+      JSON.parse(gh(["api", `repos/${repository}/git/tags/${object.sha}`])) as {
+        object: { type: string; sha: string };
+      }
+    ).object;
+  }
+  if (object.type !== "commit") throw new Error(`the tag v${version} points at a ${object.type}`);
+  return object.sha;
+}
+
+/** The conclusion of the latest ci-gate check run on the commit, or null. */
+export function ciGateOf(repository: string, sha: string): string | null {
+  const runs = JSON.parse(
+    gh(["api", `repos/${repository}/commits/${sha}/check-runs?check_name=ci-gate&filter=latest`]),
+  ) as { check_runs: { status: string; conclusion: string | null }[] };
+  const [run] = runs.check_runs;
+  if (run === undefined) return null;
+  return run.status === "completed" ? (run.conclusion ?? "unknown") : run.status;
+}
+
+/** The release environment's required reviewers and branch limit, or null. */
+export function environmentOf(
+  repository: string,
+  name: string,
+): { reviewers: number; mainOnly: boolean } | null {
+  const result = spawnSync("gh", ["api", `repos/${repository}/environments/${name}`], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    if (/HTTP 404|Not Found/.test(`${result.stdout}${result.stderr}`)) return null;
+    throw new Error(`cannot read the ${name} environment: ${result.stderr.trim()}`);
+  }
+  const environment = JSON.parse(result.stdout) as {
+    protection_rules?: { type: string; reviewers?: unknown[] }[];
+    deployment_branch_policy?: {
+      protected_branches: boolean;
+      custom_branch_policies: boolean;
+    } | null;
+  };
+  const reviewers = (environment.protection_rules ?? [])
+    .filter((rule) => rule.type === "required_reviewers")
+    .reduce((count, rule) => count + (rule.reviewers?.length ?? 0), 0);
+  const policy = environment.deployment_branch_policy;
+  let mainOnly = false;
+  if (policy?.custom_branch_policies === true) {
+    const branches = JSON.parse(
+      gh(["api", `repos/${repository}/environments/${name}/deployment-branch-policies`]),
+    ) as { branch_policies: { name: string; type?: string }[] };
+    mainOnly =
+      branches.branch_policies.length > 0 &&
+      branches.branch_policies.every((each) => each.name === "main" && each.type !== "tag");
+  }
+  return { reviewers, mainOnly };
+}
+
+/** The versions of the published stable releases. */
+export function stableVersionsOf(repository: string): string[] {
+  return gh([
+    "api",
+    "--paginate",
+    `repos/${repository}/releases?per_page=100`,
+    "--jq",
+    '.[] | select(.draft == false and .prerelease == false) | .tag_name | ltrimstr("v")',
+  ])
+    .split("\n")
+    .filter(Boolean);
+}

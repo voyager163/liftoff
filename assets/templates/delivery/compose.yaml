@@ -1,0 +1,5 @@
+{{liftoff.header}}
+name: {{liftoff.name}}
+
+services:
+{{liftoff.body}}

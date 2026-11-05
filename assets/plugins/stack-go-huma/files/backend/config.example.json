@@ -1,0 +1,8 @@
+{
+  "environment": "local",
+  "host": "127.0.0.1",
+  "port": 8000,
+  "database_timeout_seconds": 2,
+  "docs_enabled": true,
+  "log_level": "info"
+}
