@@ -4,7 +4,8 @@
 //
 // The assets directory holds the release's downloaded assets, whose
 // bundles' release.json files say how each was signed and from which commit.
-// Run with a token that can see drafts (contents: write).
+// Run with a token that can see drafts (contents: write), and with
+// RELEASE_RUN set to the run the assets' provenance names.
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -17,8 +18,9 @@ if (repository === undefined) throw new Error("GITHUB_REPOSITORY must be set");
 if (stable !== "true" && stable !== "false") throw new Error("stable must be true or false");
 
 const release = releaseOf(repository, version);
-// The Release workflow names its run in the notes it writes.
-const runId = /\bby run (\d+)\b/.exec(release?.body ?? "")?.[1];
+// The run that built the assets, read from their verified provenance.
+const runId = process.env.RELEASE_RUN;
+if (runId !== undefined && !/^\d+$/.test(runId)) throw new Error(`RELEASE_RUN is ${runId}`);
 
 // Each bundle archive holds liftoff-package-<target>/release.json.
 const bundles = readdirSync(assets)

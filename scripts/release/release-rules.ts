@@ -78,7 +78,7 @@ export interface PromoteFacts {
     /** The commit the release was made at. */
     readonly target: string;
   } | null;
-  /** The Release workflow run the release names, or null when it names none. */
+  /** The workflow run the assets' provenance names, or null when it names none. */
   readonly run: {
     readonly path: string;
     readonly event: string;

@@ -334,6 +334,16 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
     );
     expect(runs(publish)).toContain('node scripts/release/check-promote.ts "$VERSION" "$STABLE"');
     expect(runs(publish)).toContain('--source-ref refs/heads/main --source-digest "$TARGET"');
+    // The run comes from the assets' provenance, never the editable notes.
+    expect(runs(publish)).toContain(".predicate.runDetails.metadata.invocationId");
+    expect(runs(publish)).toContain('echo "RELEASE_RUN=$runs" >> "$GITHUB_ENV"');
+    expect(runs(publish)).toContain('"${signer[@]}" --predicate-type https://cyclonedx.org/bom');
+    expect(
+      readFileSync(
+        path.resolve(import.meta.dirname, "../../scripts/release/check-promote.ts"),
+        "utf8",
+      ),
+    ).not.toMatch(/\.body\b/);
     expect(publish.permissions).toEqual({
       contents: "write",
       attestations: "read",
@@ -386,6 +396,9 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
     );
     expect(step("Check npm can take this release")?.run).toContain(
       "npm has $VERSION with a different tarball",
+    );
+    expect(step("Check npm can take this release")?.run).toContain(
+      "npm had $VERSION once and will never take it again",
     );
   });
 

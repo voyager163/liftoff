@@ -11,7 +11,7 @@ const gh = (args: string[]): string => execFileSync("gh", args, { encoding: "utf
 export function releaseOf(
   repository: string,
   version: string,
-): { draft: boolean; prerelease: boolean; target: string; body: string } | null {
+): { draft: boolean; prerelease: boolean; target: string } | null {
   // The version goes into a jq filter, so only version characters may.
   if (!/^[0-9A-Za-z.-]+$/.test(version)) throw new Error(`${version} is not a version`);
   // Filtered by gh, page by page, so only the matching release's few fields
@@ -21,7 +21,7 @@ export function releaseOf(
     "--paginate",
     `repos/${repository}/releases?per_page=100`,
     "--jq",
-    `.[] | select(.tag_name == "v${version}") | {draft, prerelease, target_commitish, body}`,
+    `.[] | select(.tag_name == "v${version}") | {draft, prerelease, target_commitish}`,
   ])
     .split("\n")
     .filter(Boolean)
@@ -31,7 +31,6 @@ export function releaseOf(
           draft: boolean;
           prerelease: boolean;
           target_commitish: string;
-          body: string | null;
         },
     );
   if (matching.length > 1) throw new Error(`there are ${matching.length} releases v${version}`);
@@ -42,7 +41,6 @@ export function releaseOf(
         draft: release.draft,
         prerelease: release.prerelease,
         target: release.target_commitish,
-        body: release.body ?? "",
       };
 }
 

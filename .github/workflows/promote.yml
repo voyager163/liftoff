@@ -100,6 +100,17 @@ jobs:
           for file in voyager163-liftoff-*.tgz liftoff-package-* liftoff-*.cdx.json SHA256SUMS; do
             gh attestation verify "$file" "${signer[@]}"
           done
+          for file in liftoff-package-*; do
+            gh attestation verify "$file" "${signer[@]}" --predicate-type https://cyclonedx.org/bom
+          done
+          # The run that built them, from their signed provenance rather than
+          # the release notes, which anyone who can write releases may edit.
+          runs="$(for file in voyager163-liftoff-*.tgz liftoff-package-*; do
+            gh attestation verify "$file" "${signer[@]}" --format json \
+              --jq '.[].verificationResult.statement.predicate.runDetails.metadata.invocationId'
+          done | sed -nE 's#^https://github\.com/[^/]+/[^/]+/actions/runs/([0-9]+)/.*#\1#p' | sort -u)"
+          [[ "$runs" =~ ^[0-9]+$ ]] || { echo "::error::the assets do not name one Release run: $runs"; exit 1; }
+          echo "RELEASE_RUN=$runs" >> "$GITHUB_ENV"
       - name: Check the release may be published as asked
         env:
           GH_TOKEN: ${{ github.token }}
@@ -111,6 +122,19 @@ jobs:
         working-directory: ${{ runner.temp }}/assets
         run: |
           tarball="voyager163-liftoff-$VERSION.tgz"
+          # npm never takes a version number again once it was published,
+          # even after it is unpublished, and then views it as missing.
+          if times="$(npm view @voyager163/liftoff time --json 2>"$RUNNER_TEMP/npm-time.log")"; then
+            if node -e 'process.exit(Object.hasOwn(JSON.parse(process.argv[1]), process.argv[2]) ? 0 : 1)' "$times" "$VERSION" \
+              && ! npm view "@voyager163/liftoff@$VERSION" version >/dev/null 2>&1; then
+              echo "::error::npm had $VERSION once and will never take it again; release a new version"
+              exit 1
+            fi
+          elif ! grep -q E404 "$RUNNER_TEMP/npm-time.log"; then
+            cat "$RUNNER_TEMP/npm-time.log"
+            echo "::error::cannot read npm's history of @voyager163/liftoff"
+            exit 1
+          fi
           if published="$(npm view "@voyager163/liftoff@$VERSION" dist.shasum 2>"$RUNNER_TEMP/npm-view.log")" && [ -n "$published" ]; then
             ours="$(sha1sum "$tarball" | cut -d' ' -f1)"
             [ "$published" = "$ours" ] || { echo "::error::npm has $VERSION with a different tarball"; exit 1; }

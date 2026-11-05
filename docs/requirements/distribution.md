@@ -99,7 +99,8 @@ checksums and attestations again (from the Release workflow, on `main`, at
 the release's commit), and checks that the release may be published as
 asked:
 
-- the Release run the release names succeeded, so its verification passed,
+- the Release run that built the assets, as their signed provenance says,
+  succeeded, so its verification passed,
   and built `main` at the release's commit, which `main` still contains;
 - every bundle was built from that commit, and a tag of the version, if one
   exists, points at it;
@@ -111,7 +112,7 @@ asked:
   becomes the latest stable release while a newer one is published.
 
 A stable release is refused, before anything becomes public, when npm already
-has its version with different bytes. It then publishes the GitHub release,
+has its version with different bytes, or had it once and unpublished it. It then publishes the GitHub release,
 which creates its tag. A stable release also goes to npm under `latest`, as the very tarball in the release, through
 npm trusted publishing with provenance; prereleases stay on GitHub. Running it
 again finishes a promotion that stopped part way: npm is left alone when it

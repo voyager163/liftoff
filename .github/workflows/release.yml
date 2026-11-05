@@ -183,7 +183,7 @@ jobs:
           gh release create "v$VERSION" assets/* \
             --repo "$GITHUB_REPOSITORY" --draft --prerelease --target "$GITHUB_SHA" \
             --title "Liftoff $VERSION" \
-            --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_ID. A draft until the Promote workflow publishes it."
+            --notes "Built from $GITHUB_SHA by Release run $GITHUB_RUN_ID; every asset's provenance names that run."
 
   verify:
     name: Verify the draft (${{ matrix.name }})

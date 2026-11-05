@@ -14,9 +14,13 @@ Set these up once in the repository's settings:
   to run without these.
 - **Immutable releases.** Turn them on, so a published release's assets and
   tag cannot be changed.
-- **npm trusted publishing.** On npmjs.com, configure it for
-  `@voyager163/liftoff` with this repository and the workflow file
-  `promote.yml`. No npm token is stored.
+- **npm trusted publishing**, set up shortly before the first stable
+  promotion: within the two days before it, since npm expires a trusted
+  publisher that has not published within two days of being created. On
+  npmjs.com, configure it for `@voyager163/liftoff` with this repository and
+  the workflow file `promote.yml`. No npm token is stored. If it expires,
+  delete and create it again, then run Promote again; it publishes only what
+  npm is missing.
 
 ## Cutting a release
 
@@ -40,7 +44,8 @@ Set these up once in the repository's settings:
    `sync/main-into-develop` pull request.
 
 Promote publishes only a draft whose Release run succeeded, verification
-included. If verification fails, the draft stays unpublished:
+included; it finds that run in the assets' signed provenance, so release notes
+can be edited freely. If verification fails, the draft stays unpublished:
 
 - if the failure was flaky, re-run the failed jobs of that run;
 - if the commit needs fixing, delete the draft and release again from the
@@ -55,5 +60,6 @@ only one waiting run per workflow, so a third start replaces the waiting one.
 ```bash
 gh release download vX.Y.Z --repo voyager163/liftoff --dir liftoff-X.Y.Z
 cd liftoff-X.Y.Z && shasum -a 256 -c SHA256SUMS
-gh attestation verify liftoff-package-aarch64-apple-darwin.tar.gz --repo voyager163/liftoff
+gh attestation verify liftoff-package-aarch64-apple-darwin.tar.gz --repo voyager163/liftoff \
+  --signer-workflow voyager163/liftoff/.github/workflows/release.yml --source-ref refs/heads/main
 ```
