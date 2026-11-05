@@ -12,10 +12,12 @@ adopts and maintains governed API and GenAI projects.
 Free code signing provided by [SignPath.io](https://signpath.io/),
 certificate by [SignPath Foundation](https://signpath.org/).
 
-Windows releases are signed through SignPath Foundation, and macOS releases
-with the maintainer's Apple Developer ID. Every release is built by GitHub
-Actions from this repository's `main` branch; nothing built anywhere else is
-signed.
+macOS bundles are signed with the maintainer's Apple Developer ID and
+notarized by Apple. Windows signing through SignPath Foundation is being set
+up. A stable release is published only when every bundle is signed for its
+operating system. A prerelease may carry unsigned bundles, and its title then
+says "(unsigned)". Every release is built by GitHub Actions from this
+repository's `main` branch; nothing built anywhere else is signed.
 
 | Role | Members |
 | --- | --- |
