@@ -127,3 +127,37 @@ Nothing is built or packed during promotion.
   it becomes the latest release and its tarball is published to npm.
 
 Verification: test
+
+## DIST-005 The macOS bundle is signed and notarized
+
+When the `release` environment has the signing secrets, the Release workflow
+signs every Mach-O file in the macOS bundle with its Developer ID
+Application identity, the hardened runtime and a secure timestamp, and has
+Apple's notary service accept a ZIP of the bundle with no issue, warnings
+included, and a ticket for every signed file. Only then does `release.json`
+name the signer. The certificate is held in a keychain made for that run and
+deleted after it, and only the signing step gets the secrets. The executable
+is signed with `com.apple.security.cs.allow-jit` and nothing else, the one
+entitlement Node needs under the hardened runtime. With none of the secrets
+set, the bundle stays unsigned and can be released only as a prerelease,
+which the draft's title says; with some but not all, the release fails.
+
+The draft's macOS bundle is checked as a user would download it: every
+Mach-O file is signed by the signer `release.json` names, with the hardened
+runtime and a timestamp, the executable's entitlements are exactly that one,
+Gatekeeper accepts it as notarized, and Liftoff runs with the quarantine
+attribute set. A bare executable cannot be stapled, so Gatekeeper looks the
+ticket up online.
+
+- Given the five signing secrets, when a release is built, then the macOS
+  bundle's `release.json` names the Developer ID identity and Gatekeeper
+  accepts its executable as notarized.
+- Given none of the secrets, when a release is built, then the bundle is
+  unsigned, the draft's title says so, and it cannot be promoted as stable.
+- Given only some of the secrets, when a release is built, then nothing is
+  released.
+- Given the executable signed with the hardened runtime and without any one
+  of its entitlements, when Liftoff starts, then it fails; on every pull
+  request CI shows this.
+
+Verification: test

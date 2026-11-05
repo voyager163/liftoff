@@ -14,6 +14,19 @@ Set these up once in the repository's settings:
   to run without these.
 - **Immutable releases.** Turn them on, so a published release's assets and
   tag cannot be changed.
+- **macOS signing secrets**, as secrets of the `release` environment, not of
+  the repository. Without them every release is unsigned and can only be a
+  prerelease. They come from an Apple Developer Program membership:
+  - `MACOS_CERTIFICATE_P12`: a Developer ID Application certificate and its
+    private key, exported from Keychain Access as a `.p12`, then
+    base64-encoded (`base64 -i certificate.p12 | pbcopy`).
+  - `MACOS_CERTIFICATE_PASSWORD`: the password the `.p12` was exported with.
+  - `APPLE_NOTARY_KEY_P8`: the whole text of an App Store Connect API key
+    (Users and Access → Integrations → Team Keys, Developer role).
+  - `APPLE_NOTARY_KEY_ID` and `APPLE_NOTARY_ISSUER_ID`: that key's ID and its
+    issuer ID.
+
+  Set all five or none: Release fails with only some.
 - **npm trusted publishing**, set up shortly before the first stable
   promotion: within the two days before it, since npm expires a trusted
   publisher that has not published within two days of being created. On
@@ -28,9 +41,10 @@ Set these up once in the repository's settings:
    `release/X.Y.Z` branch, merge it into `main` with a merge commit, and wait
    for `ci-gate` to pass on `main`.
 2. **Build the draft.** Run the **Release** workflow on `main` with that
-   version. It packs the npm package once and builds both bundles from it. It
-   writes checksums and attestations, and makes a draft prerelease when you
-   approve the `release` environment. It then downloads the draft's assets on
+   version. It packs the npm package once, and when you approve the
+   `release` environment it builds both bundles from it, signing and
+   notarizing the macOS one. It writes checksums and attestations, and makes
+   a draft prerelease, titled "(unsigned)" if a bundle is. It then downloads the draft's assets on
    macOS and Windows and checks them.
 3. **Publish.** Run the **Promote** workflow with the same version:
    - With `stable` off, the draft is published as a prerelease, on GitHub
@@ -62,4 +76,13 @@ gh release download vX.Y.Z --repo voyager163/liftoff --dir liftoff-X.Y.Z
 cd liftoff-X.Y.Z && shasum -a 256 -c SHA256SUMS
 gh attestation verify liftoff-package-aarch64-apple-darwin.tar.gz --repo voyager163/liftoff \
   --signer-workflow voyager163/liftoff/.github/workflows/release.yml --source-ref refs/heads/main
+```
+
+On a Mac, check the macOS bundle's signature and notarization:
+
+```bash
+tar -xzf liftoff-package-aarch64-apple-darwin.tar.gz
+codesign --verify --strict --verbose=2 liftoff-package-aarch64-apple-darwin/bin/liftoff
+spctl --assess --type open --context context:primary-signature --verbose=2 \
+  liftoff-package-aarch64-apple-darwin/bin/liftoff
 ```

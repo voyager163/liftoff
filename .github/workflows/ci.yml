@@ -648,6 +648,13 @@ jobs:
           test -f smoke/backend/.gitignore
       - name: Build the bundle from the same package
         run: node scripts/package/build-bundle.ts --package "out/$(cd out && ls voyager163-liftoff-*.tgz)"
+      # Signed ad hoc with the hardened runtime, as a release is signed, once
+      # without each entitlement: Liftoff must need every one (DIST-005).
+      - name: Check the macOS executable needs each entitlement
+        if: runner.os == 'macOS'
+        env:
+          BUNDLE: ${{ matrix.bundle }}
+        run: node scripts/package/check-entitlements.ts "out/$BUNDLE"
       # A tar archive keeps the executable bit and dotfiles, such as
       # lib/app/.github/liftoff and the templates' .github directories, which
       # upload-artifact would drop.

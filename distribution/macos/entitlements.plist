@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The entitlements Liftoff's macOS executable is signed with (DIST-005), and
+  no more. Under the hardened runtime V8 cannot reserve memory for compiled
+  code without allow-jit; scripts/package/check-entitlements.ts shows on
+  every pull request that each entitlement here is needed.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+</dict>
+</plist>

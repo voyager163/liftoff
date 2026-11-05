@@ -5,7 +5,9 @@
 #
 # Run it from the Actions tab on main with the version that package.json
 # says. The commit must have passed ci-gate, and the release environment
-# must exist with a required reviewer and only main allowed.
+# must exist with a required reviewer and only main allowed. The reviewer
+# approves once, when the bundles are built: that is where the signing
+# secrets are used.
 name: Release
 
 on:
@@ -93,7 +95,10 @@ jobs:
             bundle: liftoff-package-x86_64-pc-windows-msvc
             archive: liftoff-package-x86_64-pc-windows-msvc.zip
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    # Notarization usually takes minutes, and can take longer.
+    timeout-minutes: 45
+    # The signing secrets are the release environment's.
+    environment: release
     defaults:
       run:
         shell: bash
@@ -115,7 +120,18 @@ jobs:
           path: out
       - name: Build the bundle from the package
         run: node scripts/package/build-bundle.ts --package "out/voyager163-liftoff-$VERSION.tgz"
-      # Signing (DIST-005, DIST-006) goes here, before the archive is made.
+      # Only this step gets the secrets. With none set, the bundle stays
+      # unsigned and can be released only as a prerelease.
+      - name: Sign and notarize the macOS bundle
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: node scripts/package/sign-macos.ts "out/$BUNDLE"
+      # Windows signing (DIST-006) goes here, before the archive is made.
       - name: Archive the bundle
         working-directory: out
         run: |
@@ -136,7 +152,6 @@ jobs:
     needs: [check, package, bundle]
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: release
     permissions:
       contents: write
       id-token: write
@@ -180,10 +195,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The title says when a bundle is unsigned; Promote reads each
+          # bundle's release.json, never the title.
+          signers="$(tar -xzOf assets/liftoff-package-aarch64-apple-darwin.tar.gz \
+            liftoff-package-aarch64-apple-darwin/release.json | jq -r '.signed.macos // "unsigned"')"
+          signers="macOS: $signers; Windows: $(unzip -p assets/liftoff-package-x86_64-pc-windows-msvc.zip \
+            liftoff-package-x86_64-pc-windows-msvc/release.json | jq -r '.signed.windows // "unsigned"')"
+          title="Liftoff $VERSION"
+          if grep -Fq unsigned <<< "$signers"; then title="$title (unsigned)"; fi
           gh release create "v$VERSION" assets/* \
             --repo "$GITHUB_REPOSITORY" --draft --prerelease --target "$GITHUB_SHA" \
-            --title "Liftoff $VERSION" \
-            --notes "Built from $GITHUB_SHA by Release run $GITHUB_RUN_ID; every asset's provenance names that run."
+            --title "$title" \
+            --notes "Built from $GITHUB_SHA by Release run $GITHUB_RUN_ID; every asset's provenance names that run. Signed by $signers."
 
   verify:
     name: Verify the draft (${{ matrix.name }})
@@ -243,6 +266,35 @@ jobs:
           for file in liftoff-package-*; do
             gh attestation verify "$file" "${signer[@]}" --predicate-type https://cyclonedx.org/bom
           done
+      - name: Check the macOS signature and notarization
+        if: runner.os == 'macOS'
+        run: |
+          install="$RUNNER_TEMP/signed"
+          mkdir -p "$install"
+          tar -xzf "$RUNNER_TEMP/assets/$ARCHIVE" -C "$install"
+          bundle="$install/$BUNDLE"
+          signer="$(node -p 'require(process.argv[1]).signed.macos ?? ""' "$bundle/release.json")"
+          if [ -z "$signer" ]; then
+            echo "::warning::the macOS bundle is unsigned, so it can be released only as a prerelease"
+            exit 0
+          fi
+          # Every Mach-O file, signed by the signer release.json names, with
+          # the hardened runtime and a secure timestamp.
+          find "$bundle" -type f -print0 | xargs -0 file --no-pad | awk -F': ' '/Mach-O/ { print $1 }' > machos
+          [ -s machos ] || { echo "::error::the bundle has no Mach-O file"; exit 1; }
+          while IFS= read -r file; do
+            codesign --verify --strict --verbose=2 "$file"
+            details="$(codesign --display --verbose=4 "$file" 2>&1)"
+            grep -Fxq "Authority=$signer" <<< "$details" || { echo "::error::$file is not signed by $signer"; exit 1; }
+            grep -Eq '^CodeDirectory .*flags=0x10000\(runtime\)' <<< "$details" || { echo "::error::$file lacks the hardened runtime"; exit 1; }
+            grep -q '^Timestamp=' <<< "$details" || { echo "::error::$file has no secure timestamp"; exit 1; }
+          done < machos
+          # The executable has allow-jit and nothing else.
+          granted="$(codesign --display --entitlements - --xml "$bundle/bin/liftoff" 2>/dev/null | plutil -convert json -o - -)"
+          [ "$granted" = '{"com.apple.security.cs.allow-jit":true}' ] || { echo "::error::entitlements are $granted"; exit 1; }
+          # Gatekeeper accepts it as notarized, looking the ticket up online.
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$bundle/bin/liftoff" 2>&1 | tee spctl.log
+          grep -Fq 'source=Notarized Developer ID' spctl.log
       - name: Run Liftoff from the bundle with no Node on PATH
         run: |
           install="$(cd "$RUNNER_TEMP" && pwd)/install"
@@ -260,6 +312,11 @@ jobs:
               if (identity[key] !== value) { console.error("release.json " + key + " is " + identity[key] + ", not " + value); process.exit(1); }
             }
           ' "$install/$BUNDLE/release.json"
+          if [ "$RUNNER_OS" = macOS ]; then
+            # As a browser download would have it, so Gatekeeper checks it.
+            xattr -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Liftoff release check;" \
+              "$install/$BUNDLE/bin/liftoff"
+          fi
           cd "$RUNNER_TEMP/smoke"
           export PATH="$install/$BUNDLE/bin:/usr/bin:/bin"
           if command -v node; then echo "node is still on PATH"; exit 1; fi
