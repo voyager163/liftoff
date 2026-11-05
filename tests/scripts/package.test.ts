@@ -46,10 +46,7 @@ const checkout = (assets: Record<string, string>) => {
   return repository;
 };
 const packing = (repository: string) =>
-  spawnSync(process.execPath, [pack, "--dry-run", "--root", repository], {
-    encoding: "utf8",
-    shell: false,
-  });
+  spawnSync(process.execPath, [pack, "--dry-run", "--root", repository], { encoding: "utf8" });
 
 describe("DIST-001 one npm package carries every file Liftoff ships", () => {
   it("packs every file Git tracks under assets and .github/liftoff", { timeout: 60_000 }, () => {
@@ -77,6 +74,27 @@ describe("DIST-001 one npm package carries every file Liftoff ships", () => {
     const result = packing(checkout({ "assets/templates/common/_gitignore": "kept\n" }));
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain("files would be packed for version 1.2.3");
+  });
+
+  it("packs only what the commit tracks, never untracked or ignored files", {
+    timeout: 60_000,
+  }, () => {
+    const repository = checkout({ "assets/templates/common/_gitignore": ".env\n" });
+    write(repository, ".gitignore", "*.env\n");
+    write(repository, "assets/templates/common/secret.env", "TOKEN=1\n");
+    write(repository, "assets/templates/common/backend/.venv/pyvenv.cfg", "home = x\n");
+    const result = packing(repository);
+    expect(result.stderr).toBe("");
+    // package.json, LICENSE, README.md, the _gitignore and check.mjs.
+    expect(result.stdout).toContain("5 files would be packed");
+  });
+
+  it("refuses to pack a checkout with uncommitted changes to tracked files", () => {
+    const repository = checkout({ "assets/templates/common/_gitignore": "kept\n" });
+    write(repository, "assets/templates/common/_gitignore", "changed\n");
+    const result = spawnSync(process.execPath, [pack, "--root", repository], { encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("refusing to pack: commit or discard the changes");
   });
 
   it("reads an asset kept as _gitignore under its real name", async () => {

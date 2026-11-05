@@ -22,6 +22,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { npm } from "./npm.ts";
 import { releaseIdentity } from "./release-identity.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
@@ -40,16 +41,18 @@ const flag = (name: string): string | undefined => {
 const runtime = flag("--node") ?? process.execPath;
 
 const run = (command: string, args: string[], cwd = root) =>
-  execFileSync(command, args, { cwd, stdio: "inherit", shell: isWindows && command === "npm" });
+  execFileSync(command, args, { cwd, stdio: "inherit" });
 
 rmSync(out, { recursive: true, force: true });
 rmSync(work, { recursive: true, force: true });
 mkdirSync(app, { recursive: true });
 mkdirSync(work, { recursive: true });
 
-const version = (
-  JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { version: string }
-).version;
+const source = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+  name: string;
+  version: string;
+};
+const { version } = source;
 let tarball = flag("--package");
 if (tarball === undefined) {
   run(process.execPath, [path.join(root, "scripts", "package", "pack.ts")]);
@@ -60,17 +63,24 @@ if (tarball === undefined) {
 cpSync(tarball, path.join(work, "package.tgz"));
 run("tar", ["-xzf", "package.tgz"], work);
 cpSync(path.join(work, "package"), app, { recursive: true });
+// The bundle records this checkout's commit and installs from its lockfile,
+// so the package must have been packed from the same commit.
 const shipped = JSON.parse(readFileSync(path.join(app, "package.json"), "utf8")) as {
+  name: string;
   version: string;
+  gitHead?: string;
 };
-if (shipped.version !== version) {
-  throw new Error(`${tarball} is version ${shipped.version}, not ${version}`);
+const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+if (shipped.name !== source.name || shipped.version !== version || shipped.gitHead !== head) {
+  throw new Error(
+    `${tarball} is ${shipped.name}@${shipped.version} from ${shipped.gitHead ?? "an unknown commit"}, not ${source.name}@${version} from ${head}`,
+  );
 }
 // The package carries no lockfile, so the bundle installs from Liftoff's.
 for (const entry of ["package-lock.json", ".npmrc"]) {
   cpSync(path.join(root, entry), path.join(app, entry));
 }
-run("npm", ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], app);
+npm(["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], app, "inherit");
 rmSync(path.join(app, ".npmrc"));
 
 // The launcher resolves its real location (Homebrew links bin/liftoff from
