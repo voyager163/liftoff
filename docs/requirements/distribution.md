@@ -54,8 +54,8 @@ Verification: test
 The Release workflow runs only when someone starts it on `main` with a
 version. Before anything is built it refuses unless:
 
-- the version is `X.Y.Z` or `X.Y.Z-<prerelease>` and is what `package.json`
-  says at that commit;
+- the version is `X.Y.Z` or `X.Y.Z-<prerelease>`, as SemVer 2.0.0 allows
+  (no leading zeros), and is what `package.json` says at that commit;
 - `ci-gate` succeeded on that exact commit;
 - no tag or release of that version exists;
 - the `release` environment exists, with a required reviewer, and only `main`
@@ -103,8 +103,9 @@ asked:
   and its version must not be a prerelease;
 - a stable release is never made a prerelease again.
 
-It then publishes the GitHub release, which creates its tag. A stable release
-also goes to npm under `latest`, as the very tarball in the release, through
+A stable release is refused, before anything becomes public, when npm already
+has its version with different bytes. It then publishes the GitHub release,
+which creates its tag. A stable release also goes to npm under `latest`, as the very tarball in the release, through
 npm trusted publishing with provenance; prereleases stay on GitHub. Running it
 again finishes a promotion that stopped part way: npm is left alone when it
 already has the same tarball, and refused when it has different bytes.

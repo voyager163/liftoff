@@ -61,6 +61,9 @@ const build: BuildFacts = {
 describe("DIST-003 a release is built once, from a checked commit, into a draft", () => {
   it("may build a version package.json has, on main, after ci-gate passed", () => {
     expect(buildProblems(build)).toEqual([]);
+    for (const version of ["1.2.3-rc.1", "1.2.3-01a", "1.2.3-0", "1.2.3-alpha-2.x"]) {
+      expect(buildProblems({ ...build, version, packageVersion: version }), version).toEqual([]);
+    }
     expect(
       buildProblems({ ...build, version: "0.2.0-rc.1", packageVersion: "0.2.0-rc.1" }),
     ).toEqual([]);
@@ -68,6 +71,11 @@ describe("DIST-003 a release is built once, from a checked commit, into a draft"
 
   it.each<[string, Partial<BuildFacts>, string]>([
     ["a leading v", { version: "v0.1.0" }, "is not a version"],
+    ["a leading zero", { version: "01.2.3" }, "is not a version"],
+    ["a numeric prerelease with a leading zero", { version: "1.2.3-01" }, "is not a version"],
+    ["a later one with a leading zero", { version: "1.2.3-rc.01" }, "is not a version"],
+    ["an empty prerelease", { version: "1.2.3-" }, "is not a version"],
+    ["build metadata", { version: "1.2.3+build" }, "is not a version"],
     ["another branch", { ref: "refs/heads/develop" }, "from main only"],
     ["a different package.json", { packageVersion: "0.0.9" }, "package.json says 0.0.9"],
     ["a failed ci-gate", { ciGate: "failure" }, "ci-gate on this commit ended failure"],
@@ -189,6 +197,12 @@ const unsigned = promote.bundles.map((bundle) => ({
 }));
 
 describe("DIST-004 promotion publishes the verified assets without rebuilding", () => {
+  it("refuses a version SemVer does not allow", () => {
+    expect(promoteProblems({ ...promote, version: "1.2.3-rc.01", stable: false })).toContain(
+      "1.2.3-rc.01 is not a version",
+    );
+  });
+
   it("publishes a signed draft as stable, and any draft as a prerelease", () => {
     expect(promoteProblems(promote)).toEqual([]);
     expect(promoteProblems({ ...promote, stable: false, bundles: unsigned })).toEqual([]);
@@ -291,12 +305,28 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
   });
 
   it("publishes to npm only a stable release, as the release's own tarball", () => {
-    const npm = publish.steps.find((step) => step.name === "Publish the package to npm");
-    expect(npm?.if).toBe("inputs.stable");
-    expect(npm?.run).toContain(
-      'npm publish "./$tarball" --access public --tag latest --provenance',
+    const step = (name: string) => publish.steps.find((each) => each.name === name);
+    const npm = step("Publish the package to npm");
+    expect(npm?.if).toBe("inputs.stable && env.NPM_PUBLISHED == 'false'");
+    expect(npm?.run).toBe(
+      'npm publish "./voyager163-liftoff-$VERSION.tgz" --access public --tag latest --provenance',
     );
-    expect(npm?.run).toContain("npm has $VERSION with a different tarball");
+    expect(step("Check npm can take this release")?.run).toContain(
+      "npm has $VERSION with a different tarball",
+    );
+  });
+
+  it("finds an npm conflict before the GitHub release is public", () => {
+    const names = publish.steps.map((each) => each.name ?? each.uses ?? "");
+    expect(names.indexOf("Check npm can take this release")).toBeGreaterThan(
+      names.indexOf("Check the release may be published as asked"),
+    );
+    expect(names.indexOf("Check npm can take this release")).toBeLessThan(
+      names.indexOf("Publish the GitHub release"),
+    );
+    expect(names.indexOf("Publish the GitHub release")).toBeLessThan(
+      names.indexOf("Publish the package to npm"),
+    );
   });
 
   it("builds and packs nothing", () => {

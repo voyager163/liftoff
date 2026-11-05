@@ -76,6 +76,25 @@ jobs:
           done
       - name: Check the release may be published as asked
         run: node scripts/release/check-promote.ts "$VERSION" "$STABLE" "$RUNNER_TEMP/assets"
+      # Before anything becomes public: a published release is immutable, so
+      # an npm version that cannot be the release's tarball stops it here.
+      - name: Check npm can take this release
+        if: inputs.stable
+        working-directory: ${{ runner.temp }}/assets
+        run: |
+          tarball="voyager163-liftoff-$VERSION.tgz"
+          if published="$(npm view "@voyager163/liftoff@$VERSION" dist.shasum 2>"$RUNNER_TEMP/npm-view.log")" && [ -n "$published" ]; then
+            ours="$(sha1sum "$tarball" | cut -d' ' -f1)"
+            [ "$published" = "$ours" ] || { echo "::error::npm has $VERSION with a different tarball"; exit 1; }
+            echo "npm already has this tarball as $VERSION (a promotion run again)"
+            echo "NPM_PUBLISHED=true" >> "$GITHUB_ENV"
+          elif [ -z "${published:-}" ] && grep -q E404 "$RUNNER_TEMP/npm-view.log"; then
+            echo "NPM_PUBLISHED=false" >> "$GITHUB_ENV"
+          else
+            cat "$RUNNER_TEMP/npm-view.log"
+            echo "::error::cannot tell whether npm already has $VERSION"
+            exit 1
+          fi
       - name: Publish the GitHub release
         run: |
           if [ "$STABLE" = true ]; then
@@ -84,20 +103,7 @@ jobs:
             gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
           fi
       - name: Publish the package to npm
-        if: inputs.stable
+        if: inputs.stable && env.NPM_PUBLISHED == 'false'
         working-directory: ${{ runner.temp }}/assets
-        run: |
-          tarball="voyager163-liftoff-$VERSION.tgz"
-          # Published already (a promotion run again): only the same bytes will do.
-          if published="$(npm view "@voyager163/liftoff@$VERSION" dist.shasum 2>"$RUNNER_TEMP/npm-view.log")" && [ -n "$published" ]; then
-            ours="$(sha1sum "$tarball" | cut -d' ' -f1)"
-            [ "$published" = "$ours" ] || { echo "::error::npm has $VERSION with a different tarball"; exit 1; }
-            echo "npm already has this tarball as $VERSION"
-          elif [ -z "${published:-}" ] && ! grep -q E404 "$RUNNER_TEMP/npm-view.log"; then
-            cat "$RUNNER_TEMP/npm-view.log"
-            echo "::error::cannot tell whether npm already has $VERSION"
-            exit 1
-          else
-            # Trusted publishing: npm takes the workflow's OIDC identity, no token.
-            npm publish "./$tarball" --access public --tag latest --provenance
-          fi
+        # Trusted publishing: npm takes the workflow's OIDC identity, no token.
+        run: npm publish "./voyager163-liftoff-$VERSION.tgz" --access public --tag latest --provenance

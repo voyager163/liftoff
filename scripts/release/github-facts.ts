@@ -12,16 +12,28 @@ export function releaseOf(
   repository: string,
   version: string,
 ): { draft: boolean; prerelease: boolean; target: string; body: string } | null {
-  const releases = JSON.parse(
-    gh(["api", "--paginate", "--slurp", `repos/${repository}/releases?per_page=100`]),
-  ) as {
-    tag_name: string;
-    draft: boolean;
-    prerelease: boolean;
-    target_commitish: string;
-    body: string | null;
-  }[][];
-  const matching = releases.flat().filter((each) => each.tag_name === `v${version}`);
+  // The version goes into a jq filter, so only version characters may.
+  if (!/^[0-9A-Za-z.-]+$/.test(version)) throw new Error(`${version} is not a version`);
+  // Filtered by gh, page by page, so only the matching release's few fields
+  // are buffered however long the release history grows.
+  const matching = gh([
+    "api",
+    "--paginate",
+    `repos/${repository}/releases?per_page=100`,
+    "--jq",
+    `.[] | select(.tag_name == "v${version}") | {draft, prerelease, target_commitish, body}`,
+  ])
+    .split("\n")
+    .filter(Boolean)
+    .map(
+      (line) =>
+        JSON.parse(line) as {
+          draft: boolean;
+          prerelease: boolean;
+          target_commitish: string;
+          body: string | null;
+        },
+    );
   if (matching.length > 1) throw new Error(`there are ${matching.length} releases v${version}`);
   const [release] = matching;
   return release === undefined
@@ -71,7 +83,10 @@ export function runOf(
 
 /** Whether main contains the commit. */
 export function onMain(repository: string, sha: string): boolean {
-  const comparison = JSON.parse(gh(["api", `repos/${repository}/compare/${sha}...main`])) as {
+  // Only the two fields, never the commits and files the comparison lists.
+  const comparison = JSON.parse(
+    gh(["api", `repos/${repository}/compare/${sha}...main`, "--jq", "{status, behind_by}"]),
+  ) as {
     status: string;
     behind_by: number;
   };

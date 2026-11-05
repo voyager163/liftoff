@@ -2,8 +2,14 @@
 // published (DIST-003, DIST-004). Pure, so the workflows' scripts and the
 // tests share them.
 
-/** X.Y.Z, or X.Y.Z-<prerelease> such as 0.2.0-rc.1; never a leading v. */
-const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
+/**
+ * X.Y.Z, or X.Y.Z-<prerelease> such as 0.2.0-rc.1, as SemVer 2.0.0 has them:
+ * no leading v, and no leading zero in a number, prerelease numbers included.
+ */
+const IDENTIFIER = "(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)";
+const SEMVER = new RegExp(
+  `^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-${IDENTIFIER}(?:\\.${IDENTIFIER})*)?$`,
+);
 
 export interface BuildFacts {
   /** The release environment's protection, or null when it does not exist. */
