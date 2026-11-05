@@ -1,0 +1,93 @@
+# Publishes a release the Release workflow built and verified, without
+# rebuilding anything (DIST-004): the draft's own assets are checked again,
+# then the GitHub release is published, which creates its tag. A stable
+# release also goes to npm as the very tarball in the release, under
+# "latest"; prereleases stay on GitHub.
+#
+# A stable release needs every bundle signed. Running it again finishes a
+# promotion that stopped part way, or makes a published prerelease stable.
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version of the release to publish (for example 0.1.0)"
+        required: true
+        type: string
+      stable:
+        description: "Publish as the latest stable release, and to npm"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ inputs.version }}
+  STABLE: ${{ inputs.stable }}
+
+jobs:
+  publish:
+    name: Publish the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+      attestations: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          registry-url: https://registry.npmjs.org
+      - name: Download the release's assets
+        run: |
+          mkdir -p "$RUNNER_TEMP/assets"
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/assets"
+      - name: Check the checksums and attestations again
+        working-directory: ${{ runner.temp }}/assets
+        run: |
+          sha256sum -c SHA256SUMS
+          for file in voyager163-liftoff-*.tgz liftoff-package-* liftoff-*.cdx.json SHA256SUMS; do
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
+          done
+      - name: Check the release may be published as asked
+        run: node scripts/release/check-promote.ts "$VERSION" "$STABLE" "$RUNNER_TEMP/assets"
+      - name: Publish the GitHub release
+        run: |
+          if [ "$STABLE" = true ]; then
+            gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest
+          else
+            gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          fi
+      - name: Publish the package to npm
+        if: inputs.stable
+        working-directory: ${{ runner.temp }}/assets
+        run: |
+          tarball="voyager163-liftoff-$VERSION.tgz"
+          # Published already (a promotion run again): only the same bytes will do.
+          if published="$(npm view "@voyager163/liftoff@$VERSION" dist.shasum 2>"$RUNNER_TEMP/npm-view.log")" && [ -n "$published" ]; then
+            ours="$(sha1sum "$tarball" | cut -d' ' -f1)"
+            [ "$published" = "$ours" ] || { echo "::error::npm has $VERSION with a different tarball"; exit 1; }
+            echo "npm already has this tarball as $VERSION"
+          elif [ -z "${published:-}" ] && ! grep -q E404 "$RUNNER_TEMP/npm-view.log"; then
+            cat "$RUNNER_TEMP/npm-view.log"
+            echo "::error::cannot tell whether npm already has $VERSION"
+            exit 1
+          else
+            # Trusted publishing: npm takes the workflow's OIDC identity, no token.
+            npm publish "./$tarball" --access public --tag latest --provenance
+          fi
