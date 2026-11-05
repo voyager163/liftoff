@@ -1,6 +1,6 @@
 {
   "name": "@voyager163/liftoff",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Developer platform CLI for governed API and GenAI projects.",
   "license": "GPL-3.0-only",
   "type": "module",
