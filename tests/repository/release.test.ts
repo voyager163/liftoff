@@ -121,8 +121,10 @@ describe("DIST-003 a release is built once, from a checked commit, into a draft"
     expect(runs(pack)).toContain("npm sbom --sbom-format cyclonedx --omit dev");
   });
 
-  it("makes a draft prerelease, with checksums and attestations, in the release environment", () => {
-    expect(draft.environment).toBe("release");
+  it("makes a draft prerelease, with checksums and attestations, once the release environment is approved", () => {
+    // Approved once, for the bundles, where the signing secrets are used.
+    expect(bundle.environment).toBe("release");
+    expect(draft.environment).toBeUndefined();
     expect(draft.needs).toEqual(["check", "package", "bundle"]);
     expect(draft.permissions).toEqual({
       contents: "write",
@@ -145,7 +147,7 @@ describe("DIST-003 a release is built once, from a checked commit, into a draft"
     expect(runs(draft)).toContain('grep -Fxq "v$VERSION"');
     const sbom = draft.steps.find((step) => step.uses?.startsWith("actions/attest@"));
     expect(sbom?.with?.["subject-path"]).toBe("assets/liftoff-package-*");
-    // The only job that can write releases is the reviewed one.
+    // Only the draft job writes releases, and only after the approved bundles.
     for (const [name, job] of Object.entries(data.jobs)) {
       if (name !== "draft") expect(runs(job)).not.toMatch(/gh release (create|edit|upload|delete)/);
     }
