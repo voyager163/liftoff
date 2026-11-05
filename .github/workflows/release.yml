@@ -227,6 +227,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         working-directory: ${{ runner.temp }}/assets
         run: |
+          # Exactly the assets the draft job made, nothing added since.
+          expected="$(printf '%s\n' SHA256SUMS "liftoff-$VERSION.cdx.json" \
+            liftoff-package-aarch64-apple-darwin.tar.gz liftoff-package-x86_64-pc-windows-msvc.zip \
+            "voyager163-liftoff-$VERSION.tgz")"
+          actual="$(printf '%s\n' * | LC_ALL=C sort)"
+          [ "$actual" = "$expected" ] || { echo "::error::the draft's assets are not the five Release made: $actual"; exit 1; }
           if command -v sha256sum >/dev/null; then sha256sum -c SHA256SUMS; else shasum -a 256 -c SHA256SUMS; fi
           # Made by this workflow, on main, at this commit, and nowhere else.
           signer=(--repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"

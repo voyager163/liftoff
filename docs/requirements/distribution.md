@@ -74,6 +74,7 @@ and Windows and checks:
 - the checksums;
 - each attestation, which must come from the Release workflow run on `main`
   at that commit;
+- that the draft holds exactly the five assets it made;
 - the commit and version in each bundle's `release.json`.
 
 Then it runs Liftoff from the bundle with no Node on the PATH, and from the
@@ -102,9 +103,12 @@ asked:
   and built `main` at the release's commit, which `main` still contains;
 - every bundle was built from that commit, and a tag of the version, if one
   exists, points at it;
+- the release holds exactly the assets Release made, and `SHA256SUMS` lists
+  exactly the others, so nothing added to the draft is published;
 - a stable release must have every bundle signed for its operating system,
   and its version must not be a prerelease;
-- a stable release is never made a prerelease again.
+- a stable release is never made a prerelease again, and a version never
+  becomes the latest stable release while a newer one is published.
 
 A stable release is refused, before anything becomes public, when npm already
 has its version with different bytes. It then publishes the GitHub release,

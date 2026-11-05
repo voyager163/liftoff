@@ -173,3 +173,16 @@ export function environmentOf(
   }
   return { reviewers, mainOnly };
 }
+
+/** The versions of the published stable releases. */
+export function stableVersionsOf(repository: string): string[] {
+  return gh([
+    "api",
+    "--paginate",
+    `repos/${repository}/releases?per_page=100`,
+    "--jq",
+    '.[] | select(.draft == false and .prerelease == false) | .tag_name | ltrimstr("v")',
+  ])
+    .split("\n")
+    .filter(Boolean);
+}

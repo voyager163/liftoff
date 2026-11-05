@@ -6,8 +6,9 @@
 // bundles' release.json files say how each was signed and from which commit.
 // Run with a token that can see drafts (contents: write).
 import { execFileSync } from "node:child_process";
-import { readdirSync } from "node:fs";
-import { onMain, releaseOf, runOf, tagCommitOf } from "./github-facts.ts";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { onMain, releaseOf, runOf, stableVersionsOf, tagCommitOf } from "./github-facts.ts";
 import { promoteProblems } from "./release-rules.ts";
 
 const [version = "", stable = "", assets = ""] = process.argv.slice(2);
@@ -54,6 +55,13 @@ const problems = promoteProblems({
   targetOnMain:
     release !== null && /^[0-9a-f]{40}$/.test(release.target) && onMain(repository, release.target),
   tagCommit: tagCommitOf(repository, version),
+  stableVersions: stableVersionsOf(repository),
+  assets: readdirSync(assets).sort(),
+  // "<sha256>  <name>" per line, as sha256sum writes it.
+  summed: readFileSync(path.join(assets, "SHA256SUMS"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => line.replace(/^[0-9a-f]{64} [ *]/, "")),
   bundles,
 });
 for (const problem of problems) console.error(`::error::${problem}`);

@@ -7,6 +7,7 @@ import {
   buildProblems,
   type PromoteFacts,
   promoteProblems,
+  releaseAssets,
 } from "../../scripts/release/release-rules.ts";
 
 interface Step {
@@ -155,6 +156,7 @@ describe("DIST-003 a release is built once, from a checked commit, into a draft"
     const steps = runs(verify);
     expect(steps).toContain('gh release download "v$VERSION"');
     expect(steps).toMatch(/sha256sum -c SHA256SUMS/);
+    expect(steps).toContain("the draft's assets are not the five Release made");
     expect(steps).toContain('--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"');
     expect(steps).toContain('--source-ref refs/heads/main --source-digest "$GITHUB_SHA"');
     expect(steps).toContain('gh attestation verify "$file" "${signer[@]}" --predicate-type');
@@ -190,6 +192,9 @@ const promote: PromoteFacts = {
   run,
   targetOnMain: true,
   tagCommit: null,
+  stableVersions: [],
+  assets: releaseAssets("0.1.0"),
+  summed: releaseAssets("0.1.0").filter((name) => name !== "SHA256SUMS"),
   bundles: [mac, windows],
 };
 const unsigned = promote.bundles.map((bundle) => ({
@@ -207,6 +212,11 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
   it("publishes a signed draft as stable, and any draft as a prerelease", () => {
     expect(promoteProblems(promote)).toEqual([]);
     expect(promoteProblems({ ...promote, stable: false, bundles: unsigned })).toEqual([]);
+  });
+
+  it("finishes a stable promotion while it is still the newest stable release", () => {
+    expect(promoteProblems({ ...promote, stableVersions: ["0.0.9", "0.1.0"] })).toEqual([]);
+    expect(promoteProblems({ ...promote, stable: false, stableVersions: ["0.2.0"] })).toEqual([]);
   });
 
   it("takes a tag the release's own commit has", () => {
@@ -261,6 +271,36 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
     ],
     ["a commit main lacks", { targetOnMain: false }, "main does not contain"],
     ["a tag made at another commit", { tagCommit: "b".repeat(40) }, "points at bbbb"],
+    [
+      "an asset added to the draft",
+      { assets: [...releaseAssets("0.1.0"), "liftoff-installer.exe"] },
+      "assets Release did not make: liftoff-installer.exe",
+    ],
+    [
+      "a missing asset",
+      { assets: releaseAssets("0.1.0").filter((name) => !name.endsWith(".zip")) },
+      "missing liftoff-package-x86_64-pc-windows-msvc.zip",
+    ],
+    [
+      "checksums missing an asset",
+      { summed: releaseAssets("0.1.0").filter((name) => name.endsWith(".tgz")) },
+      "SHA256SUMS does not list exactly",
+    ],
+    [
+      "checksums of something else",
+      { summed: [...releaseAssets("0.1.0").slice(1), "other.exe"] },
+      "SHA256SUMS does not list exactly",
+    ],
+    [
+      "an older version as stable",
+      { stableVersions: ["0.1.0", "0.1.1"] },
+      "v0.1.1 is a newer stable release",
+    ],
+    [
+      "a version behind a later major",
+      { stableVersions: ["0.10.0", "0.9.9"] },
+      "v0.10.0 is a newer",
+    ],
     [
       "a bundle from another commit",
       { bundles: [{ ...mac, commit: "b".repeat(40) }, windows] },

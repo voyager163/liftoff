@@ -90,6 +90,11 @@ export interface PromoteFacts {
   readonly targetOnMain: boolean;
   /** The commit the tag v<version> points at, or null while there is no tag. */
   readonly tagCommit: string | null;
+  /** The versions of the published stable releases, this one's included. */
+  readonly stableVersions: readonly string[];
+  /** The release's asset names, and the names its SHA256SUMS lists. */
+  readonly assets: readonly string[];
+  readonly summed: readonly string[];
   /** What each bundle's release.json records. */
   readonly bundles: readonly {
     readonly target: string;
@@ -144,7 +149,27 @@ export function promoteProblems(facts: PromoteFacts): string[] {
       );
     }
   }
+  // Exactly what Release makes, each with a checksum: anything added to the
+  // draft afterwards has neither a checksum nor an attestation.
+  const expected = releaseAssets(facts.version);
+  const extra = facts.assets.filter((name) => !expected.includes(name));
+  const missing = expected.filter((name) => !facts.assets.includes(name));
+  if (extra.length > 0)
+    problems.push(`the release has assets Release did not make: ${extra.join(", ")}`);
+  if (missing.length > 0) problems.push(`the release is missing ${missing.join(", ")}`);
+  const unsummed = expected.filter((name) => name !== "SHA256SUMS" && !facts.summed.includes(name));
+  const oddSums = facts.summed.filter((name) => !expected.includes(name) || name === "SHA256SUMS");
+  if (unsummed.length > 0 || oddSums.length > 0 || facts.summed.length !== expected.length - 1) {
+    problems.push("SHA256SUMS does not list exactly the release's other assets");
+  }
   if (facts.stable) {
+    // The latest release only ever moves forward, on GitHub and on npm.
+    const newer = facts.stableVersions.filter((other) => compareStable(other, facts.version) > 0);
+    if (newer.length > 0) {
+      problems.push(
+        `v${newer.sort(compareStable).at(-1)} is a newer stable release; v${facts.version} cannot become the latest`,
+      );
+    }
     if (facts.version.includes("-")) {
       problems.push(`${facts.version} is a prerelease version, so it can never be stable`);
     }
@@ -158,6 +183,27 @@ export function promoteProblems(facts: PromoteFacts): string[] {
   }
   return problems;
 }
+
+/** The assets the Release workflow makes for a version, and nothing else. */
+export const releaseAssets = (version: string): string[] => [
+  "SHA256SUMS",
+  `liftoff-${version}.cdx.json`,
+  "liftoff-package-aarch64-apple-darwin.tar.gz",
+  "liftoff-package-x86_64-pc-windows-msvc.zip",
+  `voyager163-liftoff-${version}.tgz`,
+];
+
+/** Orders X.Y.Z versions; anything else sorts first and never counts as newer. */
+const compareStable = (left: string, right: string): number => {
+  const parts = (version: string) =>
+    /^\d+\.\d+\.\d+$/.test(version) ? version.split(".").map(Number) : [-1, -1, -1];
+  const [a, b] = [parts(left), parts(right)];
+  for (let at = 0; at < 3; at++) {
+    const difference = (a[at] ?? 0) - (b[at] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+};
 
 const osOf = (target: string): "macos" | "windows" | undefined =>
   target.endsWith("-apple-darwin")
