@@ -3,7 +3,7 @@
 // shell, and Node would then neither quote the arguments (paths with spaces
 // break) nor keep quiet about it (DEP0190 on stderr).
 import { execFileSync, type StdioOptions } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 function npmCli(): string {
@@ -22,7 +22,16 @@ function npmCli(): string {
       "npm-cli.js",
     ),
   ];
-  const found = candidates.find((candidate) => existsSync(candidate));
+  // Elsewhere (Homebrew's Node, for one) the npm on PATH links to it.
+  if (process.platform !== "win32") {
+    for (const directory of (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)) {
+      const linked = path.join(directory, "npm");
+      if (existsSync(linked)) candidates.push(realpathSync(linked));
+    }
+  }
+  const found = candidates.find(
+    (candidate) => path.basename(candidate) === "npm-cli.js" && existsSync(candidate),
+  );
   if (found === undefined)
     throw new Error(`cannot find the npm that ships with ${process.execPath}`);
   return found;
