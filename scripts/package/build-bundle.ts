@@ -2,14 +2,19 @@
 //
 //   liftoff-package-<arch>-<os>/
 //     bin/liftoff[.exe]   Node single executable that only starts lib/app
-//     lib/app/            the npm package layout: dist/, assets/, CI bundles,
-//                         production node_modules, package.json, LICENSE
+//     lib/app/            the npm package from scripts/package/pack.ts, with
+//                         its production node_modules from package-lock.json
 //     share/licenses/     Liftoff's and Node's licenses
-//     release.json        version, platform, Node version and source commit
+//     release.json        version, platform, Node version, source commit and
+//                         tree, and the signing identities (null when unsigned)
 //
 // The launcher carries no application code (Node single executables are
 // still experimental), so native and npm installs run the same files.
 // Unsigned: signing and notarization belong to the release workflow.
+//
+// It packs the npm package first, or takes one built earlier with
+// --package <path>, so a release builds the package once and every channel
+// ships the same files.
 //
 // The runtime is the Node that runs this script, or --node <path>. It must be
 // an official nodejs.org build: some distributions (Homebrew's, for one) are
@@ -17,6 +22,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { releaseIdentity } from "./release-identity.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const isWindows = process.platform === "win32";
@@ -27,8 +33,11 @@ const name = `liftoff-package-${target}`;
 const out = path.join(root, "out", name);
 const app = path.join(out, "lib", "app");
 const work = path.join(root, "out", `.${name}-work`);
-const nodeFlag = process.argv.indexOf("--node");
-const runtime = nodeFlag === -1 ? process.execPath : path.resolve(process.argv[nodeFlag + 1] ?? "");
+const flag = (name: string): string | undefined => {
+  const at = process.argv.indexOf(name);
+  return at === -1 ? undefined : path.resolve(process.argv[at + 1] ?? "");
+};
+const runtime = flag("--node") ?? process.execPath;
 
 const run = (command: string, args: string[], cwd = root) =>
   execFileSync(command, args, { cwd, stdio: "inherit", shell: isWindows && command === "npm" });
@@ -38,14 +47,29 @@ rmSync(work, { recursive: true, force: true });
 mkdirSync(app, { recursive: true });
 mkdirSync(work, { recursive: true });
 
-run("npm", ["run", "build"]);
-for (const entry of ["package.json", "package-lock.json", "LICENSE", "dist", "assets", ".npmrc"]) {
-  cpSync(path.join(root, entry), path.join(app, entry), { recursive: true });
+const version = (
+  JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { version: string }
+).version;
+let tarball = flag("--package");
+if (tarball === undefined) {
+  run(process.execPath, [path.join(root, "scripts", "package", "pack.ts")]);
+  tarball = path.join(root, "out", `voyager163-liftoff-${version}.tgz`);
 }
-mkdirSync(path.join(app, ".github", "liftoff"), { recursive: true });
-cpSync(path.join(root, ".github", "liftoff"), path.join(app, ".github", "liftoff"), {
-  recursive: true,
-});
+// Extracted from inside the work directory by its bare name: Git for
+// Windows' tar would take a drive letter for a remote host.
+cpSync(tarball, path.join(work, "package.tgz"));
+run("tar", ["-xzf", "package.tgz"], work);
+cpSync(path.join(work, "package"), app, { recursive: true });
+const shipped = JSON.parse(readFileSync(path.join(app, "package.json"), "utf8")) as {
+  version: string;
+};
+if (shipped.version !== version) {
+  throw new Error(`${tarball} is version ${shipped.version}, not ${version}`);
+}
+// The package carries no lockfile, so the bundle installs from Liftoff's.
+for (const entry of ["package-lock.json", ".npmrc"]) {
+  cpSync(path.join(root, entry), path.join(app, entry));
+}
 run("npm", ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], app);
 rmSync(path.join(app, ".npmrc"));
 
@@ -96,13 +120,9 @@ const nodeLicense = licenseCandidates.find((candidate) => {
 if (!nodeLicense) throw new Error(`cannot find the Node.js LICENSE next to ${runtime}`);
 cpSync(nodeLicense, path.join(out, "share", "licenses", "node-LICENSE"));
 
-const version = (
-  JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { version: string }
-).version;
-const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 writeFileSync(
   path.join(out, "release.json"),
-  `${JSON.stringify({ schema: "liftoff.release/v1", version, target, node: nodeVersion, commit, signed: false }, null, 2)}\n`,
+  `${JSON.stringify(releaseIdentity(root, { version, target, node: nodeVersion }), null, 2)}\n`,
 );
 rmSync(work, { recursive: true, force: true });
 console.log(`built ${path.relative(root, out)}`);

@@ -60,8 +60,9 @@ Verification: test
 
 The bundle for each supported platform (`liftoff-package-aarch64-apple-darwin`
 and `liftoff-package-x86_64-pc-windows-msvc`) contains a launcher built from
-an official Node.js runtime and the same application files as the npm
-package. CI builds it on macOS arm64 and Windows x64 and runs `--version`,
+an official Node.js runtime, and the npm package (DIST-001) unpacked as
+`lib/app`, with its production dependencies installed from Liftoff's
+lockfile. CI builds it on macOS arm64 and Windows x64 and runs `--version`,
 `capabilities`, `init` and `validate` from a copy with no Node on the PATH.
 The launcher resolves its real location, so it also works through a symlink
 such as Homebrew's.
