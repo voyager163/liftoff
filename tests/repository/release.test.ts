@@ -128,6 +128,14 @@ describe("DIST-003 a release is built once, from a checked commit, into a draft"
       true,
     );
     expect(uses(draft).some((use) => use.startsWith("actions/attest@"))).toBe(true);
+    // A draft left by an earlier run is visible only to this job's token.
+    const names = draft.steps.map((step) => step.name ?? step.uses ?? "");
+    expect(names.indexOf("Check no release or draft of this version exists")).toBeLessThan(
+      names.indexOf("Create the draft prerelease"),
+    );
+    expect(runs(draft)).toContain('grep -Fxq "v$VERSION"');
+    const sbom = draft.steps.find((step) => step.uses?.startsWith("actions/attest@"));
+    expect(sbom?.with?.["subject-path"]).toBe("assets/liftoff-package-*");
     // The only job that can write releases is the reviewed one.
     for (const [name, job] of Object.entries(data.jobs)) {
       if (name !== "draft") expect(runs(job)).not.toMatch(/gh release (create|edit|upload|delete)/);
@@ -140,6 +148,8 @@ describe("DIST-003 a release is built once, from a checked commit, into a draft"
     expect(steps).toContain('gh release download "v$VERSION"');
     expect(steps).toMatch(/sha256sum -c SHA256SUMS/);
     expect(steps).toContain('--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"');
+    expect(steps).toContain('--source-ref refs/heads/main --source-digest "$GITHUB_SHA"');
+    expect(steps).toContain('gh attestation verify "$file" "${signer[@]}" --predicate-type');
     expect(steps).toContain("--predicate-type https://cyclonedx.org/bom");
     expect(steps).toContain('if command -v node; then echo "node is still on PATH"; exit 1; fi');
     expect(steps).toContain("npm install -g --prefix");
@@ -147,18 +157,30 @@ describe("DIST-003 a release is built once, from a checked commit, into a draft"
   });
 });
 
+const COMMIT = "a".repeat(40);
 const mac = {
   target: "aarch64-apple-darwin",
+  commit: COMMIT,
   signed: { macos: "Developer ID Application: X", windows: null },
 };
 const windows = {
   target: "x86_64-pc-windows-msvc",
+  commit: COMMIT,
   signed: { macos: null, windows: "SignPath Foundation" },
+};
+const run = {
+  path: ".github/workflows/release.yml",
+  event: "workflow_dispatch",
+  headBranch: "main",
+  headSha: COMMIT,
+  conclusion: "success",
 };
 const promote: PromoteFacts = {
   version: "0.1.0",
   stable: true,
-  release: { draft: true, prerelease: true },
+  release: { draft: true, prerelease: true, target: COMMIT },
+  run,
+  targetOnMain: true,
   bundles: [mac, windows],
 };
 const unsigned = promote.bundles.map((bundle) => ({
@@ -173,14 +195,18 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
   });
 
   it("makes a published prerelease stable, and finishes a promotion run again", () => {
-    expect(promoteProblems({ ...promote, release: { draft: false, prerelease: true } })).toEqual(
-      [],
-    );
-    expect(promoteProblems({ ...promote, release: { draft: false, prerelease: false } })).toEqual(
-      [],
-    );
     expect(
-      promoteProblems({ ...promote, stable: false, release: { draft: false, prerelease: true } }),
+      promoteProblems({ ...promote, release: { draft: false, prerelease: true, target: COMMIT } }),
+    ).toEqual([]);
+    expect(
+      promoteProblems({ ...promote, release: { draft: false, prerelease: false, target: COMMIT } }),
+    ).toEqual([]);
+    expect(
+      promoteProblems({
+        ...promote,
+        stable: false,
+        release: { draft: false, prerelease: true, target: COMMIT },
+      }),
     ).toEqual([]);
   });
 
@@ -200,9 +226,29 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
     ],
     ["a missing bundle", { bundles: [mac] }, "there is no windows bundle"],
     ["a prerelease version as stable", { version: "0.2.0-rc.1" }, "can never be stable"],
+    ["a release naming no run", { run: null }, "names no Release run"],
+    [
+      "a run whose verification failed",
+      { run: { ...run, conclusion: "failure" } },
+      "ended failure",
+    ],
+    ["a run still going", { run: { ...run, conclusion: null } }, "ended unfinished"],
+    ["a run on another branch", { run: { ...run, headBranch: "topic" } }, "built topic"],
+    ["a run at another commit", { run: { ...run, headSha: "b".repeat(40) } }, "not main at"],
+    [
+      "a run of another workflow",
+      { run: { ...run, path: ".github/workflows/ci.yml" } },
+      "not a Release workflow run",
+    ],
+    ["a commit main lacks", { targetOnMain: false }, "main does not contain"],
+    [
+      "a bundle from another commit",
+      { bundles: [{ ...mac, commit: "b".repeat(40) }, windows] },
+      "bundle was built from bbbb",
+    ],
     [
       "a stable release made a prerelease",
-      { stable: false, release: { draft: false, prerelease: false } },
+      { stable: false, release: { draft: false, prerelease: false, target: COMMIT } },
       "already published as stable",
     ],
   ])("refuses %s", (_, change, problem) => {
@@ -227,6 +273,21 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
       at("Check the release may be published as asked"),
     );
     expect(runs(publish)).toContain('node scripts/release/check-promote.ts "$VERSION" "$STABLE"');
+    expect(runs(publish)).toContain('--source-ref refs/heads/main --source-digest "$TARGET"');
+    expect(publish.permissions).toEqual({
+      contents: "write",
+      attestations: "read",
+      actions: "read",
+      "id-token": "write",
+    });
+  });
+
+  it("never shares a concurrency group with a Release run", () => {
+    const groups = ["release.yml", "promote.yml"].map(
+      (name) =>
+        (workflow(name).data as unknown as { concurrency: { group: string } }).concurrency.group,
+    );
+    expect(new Set(groups).size).toBe(2);
   });
 
   it("publishes to npm only a stable release, as the release's own tarball", () => {

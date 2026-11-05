@@ -39,8 +39,16 @@ Set these up once in the repository's settings:
 4. **Sync `develop`.** Merge `main` back into `develop` through a
    `sync/main-into-develop` pull request.
 
-A mistake is corrected with a new version, never by replacing assets or
-moving a tag.
+Promote publishes only a draft whose Release run succeeded, verification
+included. If verification fails, the draft stays unpublished:
+
+- if the failure was flaky, re-run the failed jobs of that run;
+- if the commit needs fixing, delete the draft and release again from the
+  fixed commit. Release refuses a version that already has a draft.
+
+A mistake in a published release is corrected with a new version, never by
+replacing assets or moving a tag. Start one Release at a time: GitHub keeps
+only one waiting run per workflow, so a third start replaces the waiting one.
 
 ## Checking a release yourself
 

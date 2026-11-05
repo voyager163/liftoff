@@ -62,14 +62,18 @@ version. Before anything is built it refuses unless:
   may use it. GitHub would otherwise create it unprotected.
 
 It packs the npm package once, builds the macOS and Windows bundles from that
-tarball, and describes their dependencies in a CycloneDX SBOM. It lists every
-asset's SHA-256 in `SHA256SUMS`, attests how each was built and what the
-package and bundles contain, and makes a draft prerelease of them at that
-commit. The draft has no tag and is public only once promoted. A separate
-job then downloads the draft's own assets on macOS and Windows and checks:
+tarball, and describes what the bundles install from the lockfile in a
+CycloneDX SBOM. (An npm install resolves its own dependencies, so the SBOM is
+attested for the bundles only.) It lists every asset's SHA-256 in
+`SHA256SUMS`, attests how each was built, and, once it has checked with a
+token that can see drafts that no draft of the version exists, makes a draft
+prerelease of them at that commit. The draft has no tag and is public only
+once promoted. A separate job then downloads the draft's own assets on macOS
+and Windows and checks:
 
 - the checksums;
-- each attestation, which must come from the Release workflow;
+- each attestation, which must come from the Release workflow run on `main`
+  at that commit;
 - the commit and version in each bundle's `release.json`.
 
 Then it runs Liftoff from the bundle with no Node on the PATH, and from the
@@ -88,9 +92,13 @@ Verification: test
 
 The Promote workflow publishes a release the Release workflow made, in the
 `release` environment. It downloads the release's assets, checks their
-checksums and attestations again, and checks that the release may be
-published as asked:
+checksums and attestations again (from the Release workflow, on `main`, at
+the release's commit), and checks that the release may be published as
+asked:
 
+- the Release run the release names succeeded, so its verification passed,
+  and built `main` at the release's commit, which `main` still contains;
+- every bundle was built from that commit;
 - a stable release must have every bundle signed for its operating system,
   and its version must not be a prerelease;
 - a stable release is never made a prerelease again.
@@ -104,6 +112,8 @@ Nothing is built or packed during promotion.
 
 - Given a release whose bundles are unsigned, when it is promoted as stable,
   then nothing is published.
+- Given a draft whose Release run failed its verification, when it is
+  promoted, then nothing is published.
 - Given a prerelease already published, when it is promoted as stable, then
   it becomes the latest release and its tarball is published to npm.
 

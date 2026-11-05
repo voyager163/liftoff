@@ -3,16 +3,21 @@
 //   node scripts/release/check-promote.ts <version> <stable: true|false> <assets directory>
 //
 // The assets directory holds the release's downloaded assets, whose
-// bundles' release.json files say how each was signed.
+// bundles' release.json files say how each was signed and from which commit.
+// Run with a token that can see drafts (contents: write).
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
-import { releaseOf } from "./github-facts.ts";
+import { onMain, releaseOf, runOf } from "./github-facts.ts";
 import { promoteProblems } from "./release-rules.ts";
 
 const [version = "", stable = "", assets = ""] = process.argv.slice(2);
 const repository = process.env.GITHUB_REPOSITORY;
 if (repository === undefined) throw new Error("GITHUB_REPOSITORY must be set");
 if (stable !== "true" && stable !== "false") throw new Error("stable must be true or false");
+
+const release = releaseOf(repository, version);
+// The Release workflow names its run in the notes it writes.
+const runId = /\bby run (\d+)\b/.exec(release?.body ?? "")?.[1];
 
 // Each bundle archive holds liftoff-package-<target>/release.json.
 const bundles = readdirSync(assets)
@@ -31,6 +36,7 @@ const bundles = readdirSync(assets)
     const identity = JSON.parse(text) as {
       version: string;
       target: string;
+      commit: string;
       signed: { macos: string | null; windows: string | null };
     };
     if (identity.version !== version || identity.target !== target) {
@@ -38,12 +44,15 @@ const bundles = readdirSync(assets)
         `${name} is ${identity.target} ${identity.version}, not ${target} ${version}`,
       );
     }
-    return { target, signed: identity.signed };
+    return { target, commit: identity.commit, signed: identity.signed };
   });
 const problems = promoteProblems({
   version,
   stable: stable === "true",
-  release: releaseOf(repository, version),
+  release,
+  run: runId === undefined ? null : runOf(repository, runId),
+  targetOnMain:
+    release !== null && /^[0-9a-f]{40}$/.test(release.target) && onMain(repository, release.target),
   bundles,
 });
 for (const problem of problems) console.error(`::error::${problem}`);

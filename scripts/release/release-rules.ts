@@ -58,10 +58,26 @@ export interface PromoteFacts {
   readonly version: string;
   readonly stable: boolean;
   /** The release as GitHub reports it, or null when there is none. */
-  readonly release: { readonly draft: boolean; readonly prerelease: boolean } | null;
+  readonly release: {
+    readonly draft: boolean;
+    readonly prerelease: boolean;
+    /** The commit the release was made at. */
+    readonly target: string;
+  } | null;
+  /** The Release workflow run the release names, or null when it names none. */
+  readonly run: {
+    readonly path: string;
+    readonly event: string;
+    readonly headBranch: string;
+    readonly headSha: string;
+    readonly conclusion: string | null;
+  } | null;
+  /** Whether main contains the release's commit. */
+  readonly targetOnMain: boolean;
   /** What each bundle's release.json records. */
   readonly bundles: readonly {
     readonly target: string;
+    readonly commit: string;
     readonly signed: { readonly macos: string | null; readonly windows: string | null };
   }[];
 }
@@ -70,15 +86,43 @@ export interface PromoteFacts {
 export function promoteProblems(facts: PromoteFacts): string[] {
   const problems: string[] = [];
   if (!SEMVER.test(facts.version)) problems.push(`${facts.version} is not a version`);
-  if (facts.release === null) {
+  const { release, run } = facts;
+  if (release === null) {
     problems.push(`there is no release v${facts.version}; build it with the Release workflow`);
     return problems;
   }
   // A published release can be published again as the same thing, which
   // finishes a promotion that stopped part way, or a prerelease made stable;
   // a stable release never goes back to being a prerelease.
-  if (!facts.release.draft && !facts.release.prerelease && !facts.stable) {
+  if (!release.draft && !release.prerelease && !facts.stable) {
     problems.push(`v${facts.version} is already published as stable`);
+  }
+  // Only a draft the Release workflow built on main, at the release's commit,
+  // and then verified in the same run, may be published.
+  if (run === null) {
+    problems.push(`v${facts.version} names no Release run, so nothing shows it was verified`);
+  } else {
+    if (run.path !== ".github/workflows/release.yml" || run.event !== "workflow_dispatch") {
+      problems.push(`the run v${facts.version} names is not a Release workflow run`);
+    }
+    if (run.headBranch !== "main" || run.headSha !== release.target) {
+      problems.push(
+        `the Release run built ${run.headBranch} at ${run.headSha}, not main at ${release.target}`,
+      );
+    }
+    if (run.conclusion !== "success") {
+      problems.push(
+        `the Release run ended ${run.conclusion ?? "unfinished"}, so its draft was not verified`,
+      );
+    }
+  }
+  if (!facts.targetOnMain) problems.push(`main does not contain ${release.target}`);
+  for (const bundle of facts.bundles) {
+    if (bundle.commit !== release.target) {
+      problems.push(
+        `the ${bundle.target} bundle was built from ${bundle.commit}, not ${release.target}`,
+      );
+    }
   }
   if (facts.stable) {
     if (facts.version.includes("-")) {
