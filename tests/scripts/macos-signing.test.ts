@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -212,6 +213,14 @@ describe("DIST-005 the macOS bundle is signed and notarized", () => {
     expect(existsSync(work)).toBe(false);
   });
 
+  it("trusts only Apple's own Developer ID intermediate, and keeps the secrets from every tool", () => {
+    const script = readFileSync(path.join(root, "scripts/package/sign-macos.ts"), "utf8");
+    const pinned = /INTERMEDIATE_SHA256 = "([0-9a-f]{64})"/.exec(script)?.[1];
+    const authority = readFileSync(path.join(root, "distribution/macos/DeveloperIDG2CA.cer"));
+    expect(createHash("sha256").update(authority).digest("hex")).toBe(pinned);
+    expect(script).toContain("env: toolEnv");
+  });
+
   it("grants the executable allow-jit and nothing more", () => {
     const plist = readFileSync(path.join(root, "distribution/macos/entitlements.plist"), "utf8");
     expect(entitlementKeys(plist)).toEqual(["com.apple.security.cs.allow-jit"]);
@@ -252,6 +261,9 @@ describe("DIST-005 the macOS bundle is signed and notarized", () => {
   it("checks the downloaded bundle's signature, entitlements and notarization, quarantined when signed", () => {
     const text = readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8");
     expect(text).toContain('codesign --verify --strict --verbose=2 "$file"');
+    // One file at a time, so a universal file's per-architecture lines are not names.
+    expect(text).toContain("file -b \"$file\" | head -n 1 | grep -q '^Mach-O'");
+    expect(text).not.toContain("xargs -0 file");
     expect(text).toContain('grep -Fxq "Authority=$signer"');
     expect(text).toContain("flags=0x10000\\(runtime\\)");
     expect(text).toContain("'{\"com.apple.security.cs.allow-jit\":true}'");

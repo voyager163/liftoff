@@ -21,7 +21,7 @@
 // own cleanup, so the workflow runs --cleanup afterwards whatever happened,
 // which undoes whatever that record names.
 import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -30,11 +30,24 @@ import {
   developerIdentity,
   machOFiles,
   notarizationProblems,
+  SIGNING_SECRETS,
   signingSecrets,
 } from "./macos-signing.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const entitlements = path.join(root, "distribution", "macos", "entitlements.plist");
+// Apple's Developer ID intermediate (G2), from apple.com/certificateauthority.
+// A .p12 often holds only the leaf, and without this the runner may find no
+// valid identity. Its SHA-256 is checked before it is used.
+const intermediate = path.join(root, "distribution", "macos", "DeveloperIDG2CA.cer");
+const INTERMEDIATE_SHA256 = "f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a";
+
+/** What the tools run with: this environment without the signing secrets. */
+const toolEnv = Object.fromEntries(
+  Object.entries(process.env).filter(
+    ([name]) => !(SIGNING_SECRETS as readonly string[]).includes(name),
+  ),
+);
 
 /**
  * Runs a tool, quietly. A failure names only the step, with the tool's own
@@ -43,7 +56,11 @@ const entitlements = path.join(root, "distribution", "macos", "entitlements.plis
  */
 const tool = (step: string, command: string, args: string[]): string => {
   try {
-    return execFileSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return execFileSync(command, args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: toolEnv,
+    });
   } catch (error) {
     const { stdout = "", stderr = "" } = error as { stdout?: string; stderr?: string };
     throw new Error(`${step} failed\n${stdout}${stderr}`.trim());
@@ -119,6 +136,18 @@ try {
     keychain,
   ]);
   tool("Unlocking the keychain", "security", ["unlock-keychain", "-p", password, keychain]);
+  const authority = readFileSync(intermediate);
+  if (createHash("sha256").update(authority).digest("hex") !== INTERMEDIATE_SHA256) {
+    throw new Error(`${intermediate} is not Apple's Developer ID G2 intermediate`);
+  }
+  tool("Importing Apple's intermediate certificate", "security", [
+    "import",
+    intermediate,
+    "-k",
+    keychain,
+    "-t",
+    "cert",
+  ]);
   tool("Importing the certificate", "security", [
     "import",
     certificate,

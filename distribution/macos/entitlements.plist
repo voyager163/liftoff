@@ -3,8 +3,9 @@
 <!--
   The entitlements Liftoff's macOS executable is signed with (DIST-005), and
   no more. Under the hardened runtime V8 cannot reserve memory for compiled
-  code without allow-jit; scripts/package/check-entitlements.ts shows on
-  every pull request that each entitlement here is needed.
+  code without allow-jit. scripts/package/check-entitlements.ts shows that
+  each entitlement here is needed, on a Mac with System Integrity Protection
+  on; CI runs it on every pull request, and says so where SIP is off.
 -->
 <plist version="1.0">
 <dict>
