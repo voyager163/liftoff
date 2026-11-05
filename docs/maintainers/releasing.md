@@ -83,6 +83,6 @@ On a Mac, check the macOS bundle's signature and notarization:
 ```bash
 tar -xzf liftoff-package-aarch64-apple-darwin.tar.gz
 codesign --verify --strict --verbose=2 liftoff-package-aarch64-apple-darwin/bin/liftoff
-spctl --assess --type open --context context:primary-signature --verbose=2 \
+codesign --verify --strict --check-notarization -R=notarized --verbose=2 \
   liftoff-package-aarch64-apple-darwin/bin/liftoff
 ```

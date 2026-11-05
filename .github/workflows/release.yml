@@ -292,9 +292,10 @@ jobs:
           # The executable has allow-jit and nothing else.
           granted="$(codesign --display --entitlements - --xml "$bundle/bin/liftoff" 2>/dev/null | plutil -convert json -o - -)"
           [ "$granted" = '{"com.apple.security.cs.allow-jit":true}' ] || { echo "::error::entitlements are $granted"; exit 1; }
-          # Gatekeeper accepts it as notarized, looking the ticket up online.
-          spctl --assess --type open --context context:primary-signature --verbose=2 "$bundle/bin/liftoff" 2>&1 | tee spctl.log
-          grep -Fq 'source=Notarized Developer ID' spctl.log
+          # Apple has a notarization ticket for it, looked up online: a bare
+          # executable cannot be stapled. The smoke step then runs it
+          # quarantined, which is how Gatekeeper judges a downloaded CLI.
+          codesign --verify --strict --check-notarization -R=notarized --verbose=2 "$bundle/bin/liftoff"
       - name: Run Liftoff from the bundle with no Node on PATH
         run: |
           install="$(cd "$RUNNER_TEMP" && pwd)/install"
@@ -312,8 +313,10 @@ jobs:
               if (identity[key] !== value) { console.error("release.json " + key + " is " + identity[key] + ", not " + value); process.exit(1); }
             }
           ' "$install/$BUNDLE/release.json"
-          if [ "$RUNNER_OS" = macOS ]; then
+          signer="$(node -p 'require(process.argv[1]).signed.macos ?? ""' "$install/$BUNDLE/release.json")"
+          if [ "$RUNNER_OS" = macOS ] && [ -n "$signer" ]; then
             # As a browser download would have it, so Gatekeeper checks it.
+            # An unsigned prerelease is not notarized, so it runs unquarantined.
             xattr -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Liftoff release check;" \
               "$install/$BUNDLE/bin/liftoff"
           fi

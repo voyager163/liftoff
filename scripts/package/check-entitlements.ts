@@ -8,6 +8,11 @@
 // distribution/macos/entitlements.plist, and checks Liftoff then fails to
 // start. Signed last with them all, it must run, and it is left that way
 // for the rest of CI to use.
+//
+// macOS enforces the hardened runtime only while System Integrity
+// Protection is on. Where it is off, as on some CI runners, nothing can
+// show an entitlement is needed, so only the last check runs, and it says
+// so.
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -44,9 +49,17 @@ const signWith = (keys: readonly string[]) => {
 const starts = () =>
   spawnSync(executable, ["--version"], { cwd: work, encoding: "utf8", timeout: 60_000 });
 
+const enforced = /System Integrity Protection status: enabled\./.test(
+  spawnSync("csrutil", ["status"], { encoding: "utf8" }).stdout ?? "",
+);
+if (!enforced) {
+  console.log(
+    "::notice::System Integrity Protection is off here, so the hardened runtime is not enforced and entitlements cannot be shown to be needed; run this on a Mac with it on",
+  );
+}
 const unneeded: string[] = [];
 try {
-  for (const key of granted) {
+  for (const key of enforced ? granted : []) {
     signWith(granted.filter((other) => other !== key));
     const result = starts();
     if (result.status === 0) unneeded.push(key);

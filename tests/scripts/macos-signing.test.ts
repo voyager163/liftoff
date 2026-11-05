@@ -156,14 +156,16 @@ describe("DIST-005 the macOS bundle is signed and notarized", () => {
     );
   });
 
-  it("checks the downloaded bundle's signature, entitlements and notarization, quarantined", () => {
+  it("checks the downloaded bundle's signature, entitlements and notarization, quarantined when signed", () => {
     const text = readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8");
     expect(text).toContain('codesign --verify --strict --verbose=2 "$file"');
     expect(text).toContain('grep -Fxq "Authority=$signer"');
     expect(text).toContain("flags=0x10000\\(runtime\\)");
     expect(text).toContain("'{\"com.apple.security.cs.allow-jit\":true}'");
-    expect(text).toContain("spctl --assess --type open --context context:primary-signature");
-    expect(text).toContain("grep -Fq 'source=Notarized Developer ID' spctl.log");
+    expect(text).toContain("codesign --verify --strict --check-notarization -R=notarized");
+    expect(text).not.toContain("spctl");
+    // Only a signed bundle is quarantined: an unsigned one is not notarized.
+    expect(text).toContain('if [ "$RUNNER_OS" = macOS ] && [ -n "$signer" ]; then');
     expect(text).toContain("xattr -w com.apple.quarantine");
     const ci = readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
     expect(ci).toContain('node scripts/package/check-entitlements.ts "out/$BUNDLE"');

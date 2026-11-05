@@ -145,19 +145,21 @@ which the draft's title says; with some but not all, the release fails.
 The draft's macOS bundle is checked as a user would download it: every
 Mach-O file is signed by the signer `release.json` names, with the hardened
 runtime and a timestamp, the executable's entitlements are exactly that one,
-Gatekeeper accepts it as notarized, and Liftoff runs with the quarantine
-attribute set. A bare executable cannot be stapled, so Gatekeeper looks the
-ticket up online.
+Apple has a notarization ticket for it, and Liftoff runs with the quarantine
+attribute set. An unsigned prerelease is run without it. A bare executable
+cannot be stapled, so Gatekeeper looks the ticket up online.
 
 - Given the five signing secrets, when a release is built, then the macOS
-  bundle's `release.json` names the Developer ID identity and Gatekeeper
-  accepts its executable as notarized.
+  bundle's `release.json` names the Developer ID identity and Apple has a
+  notarization ticket for its executable.
 - Given none of the secrets, when a release is built, then the bundle is
   unsigned, the draft's title says so, and it cannot be promoted as stable.
 - Given only some of the secrets, when a release is built, then nothing is
   released.
 - Given the executable signed with the hardened runtime and without any one
-  of its entitlements, when Liftoff starts, then it fails; on every pull
-  request CI shows this.
+  of its entitlements, on a Mac with System Integrity Protection on, when
+  Liftoff starts, then it fails. `scripts/package/check-entitlements.ts`
+  shows this; where System Integrity Protection is off, as on some CI
+  runners, it checks only that Liftoff starts with them all.
 
 Verification: test
