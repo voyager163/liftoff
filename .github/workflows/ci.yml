@@ -632,7 +632,9 @@ jobs:
       - name: Run Liftoff from the npm package outside the checkout
         run: |
           tarball="$(cd out && ls voyager163-liftoff-*.tgz)"
-          prefix="$RUNNER_TEMP/npm-prefix"
+          # A POSIX path: Git Bash on Windows would read the backslashes in
+          # RUNNER_TEMP (D:\a\_temp) inside npm's shell shims as escapes.
+          prefix="$(cd "$RUNNER_TEMP" && pwd)/npm-prefix"
           # "./" keeps npm from reading out/... as a GitHub repository.
           (cd out && npm install -g --prefix "$prefix" --no-audit --no-fund "./$tarball")
           mkdir -p "$RUNNER_TEMP/npm-smoke"

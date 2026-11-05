@@ -89,12 +89,43 @@ describe("DIST-001 one npm package carries every file Liftoff ships", () => {
     expect(result.stdout).toContain("5 files would be packed");
   });
 
-  it("refuses to pack a checkout with uncommitted changes to tracked files", () => {
-    const repository = checkout({ "assets/templates/common/_gitignore": "kept\n" });
-    write(repository, "assets/templates/common/_gitignore", "changed\n");
+  it("compiles and packs the commit, never untracked or uncommitted files", {
+    timeout: 120_000,
+  }, () => {
+    const repository = checkout({
+      "assets/templates/common/_gitignore": "committed\n",
+      "src/index.ts": "export const shipped = 1;\n",
+      "tsconfig.json": JSON.stringify({
+        compilerOptions: { module: "nodenext", target: "es2024", types: [], noEmit: true },
+        include: ["src"],
+      }),
+      "tsconfig.build.json": JSON.stringify({
+        extends: "./tsconfig.json",
+        compilerOptions: { noEmit: false, rootDir: "src", outDir: "dist" },
+        include: ["src"],
+      }),
+    });
+    write(repository, "src/local-secret.ts", "export const secret = 'local';\n");
+    write(repository, "assets/templates/common/_gitignore", "uncommitted\n");
     const result = spawnSync(process.execPath, [pack, "--root", repository], { encoding: "utf8" });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("refusing to pack: commit or discard the changes");
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("packed out/packed-1.2.3.tgz".replaceAll("/", path.sep));
+    const tarball = path.join(repository, "out", "packed-1.2.3.tgz");
+    const listing = execFileSync("tar", ["-tzf", "packed-1.2.3.tgz"], {
+      cwd: path.dirname(tarball),
+      encoding: "utf8",
+    });
+    expect(listing).toContain("package/dist/index.js");
+    expect(listing).not.toContain("local-secret");
+    expect(listing).not.toContain("package/src/");
+    const read = (file: string) =>
+      execFileSync("tar", ["-xzOf", "packed-1.2.3.tgz", file], {
+        cwd: path.dirname(tarball),
+        encoding: "utf8",
+      });
+    expect(read("package/assets/templates/common/_gitignore")).toBe("committed\n");
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repository, encoding: "utf8" });
+    expect(JSON.parse(read("package/package.json")).gitHead).toBe(head.trim());
   });
 
   it("reads an asset kept as _gitignore under its real name", async () => {

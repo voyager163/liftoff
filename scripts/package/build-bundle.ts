@@ -3,7 +3,8 @@
 //   liftoff-package-<arch>-<os>/
 //     bin/liftoff[.exe]   Node single executable that only starts lib/app
 //     lib/app/            the npm package from scripts/package/pack.ts, with
-//                         its production node_modules from package-lock.json
+//                         its production node_modules from the commit's
+//                         package-lock.json
 //     share/licenses/     Liftoff's and Node's licenses
 //     release.json        version, platform, Node version, source commit and
 //                         tree, and the signing identities (null when unsigned)
@@ -48,7 +49,11 @@ rmSync(work, { recursive: true, force: true });
 mkdirSync(app, { recursive: true });
 mkdirSync(work, { recursive: true });
 
-const source = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+// Everything the bundle takes from the checkout is read from its commit.
+const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+const committed = (file: string): string =>
+  execFileSync("git", ["show", `${head}:${file}`], { cwd: root, encoding: "utf8" });
+const source = JSON.parse(committed("package.json")) as {
   name: string;
   version: string;
 };
@@ -70,15 +75,14 @@ const shipped = JSON.parse(readFileSync(path.join(app, "package.json"), "utf8"))
   version: string;
   gitHead?: string;
 };
-const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 if (shipped.name !== source.name || shipped.version !== version || shipped.gitHead !== head) {
   throw new Error(
     `${tarball} is ${shipped.name}@${shipped.version} from ${shipped.gitHead ?? "an unknown commit"}, not ${source.name}@${version} from ${head}`,
   );
 }
-// The package carries no lockfile, so the bundle installs from Liftoff's.
+// The package carries no lockfile, so the bundle installs from the commit's.
 for (const entry of ["package-lock.json", ".npmrc"]) {
-  cpSync(path.join(root, entry), path.join(app, entry));
+  writeFileSync(path.join(app, entry), committed(entry));
 }
 npm(["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], app, "inherit");
 rmSync(path.join(app, ".npmrc"));
@@ -114,7 +118,7 @@ const nodeVersion = execFileSync(runtime, ["--version"], { encoding: "utf8" }).t
 if (process.platform === "darwin") run("codesign", ["--sign", "-", "--force", executable]);
 
 mkdirSync(path.join(out, "share", "licenses"), { recursive: true });
-cpSync(path.join(root, "LICENSE"), path.join(out, "share", "licenses", "liftoff-LICENSE"));
+cpSync(path.join(app, "LICENSE"), path.join(out, "share", "licenses", "liftoff-LICENSE"));
 // Official archives keep LICENSE beside bin/ (macOS) or beside node.exe (Windows).
 const licenseCandidates = [
   path.join(path.dirname(runtime), "..", "LICENSE"),
