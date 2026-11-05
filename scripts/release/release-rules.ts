@@ -43,20 +43,28 @@ export function buildProblems(facts: BuildFacts): string[] {
         : `ci-gate on this commit ended ${facts.ciGate}, not success`,
     );
   }
-  // GitHub creates a missing environment unprotected on first use, which
-  // would hand the release's credentials to anyone who can dispatch it.
-  if (facts.environment === null) {
-    problems.push("the release environment does not exist; create it with a required reviewer");
-  } else {
-    if (facts.environment.reviewers === 0) {
-      problems.push("the release environment has no required reviewer");
-    }
-    if (!facts.environment.mainOnly) {
-      problems.push("the release environment is not limited to the main branch");
-    }
-  }
+  problems.push(...environmentProblems(facts.environment));
   if (facts.tagExists) problems.push(`the tag v${facts.version} already exists`);
   if (facts.releaseExists) problems.push(`a release v${facts.version} already exists`);
+  return problems;
+}
+
+/**
+ * Why the release environment cannot guard a release. GitHub creates a
+ * missing environment unprotected on first use, which would hand the
+ * release's credentials to anyone who can start a workflow, so both
+ * workflows check it before any job uses it.
+ */
+export function environmentProblems(environment: BuildFacts["environment"]): string[] {
+  if (environment === null) {
+    return ["the release environment does not exist; create it with a required reviewer"];
+  }
+  const problems: string[] = [];
+  if (environment.reviewers === 0)
+    problems.push("the release environment has no required reviewer");
+  if (!environment.mainOnly) {
+    problems.push("the release environment is not limited to the main branch");
+  }
   return problems;
 }
 
@@ -80,6 +88,8 @@ export interface PromoteFacts {
   } | null;
   /** Whether main contains the release's commit. */
   readonly targetOnMain: boolean;
+  /** The commit the tag v<version> points at, or null while there is no tag. */
+  readonly tagCommit: string | null;
   /** What each bundle's release.json records. */
   readonly bundles: readonly {
     readonly target: string;
@@ -123,6 +133,10 @@ export function promoteProblems(facts: PromoteFacts): string[] {
     }
   }
   if (!facts.targetOnMain) problems.push(`main does not contain ${release.target}`);
+  // Publishing takes an existing tag as it is, so it must be the release's.
+  if (facts.tagCommit !== null && facts.tagCommit !== release.target) {
+    problems.push(`the tag v${facts.version} points at ${facts.tagCommit}, not ${release.target}`);
+  }
   for (const bundle of facts.bundles) {
     if (bundle.commit !== release.target) {
       problems.push(

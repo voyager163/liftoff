@@ -35,8 +35,30 @@ env:
   STABLE: ${{ inputs.stable }}
 
 jobs:
+  # Before the environment is used: a missing one would be created without
+  # its reviewer, and a draft could then be published unreviewed.
+  environment:
+    name: Check the release environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Check it has a required reviewer and allows only main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/check-environment.ts
+
   publish:
     name: Publish the release
+    needs: environment
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: release
@@ -45,8 +67,6 @@ jobs:
       attestations: read
       actions: read
       id-token: write
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -56,15 +76,21 @@ jobs:
           node-version-file: .node-version
           registry-url: https://registry.npmjs.org
       - name: Download the release's assets
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/assets"
           gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/assets"
       - name: Read the commit the release was made at
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           target="$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq .targetCommitish)"
           [[ "$target" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::v$VERSION was not made at a commit: $target"; exit 1; }
           echo "TARGET=$target" >> "$GITHUB_ENV"
       - name: Check the checksums and attestations again
+        env:
+          GH_TOKEN: ${{ github.token }}
         working-directory: ${{ runner.temp }}/assets
         run: |
           sha256sum -c SHA256SUMS
@@ -75,6 +101,8 @@ jobs:
             gh attestation verify "$file" "${signer[@]}"
           done
       - name: Check the release may be published as asked
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/release/check-promote.ts "$VERSION" "$STABLE" "$RUNNER_TEMP/assets"
       # Before anything becomes public: a published release is immutable, so
       # an npm version that cannot be the release's tarball stops it here.
@@ -96,6 +124,8 @@ jobs:
             exit 1
           fi
       - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$STABLE" = true ]; then
             gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest

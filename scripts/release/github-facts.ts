@@ -106,6 +106,29 @@ export function tagExists(repository: string, version: string): boolean {
   throw new Error(`cannot tell whether v${version} exists: ${result.stderr.trim()}`);
 }
 
+/** The commit the tag v<version> points at, through any tag objects, or null. */
+export function tagCommitOf(repository: string, version: string): string | null {
+  const result = spawnSync("gh", ["api", `repos/${repository}/git/ref/tags/v${version}`], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    if (/HTTP 404|Not Found/.test(`${result.stdout}${result.stderr}`)) return null;
+    throw new Error(`cannot read the tag v${version}: ${result.stderr.trim()}`);
+  }
+  let object = (JSON.parse(result.stdout) as { object: { type: string; sha: string } }).object;
+  // An annotated tag points at a tag object; follow it to the commit.
+  for (let depth = 0; object.type === "tag"; depth++) {
+    if (depth > 5) throw new Error(`the tag v${version} does not lead to a commit`);
+    object = (
+      JSON.parse(gh(["api", `repos/${repository}/git/tags/${object.sha}`])) as {
+        object: { type: string; sha: string };
+      }
+    ).object;
+  }
+  if (object.type !== "commit") throw new Error(`the tag v${version} points at a ${object.type}`);
+  return object.sha;
+}
+
 /** The conclusion of the latest ci-gate check run on the commit, or null. */
 export function ciGateOf(repository: string, sha: string): string | null {
   const runs = JSON.parse(

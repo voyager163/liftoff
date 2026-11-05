@@ -7,7 +7,7 @@
 // Run with a token that can see drafts (contents: write).
 import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
-import { onMain, releaseOf, runOf } from "./github-facts.ts";
+import { onMain, releaseOf, runOf, tagCommitOf } from "./github-facts.ts";
 import { promoteProblems } from "./release-rules.ts";
 
 const [version = "", stable = "", assets = ""] = process.argv.slice(2);
@@ -53,6 +53,7 @@ const problems = promoteProblems({
   run: runId === undefined ? null : runOf(repository, runId),
   targetOnMain:
     release !== null && /^[0-9a-f]{40}$/.test(release.target) && onMain(repository, release.target),
+  tagCommit: tagCommitOf(repository, version),
   bundles,
 });
 for (const problem of problems) console.error(`::error::${problem}`);

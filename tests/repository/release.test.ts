@@ -189,6 +189,7 @@ const promote: PromoteFacts = {
   release: { draft: true, prerelease: true, target: COMMIT },
   run,
   targetOnMain: true,
+  tagCommit: null,
   bundles: [mac, windows],
 };
 const unsigned = promote.bundles.map((bundle) => ({
@@ -206,6 +207,10 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
   it("publishes a signed draft as stable, and any draft as a prerelease", () => {
     expect(promoteProblems(promote)).toEqual([]);
     expect(promoteProblems({ ...promote, stable: false, bundles: unsigned })).toEqual([]);
+  });
+
+  it("takes a tag the release's own commit has", () => {
+    expect(promoteProblems({ ...promote, tagCommit: COMMIT })).toEqual([]);
   });
 
   it("makes a published prerelease stable, and finishes a promotion run again", () => {
@@ -255,6 +260,7 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
       "not a Release workflow run",
     ],
     ["a commit main lacks", { targetOnMain: false }, "main does not contain"],
+    ["a tag made at another commit", { tagCommit: "b".repeat(40) }, "points at bbbb"],
     [
       "a bundle from another commit",
       { bundles: [{ ...mac, commit: "b".repeat(40) }, windows] },
@@ -294,6 +300,33 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
       actions: "read",
       "id-token": "write",
     });
+  });
+
+  it("checks the release environment in a job before the one that uses it", () => {
+    const environment = jobOf(data, "environment");
+    expect(environment.environment).toBeUndefined();
+    expect(runs(environment)).toContain("node scripts/release/check-environment.ts");
+    expect(publish.needs).toBe("environment");
+  });
+
+  it("gives the GitHub token only to the steps that call gh", () => {
+    for (const [file, job] of [
+      ["promote.yml", "publish"],
+      ["release.yml", "verify"],
+    ] as const) {
+      const { data: parsed } = workflow(file);
+      const found = jobOf(parsed, job) as Job & { env?: Record<string, string> };
+      expect(found.env?.GH_TOKEN, `${file} ${job}`).toBeUndefined();
+      for (const step of found.steps) {
+        const env = (step as Step & { env?: Record<string, string> }).env ?? {};
+        if ("GH_TOKEN" in env)
+          expect(step.run, `${file} ${step.name}`).toMatch(/\bgh |check-promote/);
+        else
+          expect(step.run ?? "", `${file} ${step.name}`).not.toMatch(
+            /\bgh (release|api|attestation)/,
+          );
+      }
+    }
   });
 
   it("never shares a concurrency group with a Release run", () => {

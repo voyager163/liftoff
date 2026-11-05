@@ -212,16 +212,19 @@ jobs:
     env:
       BUNDLE: ${{ matrix.bundle }}
       ARCHIVE: ${{ matrix.archive }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
       - name: Download the draft's assets
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/assets"
           gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/assets"
       - name: Check the checksums and attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
         working-directory: ${{ runner.temp }}/assets
         run: |
           if command -v sha256sum >/dev/null; then sha256sum -c SHA256SUMS; else shasum -a 256 -c SHA256SUMS; fi

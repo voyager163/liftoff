@@ -77,7 +77,8 @@ and Windows and checks:
 - the commit and version in each bundle's `release.json`.
 
 Then it runs Liftoff from the bundle with no Node on the PATH, and from the
-npm package, outside any checkout.
+npm package, outside any checkout. Only the steps that call GitHub get the
+workflow's token, so nothing installed or run there can reach it.
 
 - Given a commit whose `ci-gate` failed, or a version `package.json` does not
   have, when a release is started, then nothing is built.
@@ -91,14 +92,16 @@ Verification: test
 ## DIST-004 Promotion publishes the verified assets without rebuilding
 
 The Promote workflow publishes a release the Release workflow made, in the
-`release` environment. It downloads the release's assets, checks their
+`release` environment, which a job of its own first checks still has a
+required reviewer and allows only `main`. It downloads the release's assets, checks their
 checksums and attestations again (from the Release workflow, on `main`, at
 the release's commit), and checks that the release may be published as
 asked:
 
 - the Release run the release names succeeded, so its verification passed,
   and built `main` at the release's commit, which `main` still contains;
-- every bundle was built from that commit;
+- every bundle was built from that commit, and a tag of the version, if one
+  exists, points at it;
 - a stable release must have every bundle signed for its operating system,
   and its version must not be a prerelease;
 - a stable release is never made a prerelease again.
