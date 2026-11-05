@@ -1,9 +1,19 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
+  cleanUpSigning,
   developerIdentity,
   entitlementKeys,
   entitlementsPlist,
@@ -164,6 +174,42 @@ describe("DIST-005 the macOS bundle is signed and notarized", () => {
     expect(script.indexOf('"cleanup.json"), JSON.stringify')).toBeLessThan(
       script.indexOf("writeFileSync(certificate"),
     );
+  });
+
+  it("keeps the cleanup record until the keychain is gone and the search list restored", () => {
+    const work = realpathSync(mkdtempSync(path.join(tmpdir(), "liftoff-sign-")));
+    temporary.push(work);
+    const keychain = path.join(work, "signing.keychain-db");
+    for (const file of [keychain, path.join(work, "notary-key.p8")]) writeFileSync(file, "x");
+    writeFileSync(
+      path.join(work, "cleanup.json"),
+      JSON.stringify({ keychain, searchList: ["/login.keychain-db"] }),
+    );
+    const calls: string[][] = [];
+    let failing = true;
+    const security = (step: string, args: string[]) => {
+      calls.push(args);
+      if (failing && args[0] === "list-keychains") throw new Error(`${step} failed`);
+      if (args[0] === "delete-keychain") rmSync(keychain);
+    };
+    expect(() => cleanUpSigning(work, security)).toThrow(
+      "cleanup is incomplete, so " +
+        path.join(work, "cleanup.json") +
+        " is kept for another try:\nRestoring the keychain search list failed",
+    );
+    // The key file is gone at once, and the keychain was still deleted.
+    expect(readdirSync(work).sort()).toEqual(["cleanup.json"]);
+    expect(calls.map((args) => args[0])).toEqual(["list-keychains", "delete-keychain"]);
+    failing = false;
+    cleanUpSigning(work, security);
+    expect(calls.at(-1)).toEqual(["list-keychains", "-d", "user", "-s", "/login.keychain-db"]);
+    expect(existsSync(work)).toBe(false);
+    // Nothing recorded: nothing to undo but the directory.
+    mkdirSync(work);
+    cleanUpSigning(work, () => {
+      throw new Error("not called");
+    });
+    expect(existsSync(work)).toBe(false);
   });
 
   it("grants the executable allow-jit and nothing more", () => {

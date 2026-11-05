@@ -1,6 +1,14 @@
 // What signing and notarizing the macOS bundle decides (DIST-005), apart
 // from the tools that do it, so the tests can check each rule.
-import { closeSync, openSync, readdirSync, readSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  rmSync,
+} from "node:fs";
 import path from "node:path";
 
 /** The release environment secrets signing needs, by name. */
@@ -44,6 +52,50 @@ export function developerIdentity(listing: string): { hash: string; name: string
 }
 
 const MH_EXECUTE = 2;
+
+/**
+ * Undoes what signing set up in its work directory, as its cleanup.json
+ * records: the keychain search list as it was, and the keychain deleted.
+ * The secrets' own files go first, whatever else fails. Every step is
+ * tried; if any fails, the record stays for another try and this throws.
+ */
+export function cleanUpSigning(
+  work: string,
+  security: (step: string, args: string[]) => void,
+): void {
+  for (const name of ["certificate.p12", "notary-key.p8"]) {
+    rmSync(path.join(work, name), { force: true });
+  }
+  const record = path.join(work, "cleanup.json");
+  const failures: string[] = [];
+  if (existsSync(record)) {
+    const { keychain, searchList } = JSON.parse(readFileSync(record, "utf8")) as {
+      keychain: string;
+      searchList: string[];
+    };
+    const attempt = (step: string, args: string[]) => {
+      try {
+        security(step, args);
+      } catch (error) {
+        failures.push((error as Error).message);
+      }
+    };
+    attempt("Restoring the keychain search list", [
+      "list-keychains",
+      "-d",
+      "user",
+      "-s",
+      ...searchList,
+    ]);
+    if (existsSync(keychain)) attempt("Deleting the keychain", ["delete-keychain", keychain]);
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `cleanup is incomplete, so ${record} is kept for another try:\n${failures.join("\n")}`,
+    );
+  }
+  rmSync(work, { recursive: true, force: true });
+}
 
 /** Reads up to `bytes` bytes of a file from `offset`; fewer past its end. */
 export type ReadAt = (offset: number, bytes: number) => Buffer;

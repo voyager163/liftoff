@@ -22,18 +22,11 @@
 // which undoes whatever that record names.
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  cleanUpSigning,
   developerIdentity,
   machOFiles,
   notarizationProblems,
@@ -63,37 +56,10 @@ const workFor = () =>
     ? mkdtempSync(path.join(tmpdir(), "liftoff-sign-"))
     : path.join(process.env.RUNNER_TEMP, "liftoff-sign");
 
-/** Restores the search list, deletes the keychain and every secret's file. */
-const cleanUp = (work: string) => {
-  const record = path.join(work, "cleanup.json");
-  if (existsSync(record)) {
-    const { keychain, searchList } = JSON.parse(readFileSync(record, "utf8")) as {
-      keychain: string;
-      searchList: string[];
-    };
-    // Each step whatever the one before did.
-    const attempt = (step: () => unknown) => {
-      try {
-        step();
-      } catch (error) {
-        console.error((error as Error).message);
-      }
-    };
-    attempt(() =>
-      tool("Restoring the keychain search list", "security", [
-        "list-keychains",
-        "-d",
-        "user",
-        "-s",
-        ...searchList,
-      ]),
-    );
-    if (existsSync(keychain)) {
-      attempt(() => tool("Deleting the keychain", "security", ["delete-keychain", keychain]));
-    }
-  }
-  rmSync(work, { recursive: true, force: true });
-};
+const cleanUp = (work: string) =>
+  cleanUpSigning(work, (step, args) => {
+    tool(step, "security", args);
+  });
 
 if (process.argv[2] === "--cleanup") {
   if (process.env.RUNNER_TEMP === undefined) throw new Error("--cleanup needs RUNNER_TEMP");
@@ -264,5 +230,11 @@ try {
   );
   console.log(`${path.basename(bundle)} is signed by ${signer.name}`);
 } finally {
-  cleanUp(work);
+  // A failed cleanup fails the step without hiding why signing failed.
+  try {
+    cleanUp(work);
+  } catch (error) {
+    console.error(`::error::${(error as Error).message}`);
+    process.exitCode = 1;
+  }
 }
