@@ -157,6 +157,28 @@ export function notarizationProblems(
   return problems;
 }
 
+/**
+ * Whether macOS enforces the hardened runtime here, from `csrutil status`:
+ * only with System Integrity Protection on. Anything but a plain "enabled"
+ * or "disabled" is an error, never taken to mean either.
+ */
+export function sipEnabled(probe: {
+  readonly error?: Error | undefined;
+  readonly status: number | null;
+  readonly stdout: string | null;
+}): boolean {
+  if (probe.error !== undefined) throw new Error(`csrutil could not run: ${probe.error.message}`);
+  const answer = /^System Integrity Protection status: (enabled|disabled)\.$/m.exec(
+    probe.stdout ?? "",
+  );
+  if (probe.status !== 0 || answer === null) {
+    throw new Error(
+      `csrutil status exited ${probe.status} saying ${JSON.stringify(probe.stdout ?? "")}, so whether entitlements are enforced is unknown`,
+    );
+  }
+  return answer[1] === "enabled";
+}
+
 /** The entitlement keys a property list grants, in order. */
 export function entitlementKeys(plist: string): string[] {
   return [...plist.matchAll(/<key>([^<]+)<\/key>\s*<true\/>/g)].map(([, key = ""]) => key);

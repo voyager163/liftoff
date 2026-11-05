@@ -12,6 +12,7 @@ import {
   notarizationProblems,
   SIGNING_SECRETS,
   signingSecrets,
+  sipEnabled,
 } from "../../scripts/package/macos-signing.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
@@ -125,6 +126,44 @@ describe("DIST-005 the macOS bundle is signed and notarized", () => {
       "notarization ended without a status:",
       "the notary log says nothing",
     ]);
+  });
+
+  it("shows each entitlement is needed only where SIP is known to be on, and never guesses", () => {
+    const said = (stdout: string, status = 0) => ({ status, stdout });
+    expect(sipEnabled(said("System Integrity Protection status: enabled.\n"))).toBe(true);
+    expect(sipEnabled(said("System Integrity Protection status: disabled.\n"))).toBe(false);
+    expect(() =>
+      sipEnabled({ error: new Error("spawnSync csrutil ENOENT"), status: null, stdout: null }),
+    ).toThrow("csrutil could not run: spawnSync csrutil ENOENT");
+    expect(() => sipEnabled(said("System Integrity Protection status: enabled.\n", 1))).toThrow(
+      "is unknown",
+    );
+    expect(() =>
+      sipEnabled(said("System Integrity Protection status: unknown (Custom Configuration).\n")),
+    ).toThrow("is unknown");
+    expect(() => sipEnabled(said(""))).toThrow("is unknown");
+  });
+
+  it("removes the keychain and keys even when the signing job is cancelled", () => {
+    const text = readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8");
+    const steps =
+      (
+        parse(text) as {
+          jobs: Record<string, { steps: { name?: string; if?: string; run?: string }[] }>;
+        }
+      ).jobs.bundle?.steps ?? [];
+    const names = steps.map((step) => step.name);
+    const cleanup = steps.find((step) => step.name === "Remove the signing keychain and keys");
+    expect(cleanup?.if).toBe("always() && runner.os == 'macOS'");
+    expect(cleanup?.run).toBe("node scripts/package/sign-macos.ts --cleanup");
+    expect(names.indexOf("Remove the signing keychain and keys")).toBe(
+      names.indexOf("Sign and notarize the macOS bundle") + 1,
+    );
+    // What cleanup undoes is recorded before any secret is written.
+    const script = readFileSync(path.join(root, "scripts/package/sign-macos.ts"), "utf8");
+    expect(script.indexOf('"cleanup.json"), JSON.stringify')).toBeLessThan(
+      script.indexOf("writeFileSync(certificate"),
+    );
   });
 
   it("grants the executable allow-jit and nothing more", () => {

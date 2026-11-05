@@ -131,6 +131,10 @@ jobs:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
         run: node scripts/package/sign-macos.ts "out/$BUNDLE"
+      # A cancelled job skips the script's own cleanup; this step runs anyway.
+      - name: Remove the signing keychain and keys
+        if: always() && runner.os == 'macOS'
+        run: node scripts/package/sign-macos.ts --cleanup
       # Windows signing (DIST-006) goes here, before the archive is made.
       - name: Archive the bundle
         working-directory: out

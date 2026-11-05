@@ -1,6 +1,7 @@
 // Signs and notarizes a macOS bundle from build-bundle.ts (DIST-005):
 //
 //   node scripts/package/sign-macos.ts <bundle directory>
+//   node scripts/package/sign-macos.ts --cleanup
 //
 // The Release workflow runs it with the release environment's signing
 // secrets (SIGNING_SECRETS in macos-signing.ts). With none of them set the
@@ -14,9 +15,22 @@
 // must accept it with no issue. A bare executable cannot be stapled, so
 // Gatekeeper looks the ticket up online. Only then does release.json name
 // the signer.
+//
+// Before any secret is written, the work directory records the keychain and
+// the search list it replaces. A cancelled job never reaches this script's
+// own cleanup, so the workflow runs --cleanup afterwards whatever happened,
+// which undoes whatever that record names.
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -43,6 +57,51 @@ const tool = (step: string, command: string, args: string[]): string => {
   }
 };
 
+// On a runner the work directory has a fixed name, so --cleanup finds it.
+const workFor = () =>
+  process.env.RUNNER_TEMP === undefined
+    ? mkdtempSync(path.join(tmpdir(), "liftoff-sign-"))
+    : path.join(process.env.RUNNER_TEMP, "liftoff-sign");
+
+/** Restores the search list, deletes the keychain and every secret's file. */
+const cleanUp = (work: string) => {
+  const record = path.join(work, "cleanup.json");
+  if (existsSync(record)) {
+    const { keychain, searchList } = JSON.parse(readFileSync(record, "utf8")) as {
+      keychain: string;
+      searchList: string[];
+    };
+    // Each step whatever the one before did.
+    const attempt = (step: () => unknown) => {
+      try {
+        step();
+      } catch (error) {
+        console.error((error as Error).message);
+      }
+    };
+    attempt(() =>
+      tool("Restoring the keychain search list", "security", [
+        "list-keychains",
+        "-d",
+        "user",
+        "-s",
+        ...searchList,
+      ]),
+    );
+    if (existsSync(keychain)) {
+      attempt(() => tool("Deleting the keychain", "security", ["delete-keychain", keychain]));
+    }
+  }
+  rmSync(work, { recursive: true, force: true });
+};
+
+if (process.argv[2] === "--cleanup") {
+  if (process.env.RUNNER_TEMP === undefined) throw new Error("--cleanup needs RUNNER_TEMP");
+  cleanUp(workFor());
+  console.log("nothing of the signing secrets is left on this runner");
+  process.exit(0);
+}
+
 const bundle = path.resolve(process.argv[2] ?? "");
 const identityFile = path.join(bundle, "release.json");
 const identity = JSON.parse(readFileSync(identityFile, "utf8")) as {
@@ -60,7 +119,10 @@ if (secrets === null) {
   process.exit(0);
 }
 
-const work = mkdtempSync(path.join(process.env.RUNNER_TEMP ?? tmpdir(), "liftoff-sign-"));
+const work = workFor();
+// What an earlier run left, then a directory only this user can read.
+cleanUp(work);
+mkdirSync(work, { recursive: true, mode: 0o700 });
 chmodSync(work, 0o700);
 const keychain = path.join(work, "signing.keychain-db");
 const certificate = path.join(work, "certificate.p12");
@@ -73,6 +135,9 @@ const searchList = tool("Reading the keychain search list", "security", [
   .split("\n")
   .map((line) => line.trim().replace(/^"|"$/g, ""))
   .filter(Boolean);
+writeFileSync(path.join(work, "cleanup.json"), JSON.stringify({ keychain, searchList }), {
+  mode: 0o600,
+});
 try {
   writeFileSync(certificate, Buffer.from(secrets.MACOS_CERTIFICATE_P12, "base64"), { mode: 0o600 });
   writeFileSync(notaryKey, secrets.APPLE_NOTARY_KEY_P8, { mode: 0o600 });
@@ -199,24 +264,5 @@ try {
   );
   console.log(`${path.basename(bundle)} is signed by ${signer.name}`);
 } finally {
-  // The search list as it was, and nothing of the secrets left behind,
-  // whichever step failed.
-  const attempt = (step: () => unknown) => {
-    try {
-      step();
-    } catch (error) {
-      console.error((error as Error).message);
-    }
-  };
-  attempt(() =>
-    tool("Restoring the keychain search list", "security", [
-      "list-keychains",
-      "-d",
-      "user",
-      "-s",
-      ...searchList,
-    ]),
-  );
-  attempt(() => tool("Deleting the keychain", "security", ["delete-keychain", keychain]));
-  rmSync(work, { recursive: true, force: true });
+  cleanUp(work);
 }

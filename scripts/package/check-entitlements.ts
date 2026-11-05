@@ -17,7 +17,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { entitlementKeys, entitlementsPlist, machOFiles } from "./macos-signing.ts";
+import { entitlementKeys, entitlementsPlist, machOFiles, sipEnabled } from "./macos-signing.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const bundle = path.resolve(process.argv[2] ?? "");
@@ -49,9 +49,7 @@ const signWith = (keys: readonly string[]) => {
 const starts = () =>
   spawnSync(executable, ["--version"], { cwd: work, encoding: "utf8", timeout: 60_000 });
 
-const enforced = /System Integrity Protection status: enabled\./.test(
-  spawnSync("csrutil", ["status"], { encoding: "utf8" }).stdout ?? "",
-);
+const enforced = sipEnabled(spawnSync("csrutil", ["status"], { encoding: "utf8" }));
 if (!enforced) {
   console.log(
     "::notice::System Integrity Protection is off here, so the hardened runtime is not enforced and entitlements cannot be shown to be needed; run this on a Mac with it on",
