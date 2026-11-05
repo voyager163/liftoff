@@ -113,14 +113,19 @@ describe("PROJ-004 deterministic, collision-free generation", () => {
   });
 
   it("reads only templates that Git tracks", () => {
-    // A template file that .gitignore matches works locally but is missing
-    // from every checkout and release.
-    const ignored = execFileSync(
-      "git",
-      ["ls-files", "--others", "--ignored", "--exclude-standard", "--", "assets"],
-      { cwd: repoRoot, encoding: "utf8" },
-    );
-    expect(ignored.split("\n").filter(Boolean)).toEqual([]);
+    // A template file Git does not track, ignored or not, works locally but
+    // is missing from every checkout and release. Templates keep their
+    // .gitignore as _gitignore (DIST-001), so a .venv or dist/ left in one is
+    // untracked rather than ignored, and both are caught.
+    const others = (...flags: string[]) =>
+      execFileSync("git", ["ls-files", "--others", ...flags, "--", "assets"], {
+        cwd: repoRoot,
+        encoding: "utf8",
+      })
+        .split("\n")
+        .filter(Boolean);
+    expect(others("--ignored", "--exclude-standard")).toEqual([]);
+    expect(others("--exclude-standard")).toEqual([]);
   });
 
   it("generates the same bytes twice", async () => {
