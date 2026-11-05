@@ -13,8 +13,10 @@ export interface ReleaseIdentity {
   readonly signed: { readonly macos: string | null; readonly windows: string | null };
 }
 
+/** The identity of a bundle built from `commit`, which is named, never read from HEAD again. */
 export function releaseIdentity(
   root: string,
+  commit: string,
   build: { version: string; target: string; node: string },
 ): ReleaseIdentity {
   const git = (...args: string[]) =>
@@ -22,8 +24,8 @@ export function releaseIdentity(
   return {
     schema: "liftoff.release/v1",
     ...build,
-    commit: git("rev-parse", "HEAD"),
-    tree: git("rev-parse", "HEAD^{tree}"),
+    commit: git("rev-parse", "--verify", `${commit}^{commit}`),
+    tree: git("rev-parse", "--verify", `${commit}^{tree}`),
     // Signing fills these in.
     signed: { macos: null, windows: null },
   };

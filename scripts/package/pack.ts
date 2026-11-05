@@ -22,7 +22,15 @@
 // --dry-run skips compiling and writing the tarball and checks only the
 // tracked files; --root packs another checkout (tests).
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { npm } from "./npm.ts";
 
@@ -33,89 +41,98 @@ const root =
     : path.resolve(process.argv[rootFlag + 1] ?? "");
 const dryRun = process.argv.includes("--dry-run");
 const out = path.join(root, "out");
-const stage = path.join(out, ".pack-work");
 const SHIPPED = ["assets", ".github/liftoff"];
 const ALWAYS = ["package.json", "LICENSE", "README.md"];
 // What the build reads, besides package.json.
 const BUILD = ["src", "tsconfig.json", "tsconfig.build.json"];
 const TSC = path.resolve(import.meta.dirname, "../../node_modules/typescript/bin/tsc");
 
-const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+// Files as committed, whatever the host's line-ending settings.
+const git = (...args: string[]) =>
+  execFileSync("git", ["-c", "core.autocrlf=false", ...args], { cwd: root, encoding: "utf8" });
 
-const commit = git("rev-parse", "HEAD").trim();
-const tracked = git("ls-tree", "-r", "-z", "--name-only", "HEAD", "--", ...SHIPPED)
+// Every later read names this commit, never HEAD, which can move meanwhile.
+const commit = git("rev-parse", "--verify", "HEAD^{commit}").trim();
+const tracked = git("ls-tree", "-r", "-z", "--name-only", commit, "--", ...SHIPPED)
   .split("\0")
   .filter(Boolean);
 
-rmSync(stage, { recursive: true, force: true });
-mkdirSync(stage, { recursive: true });
-// Extracted from inside the stage by bare name: Git for Windows' tar would
-// take a drive letter for a remote host.
-git(
-  "archive",
-  "--format=tar",
-  "-o",
-  path.join(stage, "source.tar"),
-  "HEAD",
-  "--",
-  ...ALWAYS,
-  ...SHIPPED,
-  ...(dryRun ? [] : BUILD),
-);
-execFileSync("tar", ["-xf", "source.tar"], { cwd: stage });
-rmSync(path.join(stage, "source.tar"));
-// Compiled in the stage, from the commit's sources only, with this
-// repository's TypeScript.
-if (!dryRun) {
-  execFileSync(process.execPath, [TSC, "-p", path.join(stage, "tsconfig.build.json")], {
-    cwd: stage,
-    stdio: "inherit",
-  });
-}
-const built = dryRun
-  ? []
-  : readdirSync(path.join(stage, "dist"), { recursive: true, withFileTypes: true })
-      .filter((entry) => entry.isFile())
-      .map((entry) =>
-        path.relative(stage, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"),
-      );
-const manifest = JSON.parse(readFileSync(path.join(stage, "package.json"), "utf8")) as {
-  version: string;
-};
-writeFileSync(
-  path.join(stage, "package.json"),
-  `${JSON.stringify({ ...manifest, gitHead: commit }, null, 2)}\n`,
-);
-
+// A stage of its own, under out/ so the compiler finds this repository's
+// type packages, so packs running at once never share or remove each
+// other's files. The tarball is written there too and moved into out/ only
+// once checked.
 mkdirSync(out, { recursive: true });
-const report = JSON.parse(
-  npm(
-    [
-      "pack",
-      "--json",
-      "--ignore-scripts",
-      "--pack-destination",
-      out,
-      ...(dryRun ? ["--dry-run"] : []),
-    ],
-    stage,
-  ),
-) as { filename: string; files: { path: string }[] }[];
-const [packed] = report;
-if (packed === undefined) throw new Error("npm pack reported no package");
-const inPackage = new Set(packed.files.map((file) => file.path));
-const expected = new Set([...ALWAYS, ...tracked, ...built]);
-const missing = [...expected].filter((file) => !inPackage.has(file));
-const extra = [...inPackage].filter((file) => !expected.has(file));
-rmSync(stage, { recursive: true, force: true });
-if (missing.length > 0 || extra.length > 0) {
-  for (const file of missing) console.error(`left out of the package: ${file}`);
-  for (const file of extra) console.error(`not meant to be in the package: ${file}`);
-  if (!dryRun) rmSync(path.join(out, packed.filename), { force: true });
-  process.exit(1);
+const stage = mkdtempSync(path.join(out, ".pack-"));
+try {
+  // Extracted from inside the stage by bare name: Git for Windows' tar would
+  // take a drive letter for a remote host.
+  git(
+    "archive",
+    "--format=tar",
+    "-o",
+    path.join(stage, "source.tar"),
+    commit,
+    "--",
+    ...ALWAYS,
+    ...SHIPPED,
+    ...(dryRun ? [] : BUILD),
+  );
+  execFileSync("tar", ["-xf", "source.tar"], { cwd: stage });
+  rmSync(path.join(stage, "source.tar"));
+  // Compiled in the stage, from the commit's sources only, with this
+  // repository's TypeScript.
+  if (!dryRun) {
+    execFileSync(process.execPath, [TSC, "-p", path.join(stage, "tsconfig.build.json")], {
+      cwd: stage,
+      stdio: "inherit",
+    });
+  }
+  const built = dryRun
+    ? []
+    : readdirSync(path.join(stage, "dist"), { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) =>
+          path.relative(stage, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"),
+        );
+  const manifest = JSON.parse(readFileSync(path.join(stage, "package.json"), "utf8")) as {
+    version: string;
+  };
+  writeFileSync(
+    path.join(stage, "package.json"),
+    `${JSON.stringify({ ...manifest, gitHead: commit }, null, 2)}\n`,
+  );
+
+  const report = JSON.parse(
+    npm(
+      [
+        "pack",
+        "--json",
+        "--ignore-scripts",
+        "--pack-destination",
+        stage,
+        ...(dryRun ? ["--dry-run"] : []),
+      ],
+      stage,
+    ),
+  ) as { filename: string; files: { path: string }[] }[];
+  const [packed] = report;
+  if (packed === undefined) throw new Error("npm pack reported no package");
+  const inPackage = new Set(packed.files.map((file) => file.path));
+  const expected = new Set([...ALWAYS, ...tracked, ...built]);
+  const missing = [...expected].filter((file) => !inPackage.has(file));
+  const extra = [...inPackage].filter((file) => !expected.has(file));
+  if (missing.length > 0 || extra.length > 0) {
+    for (const file of missing) console.error(`left out of the package: ${file}`);
+    for (const file of extra) console.error(`not meant to be in the package: ${file}`);
+    process.exitCode = 1;
+  } else {
+    if (!dryRun) renameSync(path.join(stage, packed.filename), path.join(out, packed.filename));
+    console.log(
+      dryRun
+        ? `${inPackage.size} files would be packed for version ${manifest.version}`
+        : `packed ${path.relative(root, path.join(out, packed.filename))} (${inPackage.size} files)`,
+    );
+  }
+} finally {
+  rmSync(stage, { recursive: true, force: true });
 }
-console.log(
-  dryRun
-    ? `${inPackage.size} files would be packed for version ${manifest.version}`
-    : `packed ${path.relative(root, path.join(out, packed.filename))} (${inPackage.size} files)`,
-);

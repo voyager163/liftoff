@@ -50,7 +50,12 @@ mkdirSync(app, { recursive: true });
 mkdirSync(work, { recursive: true });
 
 // Everything the bundle takes from the checkout is read from its commit.
-const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+// The commit is read once; everything after names it, so a commit made
+// while the bundle builds changes nothing in it.
+const head = execFileSync("git", ["rev-parse", "--verify", "HEAD^{commit}"], {
+  cwd: root,
+  encoding: "utf8",
+}).trim();
 const committed = (file: string): string =>
   execFileSync("git", ["show", `${head}:${file}`], { cwd: root, encoding: "utf8" });
 const source = JSON.parse(committed("package.json")) as {
@@ -136,7 +141,7 @@ cpSync(nodeLicense, path.join(out, "share", "licenses", "node-LICENSE"));
 
 writeFileSync(
   path.join(out, "release.json"),
-  `${JSON.stringify(releaseIdentity(root, { version, target, node: nodeVersion }), null, 2)}\n`,
+  `${JSON.stringify(releaseIdentity(root, head, { version, target, node: nodeVersion }), null, 2)}\n`,
 );
 rmSync(work, { recursive: true, force: true });
 console.log(`built ${path.relative(root, out)}`);
