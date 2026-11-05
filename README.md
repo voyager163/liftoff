@@ -9,7 +9,7 @@ adopts and maintains governed API and GenAI projects.
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/),
+Free code signing provided by [SignPath.io](https://signpath.io/),
 certificate by [SignPath Foundation](https://signpath.org/).
 
 Windows releases are signed through SignPath Foundation, and macOS releases
