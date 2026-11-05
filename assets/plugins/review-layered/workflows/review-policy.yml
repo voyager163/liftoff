@@ -42,6 +42,9 @@ jobs:
       - name: Check out the base branch's policy and check only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # A merge queue's default is its merge commit, which holds the
+          # queued change; the base it merges into is what is trusted.
+          ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           persist-credentials: false
           sparse-checkout: |
             .github/review-policy.yml
