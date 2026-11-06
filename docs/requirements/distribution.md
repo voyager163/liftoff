@@ -199,6 +199,73 @@ the verify job installs it from the draft, runs Liftoff, and uninstalls it.
 
 Verification: test
 
+## CHAN-001 Mac users install the signed bundle with a Homebrew cask
+
+Until Liftoff is accepted into Homebrew itself, the cask `liftoff` in the
+tap `voyager163/homebrew-tap` installs the macOS bundle from the GitHub
+release, `liftoff-package-aarch64-apple-darwin.tar.gz`, at the checksum the
+release's attested `SHA256SUMS` lists, and links its `bin/liftoff`. It needs
+Apple Silicon and macOS 15 (Sequoia) or later, finds new versions from the
+latest GitHub release, and has no preflight or postflight steps. This tap is
+Liftoff's own distribution, not inclusion in Homebrew. Liftoff keeps nothing
+of its own outside the Caskroom, so the cask has nothing to zap.
+`distribution/homebrew/liftoff.rb` is its source; `scripts/release/homebrew.ts`
+fills in the version and checksum.
+
+- Given the cask rendered for a release, when `brew style` and
+  `brew audit --strict` check it in a tap, then they find nothing.
+- Given the cask and this commit's bundle, when it is installed from a local
+  tap, then `liftoff` on Homebrew's `PATH` is this version, generates and
+  validates a project, and `liftoff upgrade --verify` verifies the cask's
+  record and `PATH`, whether or not GitHub has a newer release; when it is
+  uninstalled, nothing of it is left on that `PATH`.
+
+The `homebrew` job in CI shows this on macOS.
+
+Verification: test
+
+## CHAN-002 A formula for homebrew/core is ready to submit
+
+Homebrew's policy is that an open-source command-line tool belongs in
+homebrew/core as a formula built from source, so the official submission is a
+formula: `distribution/homebrew/core/liftoff.rb` installs the npm package
+`@voyager163/liftoff` from the npm registry, at the checksum of the release's
+own tarball, with Homebrew's Node. Its test runs `--version`, `init` and
+`validate`. A person submits it, and answers Homebrew's maintainers, once the
+repository meets Homebrew's eligibility rules, disclosing the AI assistance
+and adding no AI trailers. After it is accepted, Homebrew's own tools may
+change it; nothing in Liftoff depends on its exact text.
+
+- Given the formula rendered for a release, when `brew style` and
+  `brew audit --strict` check it in a tap, then they find nothing.
+- Given the formula and this commit's npm package, when it is built from
+  source in a local tap, then `brew test` passes, `liftoff upgrade --verify`
+  reports the formula, and uninstalling it leaves nothing on `PATH`.
+
+Verification: test
+
+## CHAN-003 A stable release updates the tap through a reviewed pull request
+
+After a stable release is published, the Promote workflow opens a pull
+request on `voyager163/homebrew-tap` that changes only the cask's `version`
+and `sha256` lines, to the release's version and the macOS bundle's checksum
+it has just verified. Whatever else the tap's maintainers or Homebrew's tools
+changed in the cask stays. It runs as a job of its own in the `release`
+environment, so it is approved apart from the release, and only that job has
+the tap's token, `HOMEBREW_TAP_TOKEN`. Without the token it fails and says so,
+after the release itself is published; running Promote again finishes it.
+Prereleases never reach the tap.
+
+- Given a cask at an older version, when the tap is updated, then only its
+  version and checksum lines change.
+- Given a tap that already has the version with the same checksum, when it is
+  updated again, then nothing changes; with another checksum, or a newer
+  version, the update fails.
+- Given a tap without the cask, when it is updated, then the pull request
+  adds the cask rendered from Liftoff's source.
+
+Verification: test
+
 ## UPGRADE-001 Liftoff knows which channel installed it from that channel's own records
 
 `liftoff upgrade` finds the running copy, with every link followed, and asks
