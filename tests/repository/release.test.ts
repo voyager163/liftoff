@@ -352,7 +352,6 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
       contents: "write",
       attestations: "read",
       actions: "read",
-      "id-token": "write",
     });
   });
 
@@ -391,32 +390,13 @@ describe("DIST-004 promotion publishes the verified assets without rebuilding", 
     expect(new Set(groups).size).toBe(2);
   });
 
-  it("publishes to npm only a stable release, as the release's own tarball", () => {
-    const step = (name: string) => publish.steps.find((each) => each.name === name);
-    const npm = step("Publish the package to npm");
-    expect(npm?.if).toBe("inputs.stable && env.NPM_PUBLISHED == 'false'");
-    expect(npm?.run).toBe(
-      'npm publish "./voyager163-liftoff-$VERSION.tgz" --access public --tag latest --provenance',
-    );
-    expect(step("Check npm can take this release")?.run).toContain(
-      "npm has $VERSION with a different tarball",
-    );
-    expect(step("Check npm can take this release")?.run).toContain(
-      "npm had $VERSION once and will never take it again",
-    );
-  });
-
-  it("finds an npm conflict before the GitHub release is public", () => {
-    const names = publish.steps.map((each) => each.name ?? each.uses ?? "");
-    expect(names.indexOf("Check npm can take this release")).toBeGreaterThan(
-      names.indexOf("Check the release may be published as asked"),
-    );
-    expect(names.indexOf("Check npm can take this release")).toBeLessThan(
-      names.indexOf("Publish the GitHub release"),
-    );
-    expect(names.indexOf("Publish the GitHub release")).toBeLessThan(
-      names.indexOf("Publish the package to npm"),
-    );
+  it("publishes nothing to npm, which is not one of Liftoff's channels", () => {
+    expect(text).not.toMatch(/npm (publish|view)|registry\.npmjs\.org|id-token/);
+    const pkg = JSON.parse(
+      readFileSync(path.resolve(import.meta.dirname, "../../package.json"), "utf8"),
+    ) as { private?: boolean; publishConfig?: unknown };
+    expect(pkg.private).toBe(true);
+    expect(pkg.publishConfig).toBeUndefined();
   });
 
   it("builds and packs nothing", () => {

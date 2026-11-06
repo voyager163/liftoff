@@ -83,25 +83,16 @@ const verified = (
     }),
   );
 
-// A global npm install under the Node at /usr/local/bin/node.
+// A global npm install, which is not a channel Liftoff supports.
 const NODE = "/usr/local/bin/node";
-const NPM_CLI = "/usr/local/lib/node_modules/npm/bin/npm-cli.js";
 const NPM_APP = "/Users/p/.npm-global/lib/node_modules/@voyager163/liftoff";
-const npm = (root = "/Users/p/.npm-global/lib/node_modules", listed = "0.1.0") => {
+const npm = () => {
   const install = new FakeInstall({
     platform: "darwin",
     app: NPM_APP,
     executable: NODE,
-    files: { [NPM_CLI]: "", [NPM_APP]: "" },
-    links: {},
+    files: { [NPM_APP]: "" },
     env: { PATH: "/Users/p/.npm-global/bin:/usr/bin" },
-    answers: {
-      [`${NODE} ${NPM_CLI} root --global`]: printed(`${root}\n`),
-      [`${NODE} ${NPM_CLI} ls --global --json --depth=0`]: printed(
-        JSON.stringify({ dependencies: { "@voyager163/liftoff": { version: listed } } }),
-      ),
-      [`${NODE} ${NPM_CLI} view @voyager163/liftoff version --json`]: printed('"0.2.0"'),
-    },
   });
   install.latest = LATEST;
   return install;
@@ -264,18 +255,12 @@ describe("UPGRADE-001 Liftoff knows which channel installed it from that channel
     expect(failed.report.installed.reason).toMatch(/Windows Installer could not be asked/);
   });
 
-  it("reports a global npm install, and not a package in another node_modules", async () => {
-    const global = await exec(npm(), ["upgrade", "--check"]);
-    expect(global.report.installed).toMatchObject({
-      channel: "npm",
-      location: NPM_APP,
-      recorded: "0.1.0",
-      offered: "0.2.0",
-    });
-    const local = await exec(npm("/Users/p/project/node_modules"), ["upgrade", "--check"]);
-    expect(local.report.installed.channel).toBe("unknown");
-    const noNpm = new FakeInstall({ platform: "darwin", app: NPM_APP, executable: NODE });
-    expect((await exec(noNpm, ["upgrade", "--check"])).report.installed.channel).toBe("unknown");
+  it("reports a global npm install as no channel's, and asks npm nothing", async () => {
+    const install = npm();
+    const { report } = await exec(install, ["upgrade", "--check"]);
+    expect(report.installed).toMatchObject({ channel: "unknown", location: NPM_APP });
+    expect(report.installed.reason).toContain("an npm install");
+    expect(install.queries).toEqual([]);
   });
 
   it("reports a checkout and a macOS archive by where they are", async () => {
@@ -345,19 +330,19 @@ describe("UPGRADE-002 What is released is reported apart from what the channel o
   });
 
   it("fails when the channel cannot say what it offers, rather than calling it current", async () => {
-    const VIEW = `${NODE} ${NPM_CLI} view @voyager163/liftoff version --json`;
-    const refused = npm();
-    refused.answers[VIEW] = { exitCode: 1, stdout: "", stderr: "npm error code E404\n" };
+    const refused = msi({
+      [WINGET_LIST]: printed("winget"),
+      [WINGET_SHOW]: { exitCode: 1, stdout: "", stderr: "No package found\r\n" },
+    });
     const shown = await text(refused, ["upgrade", "--check"]);
     expect(shown.code).toBe(1);
     expect(shown.out).toContain(
-      "npm could not say which version it offers: npm view exited 1: npm error code E404.",
+      "WinGet could not say which version it offers: winget show --versions exited 1: No package found.",
     );
-    const timedOut = npm();
-    timedOut.answers[VIEW] = undefined;
+    const timedOut = msi({ [WINGET_LIST]: printed("winget"), [WINGET_SHOW]: undefined });
     const { code, report } = await exec(timedOut, ["upgrade", "--check"]);
     expect(code).toBe(1);
-    expect(report.installed.offerProblem).toBe("npm view could not run");
+    expect(report.installed.offerProblem).toBe("winget show --versions could not run");
     const quietWinget = msi({ [WINGET_LIST]: printed("winget"), [WINGET_SHOW]: printed("", 1) });
     expect((await exec(quietWinget, ["upgrade", "--yes"])).code).toBe(1);
     expect(quietWinget.handedOff).toEqual([]);
@@ -396,19 +381,10 @@ describe("UPGRADE-003 Only the owning channel upgrades Liftoff, and only when as
     expect(brew.delegated).toEqual([
       { command: BREW, args: ["upgrade", "--cask", "voyager163/tap/liftoff"] },
     ]);
-    const viaNpm = npm();
-    await exec(viaNpm, ["upgrade", "--yes"]);
-    expect(viaNpm.delegated).toEqual([
-      {
-        command: NODE,
-        args: [NPM_CLI, "install", "--global", "@voyager163/liftoff@0.2.0"],
-        pathFirst: ["/usr/local/bin"],
-      },
-    ]);
   });
 
   it("changes nothing for a copy no channel can upgrade", async () => {
-    for (const install of [msi(), npm("/elsewhere")]) {
+    for (const install of [msi(), npm()]) {
       const { code, report } = await exec(install, ["upgrade", "--yes"]);
       expect(code).toBe(0);
       expect(report.upgraded).toBe(false);
@@ -463,7 +439,7 @@ describe("UPGRADE-004 An upgrade is verified, and WinGet's is handed over", () =
     // Nor does another channel's copy that verified itself.
     const other = await exec(
       cask({
-        [VERIFIED]: verified("success", "0.2.0", { channel: "npm", name: "@voyager163/liftoff" }),
+        [VERIFIED]: verified("success", "0.2.0", { channel: "homebrew-formula", name: "liftoff" }),
       }),
       ["upgrade", "--yes"],
     );
@@ -502,44 +478,13 @@ describe("UPGRADE-004 An upgrade is verified, and WinGet's is handed over", () =
   });
 
   it("asks for an upgrade when the verified copy is older than the latest release", async () => {
-    const install = npm();
+    const install = cask();
+    install.env.PATH = "/opt/homebrew/bin:/usr/bin";
     const { code, report } = await exec(install, ["upgrade", "--verify"]);
     expect(report.verified).toBe(false);
     expect(code).toBe(1);
-    install.links["/Users/p/.npm-global/bin/liftoff"] = `${NPM_APP}/dist/cli/main.js`;
+    install.links["/opt/homebrew/bin/liftoff"] = `${CASK_BUNDLE}/bin/liftoff`;
     expect((await exec(install, ["upgrade", "--verify"])).code).toBe(3);
-  });
-
-  it("accepts npm's own launcher in a Windows prefix, and nothing else there", async () => {
-    const node = "C:\\node\\node.exe";
-    const cli = "C:\\node\\node_modules\\npm\\bin\\npm-cli.js";
-    const prefix = "C:\\tools";
-    const app = `${prefix}\\node_modules\\@voyager163\\liftoff`;
-    const windowsNpm = (pathEntry: string) =>
-      new FakeInstall({
-        platform: "win32",
-        app,
-        executable: node,
-        env: { Path: pathEntry, PATHEXT: ".EXE;.CMD" },
-        files: {
-          [cli]: "",
-          [app]: "",
-          [prefix]: "",
-          [`${prefix}\\liftoff.cmd`]: "",
-          [`${prefix}\\old\\bin\\liftoff.exe`]: "",
-        },
-        answers: {
-          [`${node} ${cli} root --global`]: printed(`${prefix}\\node_modules\r\n`),
-          [`${node} ${cli} ls --global --json --depth=0`]: printed(
-            JSON.stringify({ dependencies: { "@voyager163/liftoff": { version: "0.1.0" } } }),
-          ),
-          [`${node} ${cli} view @voyager163/liftoff version --json`]: printed('"0.1.0"'),
-        },
-      });
-    expect((await exec(windowsNpm(prefix), ["upgrade", "--verify"])).code).toBe(0);
-    const archive = await exec(windowsNpm(`${prefix}\\old\\bin`), ["upgrade", "--verify"]);
-    expect(archive.code).toBe(1);
-    expect(archive.report.checks[1].ok).toBe(false);
   });
 
   it("checks the version Homebrew links, not the one it is run from", async () => {

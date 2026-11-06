@@ -1,12 +1,12 @@
 # Publishes a release the Release workflow built and verified, without
 # rebuilding anything (DIST-004): the draft's own assets are checked again,
 # then the GitHub release is published, which creates its tag. A stable
-# release also goes to npm as the very tarball in the release, under
-# "latest"; prereleases stay on GitHub.
+# release then updates the Homebrew tap's cask through a pull request.
 #
 # Only a draft the Release workflow built on main and then verified in the
-# same run is published, and a stable release needs every bundle signed. Running it again finishes a
-# promotion that stopped part way, or makes a published prerelease stable.
+# same run is published, and a stable release needs every bundle signed.
+# Running it again finishes a promotion that stopped part way, or makes a
+# published prerelease stable.
 name: Promote
 
 on:
@@ -17,7 +17,7 @@ on:
         required: true
         type: string
       stable:
-        description: "Publish as the latest stable release, and to npm"
+        description: "Publish as the latest stable release, and update the Homebrew tap"
         required: true
         type: boolean
         default: false
@@ -68,7 +68,6 @@ jobs:
       contents: write
       attestations: read
       actions: read
-      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -76,7 +75,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
-          registry-url: https://registry.npmjs.org
       - name: Download the release's assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -122,38 +120,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release/check-promote.ts "$VERSION" "$STABLE" "$RUNNER_TEMP/assets"
-      # Before anything becomes public: a published release is immutable, so
-      # an npm version that cannot be the release's tarball stops it here.
-      - name: Check npm can take this release
-        if: inputs.stable
-        working-directory: ${{ runner.temp }}/assets
-        run: |
-          tarball="voyager163-liftoff-$VERSION.tgz"
-          # npm never takes a version number again once it was published,
-          # even after it is unpublished, and then views it as missing.
-          if times="$(npm view @voyager163/liftoff time --json 2>"$RUNNER_TEMP/npm-time.log")"; then
-            if node -e 'process.exit(Object.hasOwn(JSON.parse(process.argv[1]), process.argv[2]) ? 0 : 1)' "$times" "$VERSION" \
-              && ! npm view "@voyager163/liftoff@$VERSION" version >/dev/null 2>&1; then
-              echo "::error::npm had $VERSION once and will never take it again; release a new version"
-              exit 1
-            fi
-          elif ! grep -q E404 "$RUNNER_TEMP/npm-time.log"; then
-            cat "$RUNNER_TEMP/npm-time.log"
-            echo "::error::cannot read npm's history of @voyager163/liftoff"
-            exit 1
-          fi
-          if published="$(npm view "@voyager163/liftoff@$VERSION" dist.shasum 2>"$RUNNER_TEMP/npm-view.log")" && [ -n "$published" ]; then
-            ours="$(sha1sum "$tarball" | cut -d' ' -f1)"
-            [ "$published" = "$ours" ] || { echo "::error::npm has $VERSION with a different tarball"; exit 1; }
-            echo "npm already has this tarball as $VERSION (a promotion run again)"
-            echo "NPM_PUBLISHED=true" >> "$GITHUB_ENV"
-          elif [ -z "${published:-}" ] && grep -q E404 "$RUNNER_TEMP/npm-view.log"; then
-            echo "NPM_PUBLISHED=false" >> "$GITHUB_ENV"
-          else
-            cat "$RUNNER_TEMP/npm-view.log"
-            echo "::error::cannot tell whether npm already has $VERSION"
-            exit 1
-          fi
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -163,11 +129,6 @@ jobs:
           else
             gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
           fi
-      - name: Publish the package to npm
-        if: inputs.stable && env.NPM_PUBLISHED == 'false'
-        working-directory: ${{ runner.temp }}/assets
-        # Trusted publishing: npm takes the workflow's OIDC identity, no token.
-        run: npm publish "./voyager163-liftoff-$VERSION.tgz" --access public --tag latest --provenance
 
   # The tap's cask follows each stable release (CHAN-003). A job of its own
   # in the release environment, so the pull request is approved apart from
