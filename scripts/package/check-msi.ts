@@ -50,20 +50,27 @@ const build = (name: string, msiVersion?: string, ...flags: string[]): string =>
   return output;
 };
 let logs = 0;
-/** Runs msiexec quietly and returns its exit code, printing its log when it is not expected. */
-const msiexec = (args: string[], expected: number): void => {
+/**
+ * Runs msiexec quietly and checks its exit code. 1603 is Windows
+ * Installer's generic failure, so an expected failure must also show its
+ * cause: each pattern must match a line of the verbose log.
+ */
+const msiexec = (args: string[], expected: number, ...causes: RegExp[]): void => {
   const log = path.join(work, `msiexec-${++logs}.log`);
   const result = spawnSync("msiexec", [...args, "/qn", "/norestart", "/l*v", log], {
     stdio: "inherit",
   });
-  if (result.status !== expected) {
-    if (existsSync(log)) {
-      // Windows Installer writes its log as UTF-16 or as ANSI.
-      const bytes = readFileSync(log);
-      const text = bytes.includes(0) ? bytes.toString("utf16le") : bytes.toString("latin1");
-      console.log(text.split("\n").slice(-60).join("\n"));
-    }
-    fail(`msiexec ${args.join(" ")} exited ${result.status}, not ${expected}`);
+  // Windows Installer writes its log as UTF-16 or as ANSI.
+  const bytes = existsSync(log) ? readFileSync(log) : Buffer.alloc(0);
+  const text = bytes.includes(0) ? bytes.toString("utf16le") : bytes.toString("latin1");
+  const lines = text.split(/\r?\n/);
+  const missing = causes.filter((cause) => !lines.some((line) => cause.test(line)));
+  if (result.status !== expected || missing.length > 0) {
+    console.log(lines.slice(-60).join("\n"));
+    fail(
+      `msiexec ${args.join(" ")} exited ${result.status}, not ${expected}` +
+        (missing.length > 0 ? `, and its log lacks ${missing.join(", ")}` : ""),
+    );
   }
 };
 
@@ -161,7 +168,7 @@ const ownVersion = /^(\d+\.\d+\.\d+)/.exec(version)?.[1] ?? fail(`${version} has
 
 expectNothingLeft();
 console.log("A per-machine install is refused");
-msiexec(["/i", current, "ALLUSERS=1"], 1603);
+msiexec(["/i", current, "ALLUSERS=1"], 1603, /Liftoff installs for the current user only/);
 expectNothingLeft();
 
 console.log(`Install ${ownVersion} for the user`);
@@ -177,7 +184,14 @@ msiexec(["/i", newer], 0);
 
 console.log("A failed upgrade rolls back to what was installed");
 const before = expectInstalled("255.0.0");
-msiexec(["/i", failing], 1603);
+// The old product was removed and the marker installed, then it failed.
+msiexec(
+  ["/i", failing],
+  1603,
+  /Action start [\d:]+: RemoveExistingProducts\./,
+  /Executing op: FileCopy\(.*failed-upgrade-marker\.json/,
+  /built to fail, for a test/,
+);
 const after = expectInstalled("255.0.0");
 if (after.code !== before.code) fail(`the failed upgrade left ${after.code}, not ${before.code}`);
 if (existsSync(path.join(installed, "failed-upgrade-marker.json"))) {
@@ -185,7 +199,7 @@ if (existsSync(path.join(installed, "failed-upgrade-marker.json"))) {
 }
 
 console.log("An older version is refused");
-msiexec(["/i", current], 1603);
+msiexec(["/i", current], 1603, /A newer version of Liftoff is already installed/);
 expectInstalled("255.0.0");
 
 console.log("Uninstall leaves nothing behind");

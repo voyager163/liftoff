@@ -130,15 +130,22 @@ describe("DIST-006 Windows users install Liftoff with an MSI, for themselves", (
     expect(check?.if).toBe("runner.os == 'Windows'");
     const script = read("scripts/package/check-msi.ts");
     for (const step of [
-      'msiexec(["/i", current, "ALLUSERS=1"], 1603)',
+      'msiexec(["/i", current, "ALLUSERS=1"], 1603, /Liftoff installs for the current user only/)',
       'msiexec(["/i", rebuilt], 0)',
       'msiexec(["/i", newer], 0)',
-      'msiexec(["/i", failing], 1603)',
-      'msiexec(["/i", current], 1603)',
+      'msiexec(["/i", current], 1603, /A newer version of Liftoff is already installed/)',
       'msiexec(["/x", newer], 0)',
     ]) {
       expect(script).toContain(step);
     }
+    // A refusal must show its cause, not just Windows Installer's generic 1603.
+    const failed = /msiexec\(\s*\["\/i", failing\],\s*1603,([\s\S]*?)\);/.exec(script)?.[1] ?? "";
+    expect(failed).toContain("RemoveExistingProducts");
+    expect(failed).toContain("failed-upgrade-marker");
+    expect(failed).toContain("built to fail, for a test");
+    // The messages it looks for are the installer's own.
+    expect(wxs).toContain("Liftoff installs for the current user only");
+    expect(wxs).toContain("A newer version of Liftoff is already installed");
   });
 
   it("ships in every release, attested, and is installed from the draft", () => {
