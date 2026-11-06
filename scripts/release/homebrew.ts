@@ -7,7 +7,7 @@
 // render prints the Ruby, with the release's URL unless one is given (as CI
 // gives a local file). update-tap writes Casks/liftoff.rb in a checkout of
 // the tap and prints whether it changed it.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { compareVersions, parseVersion } from "../../src/domain/install/version.ts";
 
@@ -89,6 +89,15 @@ export function bumpCask(
   };
 }
 
+const readIfThere = (file: string): string | undefined => {
+  try {
+    return readFileSync(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+};
+
 const template = (kind: Kind) => readFileSync(path.join(root, TEMPLATES[kind]), "utf8");
 
 if (import.meta.main) {
@@ -103,9 +112,12 @@ if (import.meta.main) {
     const [version = "", sha256 = "", tap = ""] = args;
     if (tap === "") throw new Error("usage: update-tap <version> <sha256> <tap directory>");
     const file = path.join(tap, "Casks", "liftoff.rb");
-    const next = existsSync(file)
-      ? bumpCask(readFileSync(file, "utf8"), version, sha256)
-      : { text: render(template("cask"), { version, sha256 }), changed: true };
+    // Read once, so what is bumped is what was there.
+    const current = readIfThere(file);
+    const next =
+      current === undefined
+        ? { text: render(template("cask"), { version, sha256 }), changed: true }
+        : bumpCask(current, version, sha256);
     if (next.changed) {
       mkdirSync(path.dirname(file), { recursive: true });
       writeFileSync(file, next.text);
