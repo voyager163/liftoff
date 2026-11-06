@@ -112,7 +112,7 @@ const same = (left: string, right: string) =>
   path.win32.resolve(left).toLowerCase() === path.win32.resolve(right).toLowerCase();
 
 /** Liftoff is installed once, for this user, at that version, and runs from the user's PATH. */
-const expectInstalled = (msiVersion: string) => {
+const expectInstalled = (msiVersion: string): Product => {
   const found = products();
   if (found.length !== 1) fail(`expected one Liftoff product, found ${JSON.stringify(found)}`);
   const [product] = found as [Product];
@@ -140,6 +140,7 @@ const expectInstalled = (msiVersion: string) => {
   if (liftoff("--version").trim() !== version) fail(`liftoff --version is not ${version}`);
   liftoff("init", "--name", "smoke", "--workflow", "manual", "--agents", "claude", "--yes");
   liftoff("validate", "--dir", "smoke");
+  return product;
 };
 const expectNothingLeft = () => {
   if (products().length !== 0) fail(`Liftoff is still installed: ${JSON.stringify(products())}`);
@@ -173,11 +174,15 @@ expectInstalled(ownVersion);
 
 console.log("A newer version upgrades it in place");
 msiexec(["/i", newer], 0);
-expectInstalled("255.0.0");
 
 console.log("A failed upgrade rolls back to what was installed");
+const before = expectInstalled("255.0.0");
 msiexec(["/i", failing], 1603);
-expectInstalled("255.0.0");
+const after = expectInstalled("255.0.0");
+if (after.code !== before.code) fail(`the failed upgrade left ${after.code}, not ${before.code}`);
+if (existsSync(path.join(installed, "failed-upgrade-marker.json"))) {
+  fail("the failed upgrade's files were not rolled back");
+}
 
 console.log("An older version is refused");
 msiexec(["/i", current], 1603);

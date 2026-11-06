@@ -34,13 +34,19 @@
     <?ifdef FailForTest ?>
     <!--
       Only in an MSI that scripts/package/check-msi.ts builds to show that a
-      failed upgrade restores what was installed: it fails at the end of the
-      install, after the old product was removed. No release has it.
+      failed upgrade restores what was installed. InstallExecute first runs
+      everything queued so far, removing the old product and installing the
+      new files, a marker file among them, and the PATH entry; then it fails,
+      before InstallFinalize. No release has it.
     -->
     <CustomAction Id="FailForTest" Error="This Liftoff installer is built to fail, for a test." />
     <InstallExecuteSequence>
+      <InstallExecute Before="FailForTest" />
       <Custom Action="FailForTest" Before="InstallFinalize" />
     </InstallExecuteSequence>
+    <Component Id="FailForTestMarker" Directory="INSTALLFOLDER">
+      <File Id="FailForTestMarker" Source="$(var.BundleDir)\release.json" Name="failed-upgrade-marker.json" />
+    </Component>
     <?endif?>
 
     <Launch
@@ -59,6 +65,9 @@
     <Feature Id="Liftoff" Title="Liftoff">
       <ComponentGroupRef Id="Bundle" />
       <ComponentRef Id="UserPath" />
+      <?ifdef FailForTest ?>
+      <ComponentRef Id="FailForTestMarker" />
+      <?endif?>
     </Feature>
 
     <ComponentGroup Id="Bundle" Directory="INSTALLFOLDER">

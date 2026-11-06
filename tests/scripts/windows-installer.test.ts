@@ -72,9 +72,15 @@ describe("DIST-006 Windows users install Liftoff with an MSI, for themselves", (
   });
 
   it("fails on purpose only in the MSI the install check builds", () => {
-    const guarded = /<\?ifdef FailForTest \?>([\s\S]*?)<\?endif\?>/.exec(wxs)?.[1] ?? "";
+    const block = /<\?ifdef FailForTest \?>[\s\S]*?<\?endif\?>/g;
+    const guarded = (wxs.match(block) ?? []).join("\n");
     expect(guarded).toContain('<CustomAction Id="FailForTest"');
-    expect(wxs.replace(guarded, "")).not.toContain('FailForTest"');
+    // It fails only after the queued changes have been made.
+    expect(guarded).toContain('<InstallExecute Before="FailForTest" />');
+    expect(guarded).toContain('Name="failed-upgrade-marker.json"');
+    expect(guarded).toContain('<ComponentRef Id="FailForTestMarker" />');
+    // Nothing of it outside those blocks, so a release MSI has none of it.
+    expect(wxs.replace(block, "")).not.toContain("FailForTest");
     expect(read(".github/workflows/release.yml")).not.toContain("--fail-for-test");
   });
 
