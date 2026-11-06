@@ -48,6 +48,8 @@ describe("DIST-006 Windows users install Liftoff with an MSI, for themselves", (
     expect(`{${element("Package").UpgradeCode}}`).toBe(UPGRADE_CODE);
     expect(element("Package").ProductCode).toBeUndefined();
     const upgrade = element("MajorUpgrade");
+    // Inside the transaction, so a failed upgrade restores the old product.
+    expect(upgrade.Schedule).toBe("afterInstallInitialize");
     expect(upgrade.AllowSameVersionUpgrades).toBe("yes");
     expect(upgrade.AllowDowngrades).toBeUndefined();
     expect(upgrade.DowngradeErrorMessage).toBeTruthy();
@@ -67,6 +69,13 @@ describe("DIST-006 Windows users install Liftoff with an MSI, for themselves", (
       Id: "ARPINSTALLLOCATION",
       Value: "[INSTALLFOLDER]",
     });
+  });
+
+  it("fails on purpose only in the MSI the install check builds", () => {
+    const guarded = /<\?ifdef FailForTest \?>([\s\S]*?)<\?endif\?>/.exec(wxs)?.[1] ?? "";
+    expect(guarded).toContain('<CustomAction Id="FailForTest"');
+    expect(wxs.replace(guarded, "")).not.toContain('FailForTest"');
+    expect(read(".github/workflows/release.yml")).not.toContain("--fail-for-test");
   });
 
   it("builds with an exactly pinned WiX", () => {
@@ -118,6 +127,7 @@ describe("DIST-006 Windows users install Liftoff with an MSI, for themselves", (
       'msiexec(["/i", current, "ALLUSERS=1"], 1603)',
       'msiexec(["/i", rebuilt], 0)',
       'msiexec(["/i", newer], 0)',
+      'msiexec(["/i", failing], 1603)',
       'msiexec(["/i", current], 1603)',
       'msiexec(["/x", newer], 0)',
     ]) {

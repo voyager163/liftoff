@@ -1,9 +1,10 @@
 // Builds the per-user Windows installer from a Windows bundle (DIST-006):
 //
-//   node scripts/package/build-msi.ts <bundle> [--version X.Y.Z] [--output <msi>]
+//   node scripts/package/build-msi.ts <bundle> [--version X.Y.Z] [--output <msi>] [--fail-for-test]
 //
-// The version is the bundle's own, from its release.json; --version builds
-// another, which only the install checks use. The default output is
+// The version is the bundle's own, from its release.json. Only the install
+// checks use --version, to build another, and --fail-for-test, to build one
+// that fails at the end of installing. The default output is
 // out/liftoff-x86_64-pc-windows-msvc.msi. WiX is the version pinned in
 // .config/dotnet-tools.json; building with it accepts its EULA, whose
 // maintenance fee does not apply to a project with Liftoff's revenue.
@@ -51,6 +52,7 @@ run([
   `Version=${version}`,
   "-d",
   `BundleDir=${bundle}`,
+  ...(rest.includes("--fail-for-test") ? ["-d", "FailForTest=1"] : []),
   "-pdbtype",
   "none",
   "-out",

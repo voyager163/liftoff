@@ -22,11 +22,26 @@
       Every build is a new product with the same UpgradeCode, so installing
       any build replaces the one installed. The same version is allowed, as
       prereleases of one version share an MSI version; an older one is not.
+      The old product is removed inside the install's transaction, so a
+      failed upgrade rolls back to it.
     -->
     <MajorUpgrade
+      Schedule="afterInstallInitialize"
       AllowSameVersionUpgrades="yes"
       DowngradeErrorMessage="A newer version of Liftoff is already installed." />
     <MediaTemplate EmbedCab="yes" />
+
+    <?ifdef FailForTest ?>
+    <!--
+      Only in an MSI that scripts/package/check-msi.ts builds to show that a
+      failed upgrade restores what was installed: it fails at the end of the
+      install, after the old product was removed. No release has it.
+    -->
+    <CustomAction Id="FailForTest" Error="This Liftoff installer is built to fail, for a test." />
+    <InstallExecuteSequence>
+      <Custom Action="FailForTest" Before="InstallFinalize" />
+    </InstallExecuteSequence>
+    <?endif?>
 
     <Launch
       Condition="Installed OR NOT (ALLUSERS = 1)"

@@ -3,8 +3,9 @@
 //
 //   node scripts/package/check-msi.ts <bundle>
 //
-// It builds three MSIs from the bundle: two of its own version (as two
-// prereleases of one version would be) and one newer. It installs, upgrades,
+// It builds four MSIs from the bundle: two of its own version (as two
+// prereleases of one version would be), one newer, and one built to fail at
+// the end of installing. It installs, upgrades, rolls a failed upgrade back,
 // refuses a downgrade and a per-machine install, and uninstalls, checking
 // after each step where Liftoff is, what Windows Installer records, the
 // user's PATH, and that Liftoff runs from it. After uninstalling, nothing of
@@ -32,7 +33,7 @@ const work = mkdtempSync(path.join(process.env.RUNNER_TEMP ?? root, "liftoff-msi
 const fail = (message: string): never => {
   throw new Error(message);
 };
-const build = (name: string, msiVersion?: string): string => {
+const build = (name: string, msiVersion?: string, ...flags: string[]): string => {
   const output = path.join(work, name);
   execFileSync(
     process.execPath,
@@ -42,6 +43,7 @@ const build = (name: string, msiVersion?: string): string => {
       "--output",
       output,
       ...(msiVersion === undefined ? [] : ["--version", msiVersion]),
+      ...flags,
     ],
     { stdio: "inherit" },
   );
@@ -77,7 +79,9 @@ const products = (): Product[] => {
   const script = [
     "$installer = New-Object -ComObject WindowsInstaller.Installer",
     `$codes = @($installer.RelatedProducts('${UPGRADE_CODE}'))`,
-    "ConvertTo-Json -AsArray -InputObject @($codes | ForEach-Object { [pscustomobject]@{",
+    // -InputObject keeps an array of none or one an array; -AsArray would
+    // wrap it in another.
+    "ConvertTo-Json -InputObject @($codes | ForEach-Object { [pscustomobject]@{",
     "  code = $_",
     "  version = $installer.ProductInfo($_, 'VersionString')",
     "  location = $installer.ProductInfo($_, 'InstallLocation')",
@@ -87,7 +91,14 @@ const products = (): Product[] => {
   const output = execFileSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", script], {
     encoding: "utf8",
   });
-  return JSON.parse(output) as Product[];
+  const parsed: unknown = JSON.parse(output);
+  if (
+    !Array.isArray(parsed) ||
+    !parsed.every((entry) => typeof (entry as Partial<Product> | null)?.code === "string")
+  ) {
+    fail(`Windows Installer's products are not a list of products: ${output}`);
+  }
+  return parsed as Product[];
 };
 const userPath = (): string[] => {
   const result = spawnSync("reg", ["query", "HKCU\\Environment", "/v", "Path"], {
@@ -144,6 +155,7 @@ const expectNothingLeft = () => {
 const current = build("current.msi");
 const rebuilt = build("rebuilt.msi");
 const newer = build("newer.msi", "255.0.0");
+const failing = build("failing.msi", "255.0.0", "--fail-for-test");
 const ownVersion = /^(\d+\.\d+\.\d+)/.exec(version)?.[1] ?? fail(`${version} has no X.Y.Z`);
 
 expectNothingLeft();
@@ -161,6 +173,10 @@ expectInstalled(ownVersion);
 
 console.log("A newer version upgrades it in place");
 msiexec(["/i", newer], 0);
+expectInstalled("255.0.0");
+
+console.log("A failed upgrade rolls back to what was installed");
+msiexec(["/i", failing], 1603);
 expectInstalled("255.0.0");
 
 console.log("An older version is refused");
