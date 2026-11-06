@@ -62,6 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: release
+    outputs:
+      cask-sha256: ${{ steps.cask.outputs.sha256 }}
     permissions:
       contents: write
       attestations: read
@@ -111,6 +113,11 @@ jobs:
           done | sed -nE 's#^https://github\.com/[^/]+/[^/]+/actions/runs/([0-9]+)/.*#\1#p' | sort -u)"
           [[ "$runs" =~ ^[0-9]+$ ]] || { echo "::error::the assets do not name one Release run: $runs"; exit 1; }
           echo "RELEASE_RUN=$runs" >> "$GITHUB_ENV"
+      # Checked against SHA256SUMS and its attestation just above.
+      - name: Read the macOS bundle's checksum for the Homebrew cask
+        id: cask
+        working-directory: ${{ runner.temp }}/assets
+        run: echo "sha256=$(sha256sum liftoff-package-aarch64-apple-darwin.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Check the release may be published as asked
         env:
           GH_TOKEN: ${{ github.token }}
@@ -161,3 +168,61 @@ jobs:
         working-directory: ${{ runner.temp }}/assets
         # Trusted publishing: npm takes the workflow's OIDC identity, no token.
         run: npm publish "./voyager163-liftoff-$VERSION.tgz" --access public --tag latest --provenance
+
+  # The tap's cask follows each stable release (CHAN-003). A job of its own
+  # in the release environment, so the pull request is approved apart from
+  # the release, and only it has the tap's token. Run again, it finds the
+  # tap already has the version, or updates the open pull request.
+  tap:
+    name: Open the Homebrew tap pull request
+    needs: publish
+    if: inputs.stable
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+    env:
+      CASK_SHA256: ${{ needs.publish.outputs.cask-sha256 }}
+      TAP_REPOSITORY: voyager163/homebrew-tap
+    steps:
+      - name: Require the tap's token
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          [ -n "$HOMEBREW_TAP_TOKEN" ] || { echo "::error::set HOMEBREW_TAP_TOKEN in the release environment, then run Promote again"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: voyager163/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          persist-credentials: false
+          path: tap
+      - name: Update the cask's version and checksum
+        run: node scripts/release/homebrew.ts update-tap "$VERSION" "$CASK_SHA256" tap
+      - name: Push the change and open the pull request
+        working-directory: tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if git diff --quiet; then
+            echo "the tap already has liftoff $VERSION"
+            exit 0
+          fi
+          branch="liftoff-$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -am "liftoff $VERSION"
+          # git asks gh for the token, which only this step has.
+          gh auth setup-git
+          git push --force origin "$branch"
+          if [ -z "$(gh pr list --repo "$TAP_REPOSITORY" --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --repo "$TAP_REPOSITORY" --head "$branch" --title "liftoff $VERSION" \
+              --body "Liftoff $VERSION, released at https://github.com/$GITHUB_REPOSITORY/releases/tag/v$VERSION. The checksum is the release's attested SHA256SUMS entry."
+          fi
