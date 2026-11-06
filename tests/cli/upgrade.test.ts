@@ -133,7 +133,12 @@ const msi = (answers: Record<string, Answer> = {}, pathEntry = `${MSI_BUNDLE}\\b
       [`${MSI_BUNDLE}\\bin\\liftoff.exe`]: "",
       "C:\\Other\\liftoff.exe": "",
     },
-    answers: { [POWERSHELL]: products(), [WINGET_LIST]: printed("", 1), ...answers },
+    answers: {
+      [POWERSHELL]: products(),
+      // WinGet's "no installed package found", as Windows reports it.
+      [WINGET_LIST]: printed("", 0x8a150014),
+      ...answers,
+    },
   });
   return install;
 };
@@ -201,6 +206,15 @@ describe("UPGRADE-001 Liftoff knows which channel installed it from that channel
       offered: "0.2.0",
     });
     expect(listed.report.command).toEqual([BREW, "upgrade", "liftoff"]);
+    const upgraded = formula("0.1.0_1");
+    await exec(upgraded, ["upgrade", "--yes"]);
+    expect(upgraded.delegated).toEqual([
+      {
+        command: BREW,
+        args: ["upgrade", "liftoff"],
+        env: { HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1" },
+      },
+    ]);
     // Another revision of the same version is another keg.
     const revision = await exec(formula("0.1.0_2"), ["upgrade", "--check"]);
     expect(revision.report.installed.channel).toBe("unknown");
@@ -219,6 +233,20 @@ describe("UPGRADE-001 Liftoff knows which channel installed it from that channel
     const { report, code } = await exec(byWinget, ["upgrade", "--check"]);
     expect(code).toBe(3);
     expect(report.installed).toMatchObject({ channel: "winget", offered: "0.2.0" });
+  });
+
+  it("fails rather than guess when WinGet cannot be asked", async () => {
+    for (const answer of [printed("", 1), undefined]) {
+      const { code, report } = await exec(msi({ [WINGET_LIST]: answer }), ["upgrade", "--check"]);
+      expect(code).toBe(1);
+      expect(report.installed).toMatchObject({ channel: "msi", recorded: "0.1.0" });
+      expect(report.installed.offerProblem).toMatch(/^winget list (exited 1|could not run)/);
+    }
+    const signed = await exec(msi({ [WINGET_LIST]: printed("", 0x8a150014 - 2 ** 32) }), [
+      "upgrade",
+      "--check",
+    ]);
+    expect(signed.code).toBe(0);
   });
 
   it("calls a Windows bundle Windows Installer does not record unpacked by hand", async () => {
@@ -571,6 +599,23 @@ describe("UPGRADE-004 An upgrade is verified, and WinGet's is handed over", () =
     ]);
     expect(install.delegated).toEqual([]);
     expect(shown.out).toContain("run: liftoff upgrade --verify");
+  });
+
+  it("reports a cancel, not a failure, when it is stopped during the upgrade", async () => {
+    const io = captureIo("/work");
+    const install = cask();
+    install.delegate = async () => {
+      io.controller.abort();
+      return null;
+    };
+    const code = await runCli(
+      ["upgrade", "--yes", "--json"],
+      io,
+      [makeUpgradeCommand(() => install)],
+      "0.1.0",
+    );
+    expect(code).toBe(4);
+    expect(io.err.join("")).toContain("stopped while Homebrew was upgrading Liftoff");
   });
 
   it("starts nothing when it is stopped while finding the channel", async () => {

@@ -287,11 +287,12 @@ export interface InstallPorts {
    * Runs a channel's upgrade with what it prints shown on stderr and no
    * input, and returns its exit code; null when it could not run or finish.
    */
-  delegate(
-    command: string,
-    args: readonly string[],
-    pathFirst?: readonly string[],
-  ): Promise<number | null>;
+  delegate(invocation: {
+    readonly command: string;
+    readonly args: readonly string[];
+    readonly pathFirst?: readonly string[];
+    readonly env?: Readonly<Record<string, string>>;
+  }): Promise<number | null>;
   /**
    * Starts a program in its own window and returns without waiting, for an
    * upgrade that must replace this very executable.

@@ -43,6 +43,7 @@ export function windowsStart(
     command: path.win32.join(system, "System32", "cmd.exe"),
     args: [
       "/d",
+      "/v:off",
       "/s",
       "/c",
       `"start "Liftoff upgrade" "${command}"${args.map((arg) => ` ${arg}`).join("")}"`,
@@ -120,16 +121,22 @@ export class LocalInstall implements InstallPorts {
     }
   }
 
-  delegate(
-    command: string,
-    args: readonly string[],
-    pathFirst?: readonly string[],
-  ): Promise<number | null> {
+  delegate({
+    command,
+    args,
+    pathFirst,
+    env,
+  }: {
+    readonly command: string;
+    readonly args: readonly string[];
+    readonly pathFirst?: readonly string[];
+    readonly env?: Readonly<Record<string, string>>;
+  }): Promise<number | null> {
     return new Promise((resolve) => {
       // Its output goes to stderr, so stdout keeps only Liftoff's own report.
       const child = spawn(command, args, {
         cwd: this.cwd,
-        env: withPathFirst(this.env, pathFirst),
+        env: { ...withPathFirst(this.env, pathFirst), ...env },
         shell: false,
         stdio: ["ignore", 2, 2],
       });

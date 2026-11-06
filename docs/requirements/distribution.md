@@ -210,7 +210,11 @@ the channel that would own it, never guessing from a path alone:
   lists at that version;
 - a Windows bundle is the MSI Windows Installer records with Liftoff's
   UpgradeCode at that location, and it is WinGet's when
-  `winget list --id voyager163.liftoff --exact --source winget` lists it;
+  `winget list --id voyager163.liftoff --exact --source winget` lists it.
+  WinGet matches what Windows has installed to its packages, so once the
+  package is published it lists an MSI installed by hand too. Only WinGet's
+  own "no installed package found" means it does not list Liftoff; any
+  other failure leaves the channel's offer unknown;
 - an npm package is a global npm install when the npm that ships with the
   running Node has it as its global `@voyager163/liftoff`.
 
@@ -263,11 +267,14 @@ The upgrade is that channel's own command for Liftoff alone:
 with the running Node. Liftoff shows the command and asks before running it;
 the default answer is no, and without a terminal it needs `--yes`. It never
 switches channel, installs a package manager, upgrades anything else, asks
-for administrator rights or changes a project. Every program it runs, the
+for administrator rights or changes a project. Homebrew upgrades the
+formula with what it depends on, such as Node, when those are out of date,
+but not the other formulae that depend on them. Every program it runs, the
 channels' and Windows PowerShell, is named by its absolute path and runs in
 the home directory, so nothing in the project, such as its own
 `powershell.exe` or `.npmrc`, stands in for it. Stopping Liftoff before the
-upgrade starts runs nothing, and stopping it during one stops that too.
+upgrade starts runs nothing, and stopping it during one stops that too and
+is reported as cancelled, since the channel may have changed something.
 
 - Given an upgrade, when the person answers no, then nothing runs.
 - Given no terminal and no `--yes`, when `liftoff upgrade` runs, then it

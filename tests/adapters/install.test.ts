@@ -82,7 +82,10 @@ describe("UPGRADE-003 a channel's upgrade runs as the channel's own program", ()
   it("is stopped, with what it started, when Liftoff is stopped", async () => {
     const controller = new AbortController();
     const install = new LocalInstall({ signal: controller.signal });
-    const running = install.delegate(process.execPath, ["-e", "setTimeout(() => {}, 60000)"]);
+    const running = install.delegate({
+      command: process.execPath,
+      args: ["-e", "setTimeout(() => {}, 60000)"],
+    });
     setTimeout(() => controller.abort(), 200);
     expect(await running).not.toBe(0);
     expect(await install.query(process.execPath, ["-e", "1"])).toBeUndefined();
@@ -90,8 +93,19 @@ describe("UPGRADE-003 a channel's upgrade runs as the channel's own program", ()
 
   it("returns its exit code, or null when it cannot start", async () => {
     const install = new LocalInstall();
-    expect(await install.delegate(process.execPath, ["-e", "process.exit(3)"], [work])).toBe(3);
-    expect(await install.delegate(path.join(work, "no-such-program"), [])).toBeNull();
+    const exit =
+      "process.exit(process.env.LIFTOFF_TEST === 'set' && process.env.PATH?.startsWith(process.argv[1]) ? 3 : 1)";
+    expect(
+      await install.delegate({
+        command: process.execPath,
+        args: ["-e", exit, work],
+        pathFirst: [work],
+        env: { LIFTOFF_TEST: "set" },
+      }),
+    ).toBe(3);
+    expect(
+      await install.delegate({ command: path.join(work, "no-such-program"), args: [] }),
+    ).toBeNull();
   });
 });
 
@@ -104,6 +118,7 @@ describe("UPGRADE-004 WinGet's upgrade is handed over", () => {
       command: "D:\\Win\\System32\\cmd.exe",
       args: [
         "/d",
+        "/v:off",
         "/s",
         "/c",
         `"start "Liftoff upgrade" "${winget}" upgrade --id voyager163.liftoff"`,
@@ -115,11 +130,11 @@ describe("UPGRADE-004 WinGet's upgrade is handed over", () => {
 
   it("starts the program on its own and does not wait for it", async () => {
     const install = new LocalInstall();
+    // Plain arguments only, as cmd.exe's start passes them on unchanged.
     const marker = path.join(work, "handed-off");
-    await install.handOff(process.execPath, [
-      "-e",
-      `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "")`,
-    ]);
+    const script = path.join(work, "hand-off.cjs");
+    writeFileSync(script, `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "")`);
+    await install.handOff(process.execPath, [script]);
     await expect(install.handOff(path.join(work, "no-such-program"), [])).rejects.toThrow(
       "could not start",
     );

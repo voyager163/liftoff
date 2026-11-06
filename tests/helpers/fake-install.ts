@@ -32,6 +32,7 @@ export class FakeInstall implements InstallPorts {
     command: string;
     args: readonly string[];
     pathFirst?: readonly string[];
+    env?: Readonly<Record<string, string>>;
   }[] = [];
   readonly handedOff: { command: string; args: readonly string[] }[] = [];
   readonly answers: Record<string, Answer>;
@@ -73,8 +74,23 @@ export class FakeInstall implements InstallPorts {
     return this.answers[key];
   }
 
-  async delegate(command: string, args: readonly string[], pathFirst?: readonly string[]) {
-    this.delegated.push({ command, args, ...(pathFirst === undefined ? {} : { pathFirst }) });
+  async delegate({
+    command,
+    args,
+    pathFirst,
+    env,
+  }: {
+    command: string;
+    args: readonly string[];
+    pathFirst?: readonly string[];
+    env?: Readonly<Record<string, string>>;
+  }) {
+    this.delegated.push({
+      command,
+      args,
+      ...(pathFirst === undefined ? {} : { pathFirst }),
+      ...(env === undefined ? {} : { env }),
+    });
     return this.delegateExit;
   }
 

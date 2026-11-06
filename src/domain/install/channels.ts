@@ -40,7 +40,15 @@ export interface Invocation {
   readonly args: readonly string[];
   /** Entries to put first on PATH, so the program finds the same tools. */
   readonly pathFirst?: readonly string[];
+  /** Variables to set for it. */
+  readonly env?: Readonly<Record<string, string>>;
 }
+
+/**
+ * The exit codes WinGet gives when it finds no installed package, as
+ * Windows reports the HRESULT 0x8A150014, unsigned or signed.
+ */
+export const WINGET_NOTHING_FOUND: readonly number[] = [0x8a150014, 0x8a150014 - 2 ** 32];
 
 const pathFor = (platform: Platform) => (platform === "win32" ? path.win32 : path.posix);
 
@@ -160,9 +168,10 @@ export interface MsiProduct {
 /**
  * The PowerShell that lists the products with Liftoff's UpgradeCode, through
  * Windows Installer itself, as JSON. Windows PowerShell 5.1 cannot call the
- * Installer's methods by name, so each goes through InvokeMember, and the
- * list it returns is read by its Count and Item. -InputObject keeps none or
- * one a list.
+ * Installer's methods by name, so each goes through InvokeMember. PowerShell
+ * unrolls the list of product codes as a function returns it, into none,
+ * one or several strings, which @() makes a list again; -InputObject keeps
+ * that a list in the JSON.
  */
 export const MSI_PRODUCTS_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
@@ -170,10 +179,8 @@ export const MSI_PRODUCTS_SCRIPT = [
   "function Get-Property($object, $name, $arguments) {",
   "  $object.GetType().InvokeMember($name, 'GetProperty', $null, $object, $arguments)",
   "}",
-  `$codes = Get-Property $installer 'RelatedProducts' @('${MSI_UPGRADE_CODE}')`,
-  "$count = Get-Property $codes 'Count' $null",
-  "$products = @(for ($index = 0; $index -lt $count; $index++) {",
-  "  $code = Get-Property $codes 'Item' @($index)",
+  `$codes = @(Get-Property $installer 'RelatedProducts' @('${MSI_UPGRADE_CODE}'))`,
+  "$products = @(foreach ($code in $codes) {",
   "  [pscustomobject]@{",
   "    code = $code",
   "    version = Get-Property $installer 'ProductInfo' @($code, 'VersionString')",

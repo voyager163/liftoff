@@ -22,6 +22,7 @@ import {
   RELEASES_PAGE,
   samePath,
   WINGET_ID,
+  WINGET_NOTHING_FOUND,
   wingetNewestVersion,
   within,
 } from "../../domain/install/channels.ts";
@@ -173,6 +174,8 @@ async function cellarFormula(
     upgrade: {
       command: brew,
       args: ["upgrade", found.fullName],
+      // Upgrade Liftoff and what it needs, not the formulae that need those.
+      env: { HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1" },
       handOff: false,
       verifier: brewVerifier(cellar.prefix),
     },
@@ -256,7 +259,24 @@ async function windowsBundle(ports: InstallPorts, bundle: string): Promise<Insta
     winget === undefined
       ? undefined
       : await ports.query(winget, ["list", ...scoped, "--disable-interactivity"]);
-  if (winget === undefined || byWinget?.exitCode !== 0) {
+  // Only WinGet's own "nothing found" means it does not list Liftoff; any
+  // other failure leaves who installed it unknown, which is no "up to date".
+  const notWinget =
+    winget === undefined ||
+    (byWinget?.exitCode !== undefined &&
+      byWinget.exitCode !== null &&
+      WINGET_NOTHING_FOUND.includes(byWinget.exitCode));
+  if (byWinget?.exitCode !== 0 && !notWinget) {
+    return {
+      channel: "msi",
+      location: bundle,
+      recorded: product.version,
+      offerProblem: failed("winget list", byWinget),
+      reason: "Liftoff was installed from its MSI, but WinGet could not be asked whether it did.",
+      roots: [bundle],
+    };
+  }
+  if (notWinget) {
     return {
       channel: "msi",
       location: bundle,
@@ -500,7 +520,7 @@ export async function runUpgrade(
     await ports.handOff(upgrade.command, upgrade.args);
     return { kind: "handed-off" };
   }
-  const exitCode = await ports.delegate(upgrade.command, upgrade.args, upgrade.pathFirst);
+  const exitCode = await ports.delegate(upgrade);
   if (exitCode !== 0) return { kind: "failed", exitCode };
   if (upgrade.verifier === undefined) return { kind: "done" };
   const result = await ports.query(

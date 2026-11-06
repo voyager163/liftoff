@@ -180,6 +180,12 @@ export function makeUpgradeCommand(
       // Stopped while Liftoff was finding the channel or asking: run nothing.
       if (io.signal.aborted) throw new CancelledError("stopped before the upgrade started");
       const result = await runUpgrade(ports, upgrade);
+      // Stopped while the channel was upgrading, which may have changed something.
+      if (io.signal.aborted) {
+        throw new CancelledError(
+          `stopped while ${CHANNELS[status.install.channel]} was upgrading Liftoff; run liftoff upgrade --verify`,
+        );
+      }
       if (result.kind === "handed-off") {
         return {
           outcome: "attention",

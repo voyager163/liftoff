@@ -145,7 +145,7 @@ describe("DIST-006 Windows users install Liftoff with an MSI, for themselves", (
     expect(failed).toContain("built to fail, for a test");
     // liftoff upgrade, run from the install, names the MSI as its channel.
     expect(script).toContain('["upgrade", "--check", "--json"]');
-    expect(script).toContain('installedBy?.channel !== "msi"');
+    expect(script).toContain('["msi", "winget"].includes(String(installedBy?.channel))');
     // The messages it looks for are the installer's own.
     expect(wxs).toContain("Liftoff installs for the current user only");
     expect(wxs).toContain("A newer version of Liftoff is already installed");
