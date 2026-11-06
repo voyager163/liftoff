@@ -1,6 +1,7 @@
 import { LocalInstall } from "../../adapters/install.ts";
 import type { InstallPorts } from "../../application/ports.ts";
 import {
+  landed,
   released,
   runUpgrade,
   type UpgradeStatus,
@@ -9,8 +10,8 @@ import {
   verifyInstall,
 } from "../../application/upgrade/upgrade.ts";
 import type { Channel } from "../../domain/install/channels.ts";
-import type { CommandResult, CommandSpec } from "../command.ts";
-import { UsageError } from "../outcome.ts";
+import type { CommandResult, CommandSpec, Io } from "../command.ts";
+import { CancelledError, UsageError } from "../outcome.ts";
 import { shown } from "../terminal.ts";
 
 const CHANNELS: Record<Channel, string> = {
@@ -39,6 +40,7 @@ function reported(status: UpgradeStatus) {
       ...(install.name === undefined ? {} : { name: install.name }),
       ...(install.recorded === undefined ? {} : { recorded: install.recorded }),
       ...(install.offered === undefined ? {} : { offered: install.offered }),
+      ...(install.offerProblem === undefined ? {} : { offerProblem: install.offerProblem }),
       reason: install.reason,
     },
     latest,
@@ -71,20 +73,22 @@ export function renderStatus(status: UpgradeStatus): string[] {
       `${CHANNELS[install.channel]} offers ${install.offered}; it upgrades with:`,
       `  ${commandLine(install.upgrade.command, install.upgrade.args)}`,
     );
-  } else if (install.upgrade !== undefined || install.channel === "npm") {
+  } else if (install.offerProblem !== undefined) {
     lines.push(
-      install.offered === undefined
-        ? `${CHANNELS[install.channel]} could not say which version it offers.`
-        : `${CHANNELS[install.channel]} offers ${install.offered}, so there is nothing to upgrade${
-            released(status) ? " until it offers the latest release" : ""
-          }.`,
+      `${CHANNELS[install.channel]} could not say which version it offers: ${install.offerProblem}.`,
+    );
+  } else if (install.upgrade !== undefined) {
+    lines.push(
+      `${CHANNELS[install.channel]} offers ${install.offered}, so there is nothing to upgrade${
+        released(status) ? " until it offers the latest release" : ""
+      }.`,
     );
   }
   return lines.map(shown);
 }
 
 export function makeUpgradeCommand(
-  portsFor: (cwd: string) => InstallPorts = (cwd) => new LocalInstall(cwd),
+  portsFor: (io: Io) => InstallPorts = (io) => new LocalInstall({ signal: io.signal }),
 ): CommandSpec {
   return {
     path: ["upgrade"],
@@ -119,7 +123,7 @@ export function makeUpgradeCommand(
         throw new UsageError(`--verify goes without --${check ? "check" : "yes"}`);
       }
       if (check && yes) throw new UsageError("--check changes nothing, so it goes without --yes");
-      const ports = portsFor(io.cwd);
+      const ports = portsFor(io);
       const status = await upgradeStatus(ports, version);
       const lines = renderStatus(status);
 
@@ -146,7 +150,13 @@ export function makeUpgradeCommand(
       const upgrade = status.install.upgrade;
       if (check || !upgradable(status) || upgrade === undefined) {
         return {
-          outcome: check && upgradable(status) ? "attention" : "success",
+          // A channel that could not say what it offers is not up to date.
+          outcome:
+            status.install.offerProblem !== undefined
+              ? "failure"
+              : check && upgradable(status)
+                ? "attention"
+                : "success",
           report: { ...reported(status), upgraded: false },
           text: `${lines.join("\n")}\n`,
         };
@@ -167,6 +177,8 @@ export function makeUpgradeCommand(
           };
         }
       }
+      // Stopped while Liftoff was finding the channel or asking: run nothing.
+      if (io.signal.aborted) throw new CancelledError("stopped before the upgrade started");
       const result = await runUpgrade(ports, upgrade);
       if (result.kind === "handed-off") {
         return {
@@ -185,23 +197,22 @@ export function makeUpgradeCommand(
         };
       }
       const verified = result.verified;
-      const landed =
-        verified !== undefined &&
-        verified.outcome !== "failure" &&
-        verified.version === status.install.offered;
+      const done = landed(status.install, version, verified);
       return {
-        outcome: landed ? "success" : "attention",
+        outcome: done ? "success" : "attention",
         report: {
           ...reported(status),
           upgraded: true,
-          ...(verified === undefined ? {} : { verified }),
+          ...(verified === undefined ? {} : { verification: verified }),
         },
-        text: landed
-          ? `Upgraded Liftoff to ${verified.version}.\n`
-          : `${CHANNELS[status.install.channel]} finished, but the liftoff on PATH ${
+        text: done
+          ? `Upgraded Liftoff to ${verified?.version}.\n`
+          : `${CHANNELS[status.install.channel]} finished, but the upgraded Liftoff ${
               verified === undefined
                 ? "could not verify itself"
-                : `reports ${verified.version ?? "no version"} (${verified.outcome})`
+                : `did not verify itself: ${verified.channel ?? "no channel"} ${
+                    verified.version ?? "no version"
+                  } (${verified.outcome}${verified.verified ? "" : ", not verified"})`
             }; run liftoff upgrade --verify.\n`,
       };
     },

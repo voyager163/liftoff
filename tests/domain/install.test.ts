@@ -8,13 +8,14 @@ import {
   caskPlace,
   cellarPlace,
   commandCandidates,
+  MSI_PRODUCTS_SCRIPT,
   MSI_UPGRADE_CODE,
   msiProducts,
   npmCliCandidates,
   npmListedVersion,
   npmViewVersion,
   samePath,
-  wingetVersion,
+  wingetNewestVersion,
   within,
 } from "../../src/domain/install/channels.ts";
 import { compareVersions, isNewer, parseVersion } from "../../src/domain/install/version.ts";
@@ -55,6 +56,13 @@ describe("UPGRADE-002 versions are compared as SemVer orders them", () => {
 });
 
 describe("UPGRADE-001 channel records are read as each channel prints them", () => {
+  it("asks Windows Installer as Windows PowerShell 5.1 can", () => {
+    // 5.1 cannot call the Installer's methods by name.
+    expect(MSI_PRODUCTS_SCRIPT).not.toMatch(/\$installer\.\w+\(/);
+    expect(MSI_PRODUCTS_SCRIPT).toContain("InvokeMember($name, 'GetProperty'");
+    expect(MSI_PRODUCTS_SCRIPT).toContain(`'RelatedProducts' @('${MSI_UPGRADE_CODE}')`);
+  });
+
   it("shares the MSI's UpgradeCode", () => {
     expect(MSI_UPGRADE_CODE).toBe(UPGRADE_CODE);
     const wxs = readFileSync(
@@ -85,12 +93,21 @@ describe("UPGRADE-001 channel records are read as each channel prints them", () 
     expect(brewPackage("nope", "cask", "liftoff")).toBeUndefined();
     expect(brewPackage('{"casks":[{"token":"liftoff"}]}', "cask", "liftoff")).toBeUndefined();
     expect(brewPackage('{"formulae":[{"name":"liftoff"}]}', "formula", "liftoff")).toBeUndefined();
+    expect(
+      brewPackage(
+        '{"formulae":[{"name":"liftoff","full_name":"liftoff","versions":{"stable":"1"}}]}',
+        "formula",
+        "liftoff",
+      ),
+    ).toEqual({ fullName: "liftoff", tap: "", installed: [], offered: "1" });
     expect(msiProducts("nope")).toBeUndefined();
     expect(msiProducts('{"code":"x"}')).toBeUndefined();
     expect(msiProducts('[{"code":"x"}]')).toBeUndefined();
     expect(msiProducts("[]")).toEqual([]);
-    expect(wingetVersion("Found x\n  Version: 1.2.0\n")).toBe("1.2.0");
-    expect(wingetVersion("Found x\n")).toBeUndefined();
+    expect(wingetNewestVersion("Gefunden x\nVersion\n-------\n1.2.0\n1.10.0\nnotes\n")).toBe(
+      "1.10.0",
+    );
+    expect(wingetNewestVersion("Found x\nVersion: 1.2.0\n")).toBeUndefined();
     expect(npmListedVersion("nope")).toBeUndefined();
     expect(npmListedVersion("{}")).toBeUndefined();
     expect(npmViewVersion('["0.1.0","0.2.0"]')).toBe("0.2.0");

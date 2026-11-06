@@ -2,7 +2,7 @@
 // released and what that channel offers, and the channel's own upgrade
 // (UPGRADE-001 to UPGRADE-004). It never switches channel, installs a
 // package manager, upgrades anything but Liftoff, elevates or touches a
-// project.
+// project. Every program it runs is named by its absolute path.
 import path from "node:path";
 import {
   brewPackage,
@@ -22,16 +22,18 @@ import {
   RELEASES_PAGE,
   samePath,
   WINGET_ID,
-  wingetVersion,
+  wingetNewestVersion,
   within,
 } from "../../domain/install/channels.ts";
 import { isNewer, parseVersion } from "../../domain/install/version.ts";
-import type { InstallPorts } from "../ports.ts";
+import type { InstallPorts, QueryResult } from "../ports.ts";
 
 /** The channel's upgrade command, and whether it must replace the running executable. */
 export interface UpgradeInvocation extends Invocation {
   /** True when it runs on its own after Liftoff exits, so the executable is not in use. */
   readonly handOff: boolean;
+  /** The upgraded copy, run with `upgrade --verify --json` to verify itself; none for a hand-off. */
+  readonly verifier?: Invocation;
 }
 
 /** The running Liftoff, as the channel that installed it records it. */
@@ -45,12 +47,16 @@ export interface Install {
   readonly recorded?: string;
   /** What the channel offers to upgrade to, when it could be asked. */
   readonly offered?: string;
+  /** Why the channel could not say what it offers, when it could not. */
+  readonly offerProblem?: string;
   /** How Liftoff knows the channel, or why it cannot tell or upgrade it. */
   readonly reason: string;
-  /** The channel's own upgrade, when it has one and offers a newer version. */
+  /** The channel's own upgrade, when it has one. */
   readonly upgrade?: UpgradeInvocation;
-  /** Where a `liftoff` on PATH may resolve to and still be this install. */
+  /** Directories a `liftoff` on PATH may resolve into and still be this install. */
   readonly roots: readonly string[];
+  /** Launchers outside those that the channel itself wrote for this install. */
+  readonly launchers?: readonly string[];
 }
 
 /** The newest published release on GitHub, if there is one, or why it could not be read. */
@@ -66,12 +72,19 @@ export interface UpgradeStatus {
   readonly latest: Latest;
 }
 
-const MSI_UNREADABLE = "Windows Installer could not be asked which Liftoff is installed";
+const pathsOf = (ports: InstallPorts) => (ports.platform === "win32" ? path.win32 : path.posix);
+
+/** Why a query gave nothing usable, from what it printed. */
+const failed = (what: string, result: QueryResult | undefined): string => {
+  if (result === undefined) return `${what} could not run`;
+  const said = (result.stderr || result.stdout).trim().split(/\r?\n/).at(-1);
+  return `${what} exited ${result.exitCode}${said ? `: ${said}` : ""}`;
+};
 
 /** Finds which channel installed the running copy, from that channel's own records. */
 export async function findInstall(ports: InstallPorts, version: string): Promise<Install> {
   const { platform } = ports;
-  const paths = platform === "win32" ? path.win32 : path.posix;
+  const paths = pathsOf(ports);
   const { app, executable } = await ports.running();
   if (await ports.exists(paths.join(app, ".git"))) {
     return {
@@ -89,26 +102,7 @@ export async function findInstall(ports: InstallPorts, version: string): Promise
     return platform === "darwin" ? macBundle(ports, bundle) : windowsBundle(ports, bundle);
   }
   const cellar = platform === "darwin" ? cellarPlace(app) : undefined;
-  if (cellar !== undefined) {
-    const brew = paths.join(cellar.prefix, "bin", "brew");
-    const found = await brewInstalled(ports, brew, "formula", cellar.name);
-    if (found?.installed.map(brewVersion).includes(brewVersion(cellar.version))) {
-      return {
-        channel: "homebrew-formula",
-        location: app,
-        name: found.fullName,
-        recorded: brewVersion(cellar.version),
-        offered: brewVersion(found.offered),
-        reason: `Homebrew installed it as the formula ${found.fullName}.`,
-        upgrade: { command: brew, args: ["upgrade", found.fullName], handOff: false },
-        roots: [app],
-      };
-    }
-    return unknown(
-      app,
-      `Liftoff is in Homebrew's Cellar at ${app}, but brew does not list it there.`,
-    );
-  }
+  if (cellar !== undefined) return cellarFormula(ports, app, cellar);
   return npmInstall(ports, app, executable, version);
 }
 
@@ -145,6 +139,43 @@ const brewInstalled = async (
   return result?.exitCode === 0 ? brewPackage(result.stdout, kind, name) : undefined;
 };
 
+/** The `liftoff` Homebrew links into its prefix, which verifies the upgrade. */
+const brewVerifier = (prefix: string): Invocation => ({
+  command: path.posix.join(prefix, "bin", "liftoff"),
+  args: ["upgrade", "--verify", "--json"],
+});
+
+async function cellarFormula(
+  ports: InstallPorts,
+  app: string,
+  cellar: { prefix: string; name: string; version: string },
+): Promise<Install> {
+  const brew = path.posix.join(cellar.prefix, "bin", "brew");
+  const found = await brewInstalled(ports, brew, "formula", cellar.name);
+  if (!found?.installed.map(brewVersion).includes(brewVersion(cellar.version))) {
+    return unknown(
+      app,
+      `Liftoff is in Homebrew's Cellar at ${app}, but brew does not list it there.`,
+    );
+  }
+  return {
+    channel: "homebrew-formula",
+    location: app,
+    name: found.fullName,
+    // The version brew links, which a new terminal runs; none when it links none.
+    recorded: found.linked === undefined ? "none linked" : brewVersion(found.linked),
+    offered: brewVersion(found.offered),
+    reason: `Homebrew installed it as the formula ${found.fullName}.`,
+    upgrade: {
+      command: brew,
+      args: ["upgrade", found.fullName],
+      handOff: false,
+      verifier: brewVerifier(cellar.prefix),
+    },
+    roots: [app],
+  };
+}
+
 async function macBundle(ports: InstallPorts, bundle: string): Promise<Install> {
   const cask = caskPlace(bundle);
   if (cask === undefined) return archive(bundle);
@@ -163,7 +194,12 @@ async function macBundle(ports: InstallPorts, bundle: string): Promise<Install> 
     recorded: brewVersion(cask.version),
     offered: brewVersion(found.offered),
     reason: `Homebrew installed it as the cask ${found.fullName}.`,
-    upgrade: { command: brew, args: ["upgrade", "--cask", found.fullName], handOff: false },
+    upgrade: {
+      command: brew,
+      args: ["upgrade", "--cask", found.fullName],
+      handOff: false,
+      verifier: brewVerifier(cask.prefix),
+    },
     roots: [bundle],
   };
 }
@@ -175,27 +211,48 @@ const archive = (bundle: string): Install => ({
   roots: [bundle],
 });
 
+/** Windows PowerShell, which every Windows has, by its absolute path. */
+const powershell = (ports: InstallPorts): string =>
+  path.win32.join(
+    ports.env.SystemRoot ?? ports.env.SYSTEMROOT ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+
+/** WinGet's winget.exe on PATH, by its absolute path, if it is there. */
+async function wingetPath(ports: InstallPorts): Promise<string | undefined> {
+  for (const candidate of commandCandidates("win32", "winget", ports.env)) {
+    // An App Execution Alias, which is not a file a link can be followed to.
+    if (candidate.endsWith(".exe") && (await ports.exists(candidate))) return candidate;
+  }
+  return undefined;
+}
+
 async function windowsBundle(ports: InstallPorts, bundle: string): Promise<Install> {
-  const listed = await ports.query("powershell.exe", [
+  const listed = await ports.query(powershell(ports), [
     "-NoProfile",
     "-NonInteractive",
     "-Command",
     MSI_PRODUCTS_SCRIPT,
   ]);
   const products = listed?.exitCode === 0 ? msiProducts(listed.stdout) : undefined;
-  if (products === undefined) return unknown(bundle, `${MSI_UNREADABLE}.`);
+  if (products === undefined) {
+    return unknown(
+      bundle,
+      `Windows Installer could not be asked which Liftoff is installed (${failed("PowerShell", listed)}).`,
+    );
+  }
   const product = products.find((candidate) => samePath("win32", candidate.location, bundle));
   if (product === undefined) return archive(bundle);
-  const listedByWinget = await ports.query("winget", [
-    "list",
-    "--id",
-    WINGET_ID,
-    "--exact",
-    "--source",
-    "winget",
-    "--disable-interactivity",
-  ]);
-  if (listedByWinget?.exitCode !== 0) {
+  const winget = await wingetPath(ports);
+  const scoped = ["--id", WINGET_ID, "--exact", "--source", "winget"];
+  const byWinget =
+    winget === undefined
+      ? undefined
+      : await ports.query(winget, ["list", ...scoped, "--disable-interactivity"]);
+  if (winget === undefined || byWinget?.exitCode !== 0) {
     return {
       channel: "msi",
       location: bundle,
@@ -204,28 +261,24 @@ async function windowsBundle(ports: InstallPorts, bundle: string): Promise<Insta
       roots: [bundle],
     };
   }
-  const shown = await ports.query("winget", [
+  // The versions table: its headings are in the user's language, its values are not.
+  const shown = await ports.query(winget, [
     "show",
-    "--id",
-    WINGET_ID,
-    "--exact",
-    "--source",
-    "winget",
+    ...scoped,
+    "--versions",
     "--disable-interactivity",
   ]);
-  const offered = shown?.exitCode === 0 ? wingetVersion(shown.stdout) : undefined;
+  const offered = shown?.exitCode === 0 ? wingetNewestVersion(shown.stdout) : undefined;
   return {
     channel: "winget",
     location: bundle,
     name: WINGET_ID,
     recorded: product.version,
-    ...(offered === undefined ? {} : { offered }),
+    ...(offered === undefined
+      ? { offerProblem: failed("winget show --versions", shown) }
+      : { offered }),
     reason: `WinGet installed it as ${WINGET_ID}.`,
-    upgrade: {
-      command: "winget",
-      args: ["upgrade", "--id", WINGET_ID, "--exact", "--source", "winget"],
-      handOff: true,
-    },
+    upgrade: { command: winget, args: ["upgrade", ...scoped], handOff: true },
     roots: [bundle],
   };
 }
@@ -237,7 +290,7 @@ async function npmInstall(
   version: string,
 ): Promise<Install> {
   const { platform } = ports;
-  const paths = platform === "win32" ? path.win32 : path.posix;
+  const paths = pathsOf(ports);
   let cli: string | undefined;
   for (const candidate of npmCliCandidates(platform, node)) {
     const real = await ports.realPath(candidate);
@@ -250,21 +303,24 @@ async function npmInstall(
   if (cli === undefined) return unknown(app, nobody);
   const pathFirst = [paths.dirname(node)];
   const npm = (...args: string[]) => ports.query(node, [cli, ...args], pathFirst);
-  const root = (await npm("root", "-g"))?.stdout.trim();
+  const root = (await npm("root", "--global"))?.stdout.trim();
   const installed = root ? await ports.realPath(paths.join(root, PACKAGE_NAME)) : undefined;
   if (root === undefined || installed === undefined || !samePath(platform, installed, app)) {
     return unknown(app, nobody);
   }
-  const listed = await npm("ls", "-g", "--json", "--depth=0");
+  const listed = await npm("ls", "--global", "--json", "--depth=0");
   const recorded = listed === undefined ? undefined : npmListedVersion(listed.stdout);
   const viewed = await npm("view", PACKAGE_NAME, "version", "--json");
   const offered = viewed?.exitCode === 0 ? npmViewVersion(viewed.stdout) : undefined;
+  // npm writes liftoff.cmd and its siblings into the prefix on Windows; on
+  // macOS bin/liftoff links into the package.
+  const prefix = platform === "win32" ? await ports.realPath(paths.dirname(root)) : undefined;
   return {
     channel: "npm",
     location: app,
     name: PACKAGE_NAME,
     ...(recorded === undefined ? {} : { recorded }),
-    ...(offered === undefined ? {} : { offered }),
+    ...(offered === undefined ? { offerProblem: failed("npm view", viewed) } : { offered }),
     reason: `npm installed it globally, with the npm of the Node at ${node}.`,
     ...(offered === undefined || !isNewer(offered, version)
       ? {}
@@ -274,11 +330,22 @@ async function npmInstall(
             args: [cli, "install", "--global", `${PACKAGE_NAME}@${offered}`],
             pathFirst,
             handOff: false,
+            // npm replaces the package in place.
+            verifier: {
+              command: node,
+              args: [paths.join(app, "dist", "cli", "main.js"), "upgrade", "--verify", "--json"],
+              pathFirst,
+            },
           },
         }),
-    // npm links bin/liftoff into the package on macOS, and writes
-    // liftoff.cmd into the prefix itself on Windows.
-    roots: platform === "win32" ? [app, paths.dirname(root)] : [app],
+    roots: [app],
+    ...(prefix === undefined
+      ? {}
+      : {
+          launchers: ["liftoff", "liftoff.cmd", "liftoff.ps1"].map((name) =>
+            paths.join(prefix, name),
+          ),
+        }),
   };
 }
 
@@ -353,7 +420,9 @@ export async function verifyInstall(
     if (found !== undefined) break;
   }
   const ours =
-    found !== undefined && install.roots.some((root) => within(ports.platform, root, found));
+    found !== undefined &&
+    (install.roots.some((root) => within(ports.platform, root, found)) ||
+      (install.launchers ?? []).some((launcher) => samePath(ports.platform, launcher, found)));
   checks.push({
     name: "path",
     ok: ours,
@@ -367,16 +436,53 @@ export async function verifyInstall(
   return checks;
 }
 
-/** What `liftoff upgrade --verify --json` reported, read back after an upgrade. */
+/** What the upgraded copy's `liftoff upgrade --verify --json` reported. */
 export interface Verified {
   readonly outcome: string;
+  /** True only when it verified itself against its channel's record and PATH. */
+  readonly verified: boolean;
   readonly version?: string;
+  readonly channel?: string;
+  readonly name?: string;
 }
+
+/** Reads the upgraded copy's report, or undefined when it is not one. */
+function verifiedReport(stdout: string): Verified | undefined {
+  try {
+    const report = JSON.parse(stdout) as Record<string, unknown>;
+    const installed = (report.installed ?? {}) as Record<string, unknown>;
+    if (report.schema !== "liftoff.upgrade/v1" || typeof report.outcome !== "string") {
+      return undefined;
+    }
+    const field = (value: unknown) => (typeof value === "string" ? value : undefined);
+    const version = field(report.version);
+    const channel = field(installed.channel);
+    const name = field(installed.name);
+    return {
+      outcome: report.outcome,
+      verified: report.verified === true,
+      ...(version === undefined ? {} : { version }),
+      ...(channel === undefined ? {} : { channel }),
+      ...(name === undefined ? {} : { name }),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/** True when the copy that verified itself is the upgraded one, newer than `from`. */
+export const landed = (install: Install, from: string, verified: Verified | undefined): boolean =>
+  verified !== undefined &&
+  verified.verified &&
+  verified.outcome !== "failure" &&
+  verified.channel === install.channel &&
+  verified.name === install.name &&
+  isNewer(verified.version, from);
 
 /**
  * Runs the channel's upgrade. One that replaces this executable is handed
- * off and not waited for; otherwise the upgraded `liftoff` on PATH verifies
- * itself and its report is returned.
+ * off and not waited for; otherwise the upgraded copy verifies itself and
+ * its report is returned.
  */
 export async function runUpgrade(
   ports: InstallPorts,
@@ -392,24 +498,12 @@ export async function runUpgrade(
   }
   const exitCode = await ports.delegate(upgrade.command, upgrade.args, upgrade.pathFirst);
   if (exitCode !== 0) return { kind: "failed", exitCode };
-  const result = await ports.query("liftoff", ["upgrade", "--verify", "--json"]);
-  try {
-    const report = JSON.parse(result?.stdout ?? "") as {
-      schema?: unknown;
-      outcome?: unknown;
-      version?: unknown;
-    };
-    if (report.schema === "liftoff.upgrade/v1" && typeof report.outcome === "string") {
-      return {
-        kind: "done",
-        verified: {
-          outcome: report.outcome,
-          ...(typeof report.version === "string" ? { version: report.version } : {}),
-        },
-      };
-    }
-  } catch {
-    // Reported below as not verified.
-  }
-  return { kind: "done" };
+  if (upgrade.verifier === undefined) return { kind: "done" };
+  const result = await ports.query(
+    upgrade.verifier.command,
+    upgrade.verifier.args,
+    upgrade.verifier.pathFirst,
+  );
+  const verified = result === undefined ? undefined : verifiedReport(result.stdout);
+  return verified === undefined ? { kind: "done" } : { kind: "done", verified };
 }

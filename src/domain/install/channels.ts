@@ -2,6 +2,7 @@
 // one command each offers to upgrade it (UPGRADE-001, UPGRADE-003). Pure:
 // the facts come in as text that a channel's own tools printed.
 import path from "node:path";
+import { isNewer, parseVersion } from "./version.ts";
 
 export const PACKAGE_NAME = "@voyager163/liftoff";
 export const REPOSITORY = "voyager163/liftoff";
@@ -87,6 +88,8 @@ export interface BrewPackage {
   readonly fullName: string;
   readonly tap: string;
   readonly installed: readonly string[];
+  /** The installed version Homebrew links, for a formula; a cask has only one. */
+  readonly linked?: string;
   /** The newest version the tap offers, as of the last `brew update`. */
   readonly offered: string;
 }
@@ -135,7 +138,14 @@ export function brewPackage(
   const installed = list(formula.installed)
     .map((entry) => text(object(entry).version))
     .filter((version): version is string => version !== undefined);
-  return { fullName, tap: text(formula.tap) ?? "", installed, offered };
+  const linked = text(formula.linked_keg);
+  return {
+    fullName,
+    tap: text(formula.tap) ?? "",
+    installed,
+    ...(linked === undefined ? {} : { linked }),
+    offered,
+  };
 }
 
 /** A product Windows Installer has with Liftoff's UpgradeCode. */
@@ -149,17 +159,29 @@ export interface MsiProduct {
 
 /**
  * The PowerShell that lists the products with Liftoff's UpgradeCode, through
- * Windows Installer itself, as JSON. -InputObject keeps none or one a list.
+ * Windows Installer itself, as JSON. Windows PowerShell 5.1 cannot call the
+ * Installer's methods by name, so each goes through InvokeMember, and the
+ * list it returns is read by its Count and Item. -InputObject keeps none or
+ * one a list.
  */
 export const MSI_PRODUCTS_SCRIPT = [
+  "$ErrorActionPreference = 'Stop'",
   "$installer = New-Object -ComObject WindowsInstaller.Installer",
-  `$codes = @($installer.RelatedProducts('${MSI_UPGRADE_CODE}'))`,
-  "ConvertTo-Json -Compress -InputObject @($codes | ForEach-Object { [pscustomobject]@{",
-  "  code = $_",
-  "  version = $installer.ProductInfo($_, 'VersionString')",
-  "  location = $installer.ProductInfo($_, 'InstallLocation')",
-  "  assignment = $installer.ProductInfo($_, 'AssignmentType')",
-  "} })",
+  "function Get-Property($object, $name, $arguments) {",
+  "  $object.GetType().InvokeMember($name, 'GetProperty', $null, $object, $arguments)",
+  "}",
+  `$codes = Get-Property $installer 'RelatedProducts' @('${MSI_UPGRADE_CODE}')`,
+  "$count = Get-Property $codes 'Count' $null",
+  "$products = @(for ($index = 0; $index -lt $count; $index++) {",
+  "  $code = Get-Property $codes 'Item' @($index)",
+  "  [pscustomobject]@{",
+  "    code = $code",
+  "    version = Get-Property $installer 'ProductInfo' @($code, 'VersionString')",
+  "    location = Get-Property $installer 'ProductInfo' @($code, 'InstallLocation')",
+  "    assignment = Get-Property $installer 'ProductInfo' @($code, 'AssignmentType')",
+  "  }",
+  "})",
+  "ConvertTo-Json -Compress -InputObject $products",
 ].join("\n");
 
 /** The products MSI_PRODUCTS_SCRIPT printed, or undefined when it printed something else. */
@@ -185,9 +207,21 @@ export function msiProducts(json: string): MsiProduct[] | undefined {
     : undefined;
 }
 
-/** The version `winget show` prints for a package, from its "Version:" line. */
-export function wingetVersion(output: string): string | undefined {
-  return /^\s*Version:\s*(\S+)\s*$/m.exec(output)?.[1];
+/**
+ * The newest version in `winget show --versions` output: the values under
+ * the line of dashes, whatever language its heading is in.
+ */
+export function wingetNewestVersion(output: string): string | undefined {
+  const lines = output.split(/\r?\n/).map((line) => line.trim());
+  const rule = lines.findIndex((line) => /^-{3,}$/.test(line));
+  if (rule === -1) return undefined;
+  let newest: string | undefined;
+  for (const line of lines.slice(rule + 1)) {
+    if (parseVersion(line) !== undefined && (newest === undefined || isNewer(line, newest))) {
+      newest = line;
+    }
+  }
+  return newest;
 }
 
 /** Liftoff's version in `npm ls -g --json --depth=0` output. */

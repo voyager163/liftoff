@@ -66,9 +66,22 @@ const cask = (answers: Record<string, Answer> = {}, latest: unknown = LATEST) =>
   install.latest = latest;
   return install;
 };
-const VERIFIED = "liftoff upgrade --verify --json";
-const verified = (outcome: string, version: string) =>
-  printed(JSON.stringify({ schema: "liftoff.upgrade/v1", outcome, version }));
+const VERIFIED = "/opt/homebrew/bin/liftoff upgrade --verify --json";
+/** What the upgraded copy's --verify reports. */
+const verified = (
+  outcome: string,
+  version: string,
+  { ok = true, channel = "homebrew-cask", name = "voyager163/tap/liftoff" } = {},
+) =>
+  printed(
+    JSON.stringify({
+      schema: "liftoff.upgrade/v1",
+      outcome,
+      version,
+      verified: ok,
+      installed: { channel, name },
+    }),
+  );
 
 // A global npm install under the Node at /usr/local/bin/node.
 const NODE = "/usr/local/bin/node";
@@ -83,8 +96,8 @@ const npm = (root = "/Users/p/.npm-global/lib/node_modules", listed = "0.1.0") =
     links: {},
     env: { PATH: "/Users/p/.npm-global/bin:/usr/bin" },
     answers: {
-      [`${NODE} ${NPM_CLI} root -g`]: printed(`${root}\n`),
-      [`${NODE} ${NPM_CLI} ls -g --json --depth=0`]: printed(
+      [`${NODE} ${NPM_CLI} root --global`]: printed(`${root}\n`),
+      [`${NODE} ${NPM_CLI} ls --global --json --depth=0`]: printed(
         JSON.stringify({ dependencies: { "@voyager163/liftoff": { version: listed } } }),
       ),
       [`${NODE} ${NPM_CLI} view @voyager163/liftoff version --json`]: printed('"0.2.0"'),
@@ -96,11 +109,16 @@ const npm = (root = "/Users/p/.npm-global/lib/node_modules", listed = "0.1.0") =
 
 // The MSI, installed for the runner's user.
 const MSI_BUNDLE = "C:\\Users\\r\\AppData\\Local\\Programs\\Liftoff";
-const POWERSHELL = `powershell.exe -NoProfile -NonInteractive -Command ${MSI_PRODUCTS_SCRIPT}`;
-const WINGET_LIST =
-  "winget list --id voyager163.liftoff --exact --source winget --disable-interactivity";
-const WINGET_SHOW =
-  "winget show --id voyager163.liftoff --exact --source winget --disable-interactivity";
+const POWERSHELL = `C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -Command ${MSI_PRODUCTS_SCRIPT}`;
+const WINDOWS_APPS = "C:\\Users\\r\\AppData\\Local\\Microsoft\\WindowsApps";
+const WINGET = `${WINDOWS_APPS}\\winget.exe`;
+const WINGET_LIST = `${WINGET} list --id voyager163.liftoff --exact --source winget --disable-interactivity`;
+const WINGET_SHOW = `${WINGET} show --id voyager163.liftoff --exact --source winget --versions --disable-interactivity`;
+/** `winget show --versions` output, with its heading in the user's language. */
+const versions = (heading = "Version", ...listed: string[]) =>
+  printed(
+    `Found Liftoff [voyager163.liftoff]\r\n${heading}\r\n-------\r\n${listed.join("\r\n")}\r\n`,
+  );
 const products = (location = `${MSI_BUNDLE}\\`) =>
   printed(JSON.stringify([{ code: "{P}", version: "0.1.0", location, assignment: "0" }]));
 const msi = (answers: Record<string, Answer> = {}, pathEntry = `${MSI_BUNDLE}\\bin`) => {
@@ -108,8 +126,9 @@ const msi = (answers: Record<string, Answer> = {}, pathEntry = `${MSI_BUNDLE}\\b
     platform: "win32",
     app: `${MSI_BUNDLE}\\lib\\app`,
     executable: `${MSI_BUNDLE}\\bin\\liftoff.exe`,
-    env: { Path: pathEntry, PATHEXT: ".EXE;.CMD" },
+    env: { Path: `${pathEntry};${WINDOWS_APPS}`, PATHEXT: ".EXE;.CMD", SystemRoot: "C:\\Windows" },
     files: {
+      [WINGET]: "",
       [`${MSI_BUNDLE}\\release.json`]: RELEASE,
       [`${MSI_BUNDLE}\\bin\\liftoff.exe`]: "",
       "C:\\Other\\liftoff.exe": "",
@@ -165,6 +184,7 @@ describe("UPGRADE-001 Liftoff knows which channel installed it from that channel
                   tap: "homebrew/core",
                   versions: { stable: "0.2.0" },
                   installed: [{ version: installed }],
+                  linked_keg: installed,
                 },
               ],
               casks: [],
@@ -191,7 +211,7 @@ describe("UPGRADE-001 Liftoff knows which channel installed it from that channel
     expect(byHand.report.upgradable).toBe(false);
     const byWinget = msi({
       [WINGET_LIST]: printed("liftoff voyager163.liftoff 0.1.0 0.2.0 winget"),
-      [WINGET_SHOW]: printed("Found Liftoff [voyager163.liftoff]\nVersion: 0.2.0\nPublisher: x\n"),
+      [WINGET_SHOW]: versions("Version", "0.1.0", "0.2.0"),
     });
     const { report, code } = await exec(byWinget, ["upgrade", "--check"]);
     expect(code).toBe(3);
@@ -293,12 +313,33 @@ describe("UPGRADE-002 What is released is reported apart from what the channel o
     expect(shown.out).toContain("The latest release could not be read: offline.");
   });
 
-  it("says when the channel cannot say what it offers", async () => {
-    const quiet = npm();
-    quiet.answers[`${NODE} ${NPM_CLI} view @voyager163/liftoff version --json`] = printed("", 1);
-    const shown = await text(quiet, ["upgrade"]);
-    expect(shown.code).toBe(0);
-    expect(shown.out).toContain("npm could not say which version it offers.");
+  it("fails when the channel cannot say what it offers, rather than calling it current", async () => {
+    const VIEW = `${NODE} ${NPM_CLI} view @voyager163/liftoff version --json`;
+    const refused = npm();
+    refused.answers[VIEW] = { exitCode: 1, stdout: "", stderr: "npm error code E404\n" };
+    const shown = await text(refused, ["upgrade", "--check"]);
+    expect(shown.code).toBe(1);
+    expect(shown.out).toContain(
+      "npm could not say which version it offers: npm view exited 1: npm error code E404.",
+    );
+    const timedOut = npm();
+    timedOut.answers[VIEW] = undefined;
+    const { code, report } = await exec(timedOut, ["upgrade", "--check"]);
+    expect(code).toBe(1);
+    expect(report.installed.offerProblem).toBe("npm view could not run");
+    const quietWinget = msi({ [WINGET_LIST]: printed("winget"), [WINGET_SHOW]: printed("", 1) });
+    expect((await exec(quietWinget, ["upgrade", "--yes"])).code).toBe(1);
+    expect(quietWinget.handedOff).toEqual([]);
+  });
+
+  it("reads WinGet's versions whatever language it prints its headings in", async () => {
+    const spanish = msi({
+      [WINGET_LIST]: printed("winget"),
+      [WINGET_SHOW]: versions("Versión", "0.1.0", "0.3.0-rc.1", "0.2.0"),
+    });
+    const { code, report } = await exec(spanish, ["upgrade", "--check"]);
+    expect(code).toBe(3);
+    expect(report.installed.offered).toBe("0.3.0-rc.1");
   });
 });
 
@@ -376,7 +417,33 @@ describe("UPGRADE-004 An upgrade is verified, and WinGet's is handed over", () =
       "--yes",
     ]);
     expect(stale.code).toBe(3);
-    expect(stale.out).toContain("reports 0.1.0 (failure); run liftoff upgrade --verify.");
+    expect(stale.out).toContain(
+      "did not verify itself: homebrew-cask 0.1.0 (failure); run liftoff upgrade --verify.",
+    );
+    // An archive on PATH at the offered version cannot verify itself.
+    const unsupported = await text(
+      cask({
+        [VERIFIED]: verified("unsupported", "0.2.0", { ok: false, channel: "archive", name: "" }),
+      }),
+      ["upgrade", "--yes"],
+    );
+    expect(unsupported.code).toBe(3);
+    expect(unsupported.out).toContain("archive 0.2.0 (unsupported, not verified)");
+    // Nor does another channel's copy that verified itself.
+    const other = await exec(
+      cask({
+        [VERIFIED]: verified("success", "0.2.0", { channel: "npm", name: "@voyager163/liftoff" }),
+      }),
+      ["upgrade", "--yes"],
+    );
+    expect(other.code).toBe(3);
+    // brew may install something newer than it offered before its update.
+    const newer = await exec(cask({ [VERIFIED]: verified("success", "0.3.0") }), [
+      "upgrade",
+      "--yes",
+    ]);
+    expect(newer.code).toBe(0);
+    expect(newer.report.verification).toMatchObject({ verified: true, version: "0.3.0" });
     const silent = await exec(cask({ [VERIFIED]: printed("not json") }), ["upgrade", "--yes"]);
     expect(silent.code).toBe(3);
     expect(silent.report.upgraded).toBe(true);
@@ -412,6 +479,66 @@ describe("UPGRADE-004 An upgrade is verified, and WinGet's is handed over", () =
     expect((await exec(install, ["upgrade", "--verify"])).code).toBe(3);
   });
 
+  it("accepts npm's own launcher in a Windows prefix, and nothing else there", async () => {
+    const node = "C:\\node\\node.exe";
+    const cli = "C:\\node\\node_modules\\npm\\bin\\npm-cli.js";
+    const prefix = "C:\\tools";
+    const app = `${prefix}\\node_modules\\@voyager163\\liftoff`;
+    const windowsNpm = (pathEntry: string) =>
+      new FakeInstall({
+        platform: "win32",
+        app,
+        executable: node,
+        env: { Path: pathEntry, PATHEXT: ".EXE;.CMD" },
+        files: {
+          [cli]: "",
+          [app]: "",
+          [prefix]: "",
+          [`${prefix}\\liftoff.cmd`]: "",
+          [`${prefix}\\old\\bin\\liftoff.exe`]: "",
+        },
+        answers: {
+          [`${node} ${cli} root --global`]: printed(`${prefix}\\node_modules\r\n`),
+          [`${node} ${cli} ls --global --json --depth=0`]: printed(
+            JSON.stringify({ dependencies: { "@voyager163/liftoff": { version: "0.1.0" } } }),
+          ),
+          [`${node} ${cli} view @voyager163/liftoff version --json`]: printed('"0.1.0"'),
+        },
+      });
+    expect((await exec(windowsNpm(prefix), ["upgrade", "--verify"])).code).toBe(0);
+    const archive = await exec(windowsNpm(`${prefix}\\old\\bin`), ["upgrade", "--verify"]);
+    expect(archive.code).toBe(1);
+    expect(archive.report.checks[1].ok).toBe(false);
+  });
+
+  it("checks the version Homebrew links, not the one it is run from", async () => {
+    const app = "/opt/homebrew/Cellar/liftoff/0.1.0/libexec/lib/node_modules/@voyager163/liftoff";
+    const unlinked = new FakeInstall({
+      platform: "darwin",
+      app,
+      executable: "/opt/homebrew/Cellar/node/26.12.0/bin/node",
+      files: { [BREW]: "" },
+      answers: {
+        [`${BREW} info --json=v2 --installed --formula`]: printed(
+          JSON.stringify({
+            formulae: [
+              {
+                name: "liftoff",
+                full_name: "liftoff",
+                versions: { stable: "0.2.0" },
+                installed: [{ version: "0.1.0" }, { version: "0.2.0" }],
+                linked_keg: "0.2.0",
+              },
+            ],
+          }),
+        ),
+      },
+    });
+    const { code, report } = await exec(unlinked, ["upgrade", "--verify"]);
+    expect(code).toBe(1);
+    expect(report.checks[0].detail).toBe("homebrew-formula records 0.2.0, but 0.1.0 is running");
+  });
+
   it("has nothing to verify a copy no channel records against", async () => {
     const checkout = new FakeInstall({
       platform: "darwin",
@@ -427,17 +554,38 @@ describe("UPGRADE-004 An upgrade is verified, and WinGet's is handed over", () =
   it("hands WinGet's upgrade over and asks for --verify afterwards", async () => {
     const install = msi({
       [WINGET_LIST]: printed("winget"),
-      [WINGET_SHOW]: printed("Version: 0.2.0\n"),
+      [WINGET_SHOW]: versions("Versión", "0.2.0"),
     });
     const shown = await text(install, ["upgrade", "--yes"]);
     expect(shown.code).toBe(3);
     expect(install.handedOff).toEqual([
       {
-        command: "winget",
+        command: WINGET,
         args: ["upgrade", "--id", "voyager163.liftoff", "--exact", "--source", "winget"],
       },
     ]);
     expect(install.delegated).toEqual([]);
     expect(shown.out).toContain("run: liftoff upgrade --verify");
+  });
+
+  it("starts nothing when it is stopped while finding the channel", async () => {
+    const io = captureIo("/work");
+    const install = cask();
+    const brewInfo = `${BREW} info --json=v2 --installed --cask`;
+    const answer = install.answers[brewInfo];
+    install.answers[brewInfo] = undefined;
+    const query = install.query.bind(install);
+    install.query = async (command, args) => {
+      io.controller.abort();
+      return [command, ...args].join(" ") === brewInfo ? answer : query(command, args);
+    };
+    const code = await runCli(
+      ["upgrade", "--yes"],
+      io,
+      [makeUpgradeCommand(() => install)],
+      "0.1.0",
+    );
+    expect(code).toBe(4);
+    expect(install.delegated).toEqual([]);
   });
 });

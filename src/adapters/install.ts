@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import { lstat, readFile, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { InstallPorts, QueryResult } from "../application/ports.ts";
-import { ProcessError, run } from "./process.ts";
+import { killTree, ProcessError, run } from "./process.ts";
 
 /** The Liftoff package directory: two levels above this file in src/ and dist/ alike. */
 const packageDirectory = (): string => fileURLToPath(new URL("../../", import.meta.url));
@@ -22,15 +23,47 @@ export function withPathFirst(
   };
 }
 
+/**
+ * How Windows starts a program in a console window of its own: cmd.exe's
+ * start, since a detached child gets no console at all. Only plain
+ * arguments, which cmd.exe passes on unchanged; /s strips the outer quotes.
+ */
+export function windowsStart(
+  command: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+): { command: string; args: string[] } {
+  const unsafe = [command, ...args].find((word) => /["%^&|<>\r\n]/.test(word));
+  const plain = args.find((arg) => !/^[\w@.,:/\\=+-]+$/.test(arg));
+  if (unsafe !== undefined || plain !== undefined) {
+    throw new ProcessError(`cannot start ${JSON.stringify(unsafe ?? plain)} in its own window`);
+  }
+  const system = env.SystemRoot ?? env.SYSTEMROOT ?? "C:\\Windows";
+  return {
+    command: path.win32.join(system, "System32", "cmd.exe"),
+    args: [
+      "/d",
+      "/s",
+      "/c",
+      `"start "Liftoff upgrade" "${command}"${args.map((arg) => ` ${arg}`).join("")}"`,
+    ],
+  };
+}
+
 /** The running Liftoff and the channels' tools on this machine. */
 export class LocalInstall implements InstallPorts {
   readonly platform = process.platform === "win32" ? "win32" : "darwin";
   readonly env: NodeJS.ProcessEnv;
-  private readonly cwd: string;
+  private readonly signal: AbortSignal | undefined;
+  /**
+   * Programs run in the home directory, never in the project: there a
+   * project's own powershell.exe or .npmrc could stand in for the real ones.
+   */
+  private readonly cwd = homedir();
 
-  constructor(cwd: string, env: NodeJS.ProcessEnv = process.env) {
-    this.cwd = cwd;
-    this.env = env;
+  constructor(options: { env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {}) {
+    this.env = options.env ?? process.env;
+    this.signal = options.signal;
   }
 
   async running() {
@@ -75,6 +108,9 @@ export class LocalInstall implements InstallPorts {
         cwd: this.cwd,
         env: withPathFirst(this.env, pathFirst),
         timeoutMs: 60_000,
+        // brew info --installed describes every installed package.
+        maxOutputBytes: 64 * 1024 * 1024,
+        ...(this.signal === undefined ? {} : { signal: this.signal }),
       });
       if (result.timedOut || result.cancelled) return undefined;
       return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
@@ -97,21 +133,27 @@ export class LocalInstall implements InstallPorts {
         shell: false,
         stdio: ["ignore", 2, 2],
       });
+      const stop = () => killTree(child);
+      this.signal?.addEventListener("abort", stop, { once: true });
       child.on("error", () => resolve(null));
-      child.on("close", (code) => resolve(code));
+      child.on("close", (code) => {
+        this.signal?.removeEventListener("abort", stop);
+        resolve(code);
+      });
     });
   }
 
   async handOff(command: string, args: readonly string[]): Promise<void> {
+    const launch =
+      this.platform === "win32" ? windowsStart(command, args, this.env) : { command, args };
     await new Promise<void>((resolve, reject) => {
-      // Detached on Windows gives it a console of its own, which shows its
-      // progress after Liftoff exits.
-      const child = spawn(command, args, {
+      const child = spawn(launch.command, launch.args, {
         cwd: this.cwd,
         env: this.env,
         shell: false,
-        detached: true,
         stdio: "ignore",
+        windowsVerbatimArguments: this.platform === "win32",
+        detached: this.platform !== "win32",
       });
       child.once("error", (error) =>
         reject(new ProcessError(`could not start ${command}: ${error.message}`)),
