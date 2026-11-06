@@ -147,6 +147,22 @@ const expectInstalled = (msiVersion: string): Product => {
   if (liftoff("--version").trim() !== version) fail(`liftoff --version is not ${version}`);
   liftoff("init", "--name", "smoke", "--workflow", "manual", "--agents", "claude", "--yes");
   liftoff("validate", "--dir", "smoke");
+  // liftoff upgrade knows the MSI installed it, there (UPGRADE-001). Once
+  // the package is in winget-pkgs, WinGet lists an MSI installed by hand as
+  // its own, so either is right; its exit code depends on WinGet's answer.
+  const upgrade = spawnSync(where, ["upgrade", "--check", "--json"], {
+    cwd: smoke,
+    encoding: "utf8",
+    env,
+  });
+  const installedBy = (JSON.parse(upgrade.stdout) as { installed?: Record<string, unknown> })
+    .installed;
+  if (
+    !["msi", "winget"].includes(String(installedBy?.channel)) ||
+    !same(String(installedBy?.location), installed)
+  ) {
+    fail(`liftoff upgrade --check reports ${upgrade.stdout}`);
+  }
   return product;
 };
 const expectNothingLeft = () => {

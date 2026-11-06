@@ -198,3 +198,116 @@ the verify job installs it from the draft, runs Liftoff, and uninstalls it.
 `scripts/package/check-msi.ts` shows this on Windows CI.
 
 Verification: test
+
+## UPGRADE-001 Liftoff knows which channel installed it from that channel's own records
+
+`liftoff upgrade` finds the running copy, with every link followed, and asks
+the channel that would own it, never guessing from a path alone:
+
+- a bundle in Homebrew's Caskroom is the cask that `brew info --installed`
+  lists at that version, with its tap;
+- an npm package in Homebrew's Cellar is the formula `brew info --installed`
+  lists at that version;
+- a Windows bundle is the MSI Windows Installer records with Liftoff's
+  UpgradeCode at that location, and it is WinGet's when
+  `winget list --id voyager163.liftoff --exact --source winget` lists it.
+  WinGet matches what Windows has installed to its packages, so once the
+  package is published it lists an MSI installed by hand too. Only WinGet's
+  own "no installed package found" means it does not list Liftoff; any
+  other failure leaves the channel's offer unknown;
+- an npm package is a global npm install when the npm that ships with the
+  running Node has it as its global `@voyager163/liftoff`.
+
+A bundle no channel records was unpacked by hand. A Git checkout, or a copy
+no channel records, such as one in a project's own `node_modules`, is
+reported with its location and is never changed.
+
+- Given a copy in the Caskroom that brew lists, when `liftoff upgrade
+  --check` runs, then it reports the cask, its tap and its location.
+- Given a copy in the Caskroom that brew does not list, when it runs, then
+  the channel is unknown.
+- Given a Windows bundle Windows Installer records and WinGet does not list,
+  when it runs, then the channel is the MSI; when WinGet lists it, WinGet.
+- Given a global npm install, when it runs, then the channel is npm; given a
+  package in some other `node_modules`, the channel is unknown.
+
+`scripts/package/check-msi.ts` shows the MSI case on Windows CI.
+
+Verification: test
+
+## UPGRADE-002 What is released is reported apart from what the channel offers
+
+The latest published release is read from GitHub without credentials, and
+what the owning channel would install is read from that channel (`brew
+info`, `winget show`, `npm view`), since a channel can lag behind a release.
+Only a newer version the channel offers is an upgrade. `--check` changes
+nothing and exits 3 when there is one. A channel that cannot say what it
+offers is a failure, with what it printed, never "up to date". A release
+GitHub cannot be asked about, or none published yet, is reported as such.
+WinGet's version is read from the `--versions` table, whose values do not
+depend on the language Windows uses.
+
+- Given a release newer than the channel offers, when `--check` runs, then
+  it reports both versions and exits 0.
+- Given a channel that offers a newer version, when `--check` runs, then it
+  exits 3 and names the command that would upgrade.
+- Given GitHub cannot be reached, when it runs, then it says so and still
+  reports the channel.
+- Given `npm view` or `winget show` fails or times out, when `--check`
+  runs, then it fails and says why.
+
+Verification: test
+
+## UPGRADE-003 Only the owning channel upgrades Liftoff, and only when asked
+
+The upgrade is that channel's own command for Liftoff alone:
+`brew upgrade --cask <tap>/liftoff`, `brew upgrade <formula>`,
+`winget upgrade --id voyager163.liftoff --exact`, or
+`npm install --global @voyager163/liftoff@<version>` with the npm that ships
+with the running Node. Liftoff shows the command and asks before running it;
+the default answer is no, and without a terminal it needs `--yes`. It never
+switches channel, installs a package manager, upgrades anything else, asks
+for administrator rights or changes a project. Homebrew upgrades the
+formula with what it depends on, such as Node, when those are out of date,
+but not the other formulae that depend on them. Every program it runs, the
+channels' and Windows PowerShell, is named by its absolute path and runs in
+the home directory, so nothing in the project, such as its own
+`powershell.exe` or `.npmrc`, stands in for it. Stopping Liftoff before the
+upgrade starts runs nothing, and stopping it during one stops that too and
+is reported as cancelled, since the channel may have changed something.
+
+- Given an upgrade, when the person answers no, then nothing runs.
+- Given no terminal and no `--yes`, when `liftoff upgrade` runs, then it
+  refuses and runs nothing.
+- Given a copy unpacked by hand, a checkout or one no channel records, when
+  `liftoff upgrade --yes` runs, then nothing runs.
+- Given a channel's upgrade that fails, when it runs, then Liftoff reports
+  its exit code.
+- Given Liftoff is stopped while it finds the channel, when the channel is
+  found, then nothing runs.
+
+Verification: test
+
+## UPGRADE-004 An upgrade is verified, and WinGet's is handed over
+
+After a Homebrew or npm upgrade, the upgraded copy (the `liftoff` Homebrew
+links, or the package npm replaced) verifies itself with `liftoff upgrade
+--verify`: the channel records the version that is running, which for a
+formula is the version Homebrew links, and `liftoff` on `PATH` is that copy,
+or the launcher npm wrote for it. The upgrade succeeds only when that copy
+verified itself, through the same channel, at a newer version. WinGet must
+replace the running `liftoff.exe`, so Liftoff starts it in a window of its
+own and exits, and the person runs `liftoff upgrade --verify` once it
+finishes. An MSI records only `X.Y.Z`, so that is what is compared for it.
+
+- Given an upgrade that lands, when the new copy verifies itself, then the
+  upgrade succeeds.
+- Given a channel that records another version, or a `liftoff` on `PATH`
+  that is another copy, when `--verify` runs, then it fails and says which.
+- Given the copy that answers after an upgrade cannot verify itself, or is
+  another channel's, when the upgrade finishes, then it is not reported as
+  done.
+- Given a WinGet install, when `liftoff upgrade --yes` runs, then WinGet is
+  started on its own and Liftoff asks for `--verify` afterwards.
+
+Verification: test
