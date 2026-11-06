@@ -521,3 +521,25 @@ liftoff governance profile set team-gitflow --check
 liftoff governance profile set risk-tiered-gitflow
 liftoff governance profile set --recover undo
 ```
+
+## liftoff upgrade
+
+Finds which channel installed the running Liftoff from that channel's own records: Homebrew, WinGet, its MSI or npm. It reports the latest release on GitHub apart from what that channel offers, which can lag behind it, and upgrades only with that channel's own command for Liftoff alone: brew upgrade, winget upgrade or npm install --global. It never switches channel, installs a package manager, upgrades anything else, asks for administrator rights or changes a project. It shows the command and asks before running it; the default answer is no. In scripts, pass --yes. On Windows, WinGet replaces liftoff.exe, so Liftoff hands it over and exits; run liftoff upgrade --verify once it finishes. A copy unpacked by hand, a checkout or one no channel records is reported, never changed.
+
+Changes files; asks first unless `--yes` is given.
+
+JSON report: `liftoff.upgrade/v1`.
+
+| Option | Description |
+| --- | --- |
+| `--check` | Change nothing; exit 3 when the channel that installed Liftoff offers a newer version. |
+| `--verify` | Change nothing; check that the channel records this version and that liftoff on PATH is this copy. |
+| `--yes` | Run the channel's upgrade without asking. |
+| `--json` | Print one JSON report on stdout. |
+| `--help` | Show help for this command. |
+
+```bash
+liftoff upgrade --check
+liftoff upgrade
+liftoff upgrade --verify
+```

@@ -78,6 +78,7 @@ describe("CLI-001 one registry drives every command", () => {
       "governance resume",
       "governance verify",
       "governance profile set",
+      "upgrade",
     ]);
   });
 

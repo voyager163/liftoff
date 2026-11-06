@@ -247,3 +247,59 @@ export interface ToolPort {
   /** First line of the tool's version output, or undefined when it cannot run. */
   version(command: string, args: readonly string[]): Promise<string | undefined>;
 }
+
+/** What a program printed, run to read something. */
+export interface QueryResult {
+  readonly exitCode: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+/**
+ * The running Liftoff and the tools of the channels that install it, for
+ * `liftoff upgrade`. Nothing here changes anything except `delegate` and
+ * `handOff`, which run a channel's own upgrade.
+ */
+export interface InstallPorts {
+  readonly platform: "darwin" | "win32";
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /**
+   * The running copy, with every link followed: the Liftoff package
+   * directory (lib/app in a bundle) and the executable running it, which is
+   * Node for an npm install and Liftoff's own launcher for a bundle.
+   */
+  running(): Promise<{ readonly app: string; readonly executable: string }>;
+  realPath(path: string): Promise<string | undefined>;
+  /** Text of a file, or undefined when it is not a readable file. */
+  readText(path: string): Promise<string | undefined>;
+  /** Whether anything, a file, directory or link, is at the path. */
+  exists(path: string): Promise<boolean>;
+  /**
+   * Runs a program to read something, without a shell and with a time
+   * limit; undefined when it cannot be started or did not finish.
+   */
+  query(
+    command: string,
+    args: readonly string[],
+    pathFirst?: readonly string[],
+  ): Promise<QueryResult | undefined>;
+  /**
+   * Runs a channel's upgrade with what it prints shown on stderr and no
+   * input, and returns its exit code; null when it could not run or finish.
+   */
+  delegate(
+    command: string,
+    args: readonly string[],
+    pathFirst?: readonly string[],
+  ): Promise<number | null>;
+  /**
+   * Starts a program in its own window and returns without waiting, for an
+   * upgrade that must replace this very executable.
+   */
+  handOff(command: string, args: readonly string[]): Promise<void>;
+  /**
+   * Reads JSON over HTTPS without any credentials: undefined when the server
+   * answers 404, and an error for anything else that is not JSON.
+   */
+  fetchJson(url: string): Promise<unknown>;
+}

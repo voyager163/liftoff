@@ -147,6 +147,18 @@ const expectInstalled = (msiVersion: string): Product => {
   if (liftoff("--version").trim() !== version) fail(`liftoff --version is not ${version}`);
   liftoff("init", "--name", "smoke", "--workflow", "manual", "--agents", "claude", "--yes");
   liftoff("validate", "--dir", "smoke");
+  // liftoff upgrade knows the MSI installed it, there (UPGRADE-001). It
+  // exits 3 or 1 too when a release is out or GitHub cannot be asked.
+  const upgrade = spawnSync(where, ["upgrade", "--check", "--json"], {
+    cwd: smoke,
+    encoding: "utf8",
+    env,
+  });
+  const installedBy = (JSON.parse(upgrade.stdout) as { installed?: Record<string, unknown> })
+    .installed;
+  if (installedBy?.channel !== "msi" || !same(String(installedBy.location), installed)) {
+    fail(`liftoff upgrade --check reports ${upgrade.stdout}`);
+  }
   return product;
 };
 const expectNothingLeft = () => {

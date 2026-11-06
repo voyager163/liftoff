@@ -17,6 +17,7 @@ import { makeGovernanceProfileSetCommand } from "./commands/profile.ts";
 import { makeRepairCommand } from "./commands/repair.ts";
 import { makeReviewClassifyCommand } from "./commands/review-classify.ts";
 import { makeUpdateCommand } from "./commands/update.ts";
+import { makeUpgradeCommand } from "./commands/upgrade.ts";
 import { makeDoctorCommand, makeValidateCommand } from "./commands/validate-doctor.ts";
 import { makeWorkflowSetCommand } from "./commands/workflow.ts";
 
@@ -46,4 +47,5 @@ export const REGISTRY: readonly CommandSpec[] = [
   makeGovernanceResumeCommand(),
   makeGovernanceVerifyCommand(),
   makeGovernanceProfileSetCommand(),
+  makeUpgradeCommand(),
 ];
