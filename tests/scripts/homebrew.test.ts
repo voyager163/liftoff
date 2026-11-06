@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { verifyProblems } from "../../scripts/release/check-homebrew-install.ts";
 import { bumpCask, render, TEMPLATES } from "../../scripts/release/homebrew.ts";
 
 const repository = path.resolve(import.meta.dirname, "../..");
@@ -93,6 +94,56 @@ describe("CHAN-001 Mac users install the signed bundle with a Homebrew cask", ()
   });
 });
 
+describe("CHAN-001 an install is checked against what liftoff upgrade --verify reports", () => {
+  const prefix = "/opt/homebrew";
+  const installed = {
+    channel: "homebrew-cask",
+    location: "/opt/homebrew/Caskroom/liftoff/0.1.0/liftoff-package-aarch64-apple-darwin",
+  };
+
+  it("accepts a verified install, with or without a newer release on GitHub", () => {
+    const report = { outcome: "success", verified: true, installed };
+    expect(verifyProblems("homebrew-cask", prefix, 0, report)).toEqual([]);
+    expect(verifyProblems("homebrew-cask", prefix, 3, { ...report, outcome: "attention" })).toEqual(
+      [],
+    );
+  });
+
+  it("refuses an install whose record or PATH did not verify, or another channel's", () => {
+    expect(
+      verifyProblems("homebrew-cask", prefix, 1, {
+        outcome: "failure",
+        verified: false,
+        installed,
+      }),
+    ).toEqual(["it exited 1 with outcome failure", "it did not verify the install"]);
+    expect(
+      verifyProblems("homebrew-cask", prefix, 3, {
+        outcome: "attention",
+        verified: false,
+        installed,
+      }),
+    ).toEqual(["it did not verify the install"]);
+    expect(
+      verifyProblems("homebrew-formula", prefix, 0, {
+        outcome: "success",
+        verified: true,
+        installed,
+      }),
+    ).toEqual([
+      "it reports homebrew-cask, not homebrew-formula",
+      `it reports ${installed.location}, outside /opt/homebrew/Cellar/liftoff`,
+    ]);
+    expect(
+      verifyProblems("homebrew-cask", prefix, 0, {
+        outcome: "attention",
+        verified: true,
+        installed,
+      }),
+    ).toEqual(["it exited 0 with outcome attention"]);
+  });
+});
+
 describe("CHAN-002 a formula for homebrew/core is ready to submit", () => {
   it("builds the npm package with Homebrew's Node and tests a project", () => {
     expect(formula).toMatch(/^class Liftoff < Formula\n/);
@@ -140,17 +191,35 @@ describe("CHAN-003 a stable release updates the tap through a reviewed pull requ
     );
   });
 
-  it("writes the cask into a tap that has none, and then leaves it alone", () => {
+  it("writes and stages the cask in a Git tap that has none, so Promote commits it", () => {
     const script = path.join(repository, "scripts", "release", "homebrew.ts");
+    const git = (...args: string[]) =>
+      execFileSync(
+        "git",
+        ["-C", work, "-c", "user.name=t", "-c", "user.email=t@example.com", ...args],
+        {
+          encoding: "utf8",
+        },
+      );
+    git("init", "--quiet");
+    git("commit", "--quiet", "--allow-empty", "-m", "empty tap");
     const update = () =>
       execFileSync(process.execPath, [script, "update-tap", "0.1.0", SUM, work], {
         encoding: "utf8",
       });
+    // Promote's own test: a staged change means a pull request.
+    const staged = () => git("diff", "--cached", "--name-only").trim();
     expect(update()).toContain("Casks/liftoff.rb is now 0.1.0");
     expect(readFileSync(path.join(work, "Casks", "liftoff.rb"), "utf8")).toBe(cask);
+    expect(staged()).toBe("Casks/liftoff.rb");
+    git("commit", "--quiet", "-m", "liftoff 0.1.0");
+    expect(git("ls-files").trim()).toBe("Casks/liftoff.rb");
     expect(update()).toContain("the tap already has 0.1.0");
+    expect(staged()).toBe("");
     writeFileSync(path.join(work, "Casks", "liftoff.rb"), older);
+    git("commit", "--quiet", "-am", "liftoff 0.0.9");
     expect(update()).toContain("is now 0.1.0");
+    expect(staged()).toBe("Casks/liftoff.rb");
     expect(
       execFileSync(process.execPath, [script, "render", "formula", "0.1.0", SUM], {
         encoding: "utf8",
@@ -187,5 +256,9 @@ describe("CHAN-003 a stable release updates the tap through a reviewed pull requ
     );
     expect(run).toContain("set HOMEBREW_TAP_TOKEN in the release environment");
     expect(run).toContain('gh pr create --repo "$TAP_REPOSITORY"');
+    // update-tap stages the cask, so a new one counts and is committed.
+    expect(run).toContain("if git diff --cached --quiet; then");
+    expect(run).toContain('git commit -m "liftoff $VERSION"');
+    expect(run).not.toMatch(/git diff --quiet|git commit -a/);
   });
 });

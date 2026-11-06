@@ -5,8 +5,9 @@
 //   node scripts/release/homebrew.ts update-tap <version> <sha256> <tap directory>
 //
 // render prints the Ruby, with the release's URL unless one is given (as CI
-// gives a local file). update-tap writes Casks/liftoff.rb in a checkout of
-// the tap and prints whether it changed it.
+// gives a local file). update-tap writes and stages Casks/liftoff.rb in a
+// Git checkout of the tap, and prints whether it changed it.
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { compareVersions, parseVersion } from "../../src/domain/install/version.ts";
@@ -121,6 +122,8 @@ if (import.meta.main) {
     if (next.changed) {
       mkdirSync(path.dirname(file), { recursive: true });
       writeFileSync(file, next.text);
+      // Staged, so a cask new to the tap is committed as a changed one is.
+      execFileSync("git", ["-C", tap, "add", "--", path.join("Casks", "liftoff.rb")]);
     }
     console.log(
       next.changed ? `Casks/liftoff.rb is now ${version}` : `the tap already has ${version}`,

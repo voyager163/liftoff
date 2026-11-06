@@ -210,7 +210,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          if git diff --quiet; then
+          # update-tap stages the cask, a new one included.
+          if git diff --cached --quiet; then
             echo "the tap already has liftoff $VERSION"
             exit 0
           fi
@@ -218,7 +219,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
-          git commit -am "liftoff $VERSION"
+          git commit -m "liftoff $VERSION"
           # git asks gh for the token, which only this step has.
           gh auth setup-git
           git push --force origin "$branch"

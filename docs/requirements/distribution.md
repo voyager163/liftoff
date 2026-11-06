@@ -216,8 +216,9 @@ fills in the version and checksum.
   `brew audit --strict` check it in a tap, then they find nothing.
 - Given the cask and this commit's bundle, when it is installed from a local
   tap, then `liftoff` on Homebrew's `PATH` is this version, generates and
-  validates a project, and `liftoff upgrade --verify` reports the cask;
-  when it is uninstalled, nothing of it is left on that `PATH`.
+  validates a project, and `liftoff upgrade --verify` verifies the cask's
+  record and `PATH`, whether or not GitHub has a newer release; when it is
+  uninstalled, nothing of it is left on that `PATH`.
 
 The `homebrew` job in CI shows this on macOS.
 
@@ -260,8 +261,8 @@ Prereleases never reach the tap.
 - Given a tap that already has the version with the same checksum, when it is
   updated again, then nothing changes; with another checksum, or a newer
   version, the update fails.
-- Given a tap without the cask, when it is updated, then it gets the cask
-  rendered from Liftoff's source.
+- Given a tap without the cask, when it is updated, then the pull request
+  adds the cask rendered from Liftoff's source.
 
 Verification: test
 
