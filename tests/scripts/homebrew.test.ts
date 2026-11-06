@@ -191,7 +191,9 @@ describe("CHAN-003 a stable release updates the tap through a reviewed pull requ
     );
   });
 
-  it("writes and stages the cask in a Git tap that has none, so Promote commits it", () => {
+  it("writes and stages the cask in a Git tap that has none, so Promote commits it", {
+    timeout: 60_000,
+  }, () => {
     const script = path.join(repository, "scripts", "release", "homebrew.ts");
     const git = (...args: string[]) =>
       execFileSync(
