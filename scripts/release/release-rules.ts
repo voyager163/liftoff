@@ -190,6 +190,7 @@ export const releaseAssets = (version: string): string[] => [
   `liftoff-${version}.cdx.json`,
   "liftoff-package-aarch64-apple-darwin.tar.gz",
   "liftoff-package-x86_64-pc-windows-msvc.zip",
+  "liftoff-x86_64-pc-windows-msvc.msi",
   `voyager163-liftoff-${version}.tgz`,
 ];
 
