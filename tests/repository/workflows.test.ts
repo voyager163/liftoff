@@ -103,7 +103,9 @@ describe("REPO-005 privileged triggers never run pull request code", () => {
               step.with?.repository,
               "checkout must not use the fork repository",
             ).toBeUndefined();
-            if (/head|merge|pull_request/.test(ref)) {
+            // A merge queue's base is the base branch, not pull request code.
+            const queueBase = /^\$\{\{[^}]*merge_group\.base_sha[^}]*\}\}$/.test(ref);
+            if (/head|merge|pull_request/.test(ref) && !queueBase) {
               const into = String(step.with?.path ?? ".").replace(/\/+$/, "");
               expect(into, "the pull request must not replace the workspace").not.toMatch(/^\.?$/);
               expect(step.with?.["persist-credentials"]).toBe(false);
@@ -125,6 +127,39 @@ describe("REPO-005 privileged triggers never run pull request code", () => {
               /\$\{\{\s*github\.(event\.pull_request\.(title|body|head\.ref)|head_ref)/,
             );
           }
+        }
+      }
+    },
+  );
+});
+
+describe("REPO-005 a merge queue never runs the queued change with write access", () => {
+  // On merge_group, checkout defaults to the queue's merge commit, which
+  // holds the queued pull request. A workflow whose trust rests on running
+  // only the base's code (one with a privileged trigger) must take the
+  // queue's base instead when it has write access. CodeQL, which scans the
+  // merged code, is meant to read it.
+  const queued = workflows.filter(
+    (w) =>
+      triggers(w.data).includes("merge_group") &&
+      triggers(w.data).some((t) => t === "pull_request_target" || t === "workflow_run") &&
+      Object.values(w.data.jobs).some((job) =>
+        Object.values(job.permissions ?? {}).includes("write"),
+      ),
+  );
+
+  it("covers review-policy.yml", () => {
+    expect(queued.map((w) => w.name)).toContain("review-policy.yml");
+  });
+
+  it.each(queued.map((w) => [w.name, w.data]))(
+    "%s checks out the queue's base on merge_group",
+    (_name, data) => {
+      for (const job of Object.values((data as Workflow).jobs)) {
+        if (!Object.values(job.permissions ?? {}).includes("write")) continue;
+        for (const step of job.steps ?? []) {
+          if (!step.uses?.startsWith("actions/checkout@")) continue;
+          expect(String(step.with?.ref ?? "")).toContain("github.event.merge_group.base_sha");
         }
       }
     },

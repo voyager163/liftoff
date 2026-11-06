@@ -2,6 +2,7 @@
 // Biome. Reads the hook event on stdin; never fails the edit.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { isInside } from "../inside.ts";
 
 const chunks: Buffer[] = [];
 for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
@@ -17,7 +18,7 @@ try {
 }
 
 const root = path.resolve(import.meta.dirname, "../..");
-if (!file || path.relative(root, path.resolve(file)).startsWith("..")) process.exit(0);
+if (!file || !isInside(root, path.resolve(file))) process.exit(0);
 
 const biome = path.join(root, "node_modules", "@biomejs", "biome", "bin", "biome");
 spawnSync(

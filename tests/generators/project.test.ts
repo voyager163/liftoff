@@ -955,6 +955,9 @@ describe("PROJ-015 Azure infrastructure as OpenTofu code", () => {
     const nginx = project.get("frontend/nginx/default.conf.template")?.content ?? "";
     expect(nginx).toContain("proxy_set_header Host $proxy_host;");
     expect(nginx).toContain("proxy_ssl_server_name on;");
+    // An HTTPS upstream's certificate is checked against the system's CAs.
+    expect(nginx).toContain("proxy_ssl_verify on;");
+    expect(nginx).toContain("proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;");
     expect(nginx).not.toContain("proxy_set_header Host $host;");
   });
 

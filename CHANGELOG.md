@@ -8,6 +8,10 @@ and this project adheres to
 
 ## [Unreleased]
 
+## 0.1.0-rc.1 - 2026-11-05
+
+The first release candidate of the rebuilt Liftoff.
+
 ### Added
 
 - `liftoff plan`, `init`, `validate` and `doctor`: create a Python FastAPI
