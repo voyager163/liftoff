@@ -151,6 +151,10 @@ export class LocalInstall implements InstallPorts {
   }
 
   async handOff(command: string, args: readonly string[]): Promise<void> {
+    // cmd.exe's start reports a missing program only in the window it opens.
+    if (this.platform === "win32" && !(await this.exists(command))) {
+      throw new ProcessError(`could not start ${command}: it is not there`);
+    }
     const launch =
       this.platform === "win32" ? windowsStart(command, args, this.env) : { command, args };
     await new Promise<void>((resolve, reject) => {
