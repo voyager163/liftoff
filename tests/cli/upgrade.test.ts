@@ -201,6 +201,9 @@ describe("UPGRADE-001 Liftoff knows which channel installed it from that channel
       offered: "0.2.0",
     });
     expect(listed.report.command).toEqual([BREW, "upgrade", "liftoff"]);
+    // Another revision of the same version is another keg.
+    const revision = await exec(formula("0.1.0_2"), ["upgrade", "--check"]);
+    expect(revision.report.installed.channel).toBe("unknown");
     const unlisted = await exec(formula("0.0.1"), ["upgrade", "--check"]);
     expect(unlisted.report.installed.channel).toBe("unknown");
   });
@@ -536,7 +539,9 @@ describe("UPGRADE-004 An upgrade is verified, and WinGet's is handed over", () =
     });
     const { code, report } = await exec(unlinked, ["upgrade", "--verify"]);
     expect(code).toBe(1);
-    expect(report.checks[0].detail).toBe("homebrew-formula records 0.2.0, but 0.1.0 is running");
+    expect(report.checks[0].detail).toBe(
+      "homebrew-formula records 0.2.0 linked, not 0.1.0, but 0.1.0 is running",
+    );
   });
 
   it("has nothing to verify a copy no channel records against", async () => {

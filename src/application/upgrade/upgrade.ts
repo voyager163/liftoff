@@ -152,7 +152,8 @@ async function cellarFormula(
 ): Promise<Install> {
   const brew = path.posix.join(cellar.prefix, "bin", "brew");
   const found = await brewInstalled(ports, brew, "formula", cellar.name);
-  if (!found?.installed.map(brewVersion).includes(brewVersion(cellar.version))) {
+  // The keg exactly, revision and all: 0.1.0_1 is not 0.1.0_2.
+  if (!found?.installed.includes(cellar.version)) {
     return unknown(
       app,
       `Liftoff is in Homebrew's Cellar at ${app}, but brew does not list it there.`,
@@ -162,8 +163,11 @@ async function cellarFormula(
     channel: "homebrew-formula",
     location: app,
     name: found.fullName,
-    // The version brew links, which a new terminal runs; none when it links none.
-    recorded: found.linked === undefined ? "none linked" : brewVersion(found.linked),
+    // What brew links, which a new terminal runs: this keg, or another one.
+    recorded:
+      found.linked === cellar.version
+        ? brewVersion(cellar.version)
+        : `${found.linked ?? "no keg"} linked, not ${cellar.version}`,
     offered: brewVersion(found.offered),
     reason: `Homebrew installed it as the formula ${found.fullName}.`,
     upgrade: {
