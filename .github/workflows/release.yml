@@ -135,7 +135,10 @@ jobs:
       - name: Remove the signing keychain and keys
         if: always() && runner.os == 'macOS'
         run: node scripts/package/sign-macos.ts --cleanup
-      # Windows signing (DIST-006) goes here, before the archive is made.
+      # Windows signing goes here, before the installer and archive are made.
+      - name: Build the Windows installer
+        if: runner.os == 'Windows'
+        run: node scripts/package/build-msi.ts "out/$BUNDLE"
       - name: Archive the bundle
         working-directory: out
         run: |
@@ -148,6 +151,13 @@ jobs:
         with:
           name: ${{ matrix.bundle }}
           path: out/${{ matrix.archive }}
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: runner.os == 'Windows'
+        with:
+          name: liftoff-msi
+          path: out/liftoff-x86_64-pc-windows-msvc.msi
           retention-days: 7
           if-no-files-found: error
 
@@ -170,19 +180,22 @@ jobs:
         run: |
           shopt -s nullglob
           files=(*)
-          [ "${#files[@]}" -eq 4 ] || { echo "expected 4 assets, found ${files[*]}"; exit 1; }
+          [ "${#files[@]}" -eq 5 ] || { echo "expected 5 assets, found ${files[*]}"; exit 1; }
           sha256sum -- "${files[@]}" > SHA256SUMS
           cat SHA256SUMS
       - name: Attest how the assets were built
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: assets/*
-      # The SBOM describes what the bundles install from the lockfile. An npm
-      # install resolves its dependencies afresh, so the tarball has none.
+      # The SBOM describes what the bundles, and the installer holding the
+      # Windows one, install from the lockfile. An npm install resolves its
+      # dependencies afresh, so the tarball has none.
       - name: Attest what the bundles contain
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: assets/liftoff-package-*
+          subject-path: |
+            assets/liftoff-package-*
+            assets/liftoff-x86_64-pc-windows-msvc.msi
           sbom-path: assets/liftoff-${{ inputs.version }}.cdx.json
       # The check job cannot see drafts (they are listed only to a token that
       # can push), so a draft left by an earlier run is looked for here.
@@ -257,17 +270,17 @@ jobs:
           # Exactly the assets the draft job made, nothing added since.
           expected="$(printf '%s\n' SHA256SUMS "liftoff-$VERSION.cdx.json" \
             liftoff-package-aarch64-apple-darwin.tar.gz liftoff-package-x86_64-pc-windows-msvc.zip \
-            "voyager163-liftoff-$VERSION.tgz")"
+            liftoff-x86_64-pc-windows-msvc.msi "voyager163-liftoff-$VERSION.tgz")"
           actual="$(printf '%s\n' * | LC_ALL=C sort)"
-          [ "$actual" = "$expected" ] || { echo "::error::the draft's assets are not the five Release made: $actual"; exit 1; }
+          [ "$actual" = "$expected" ] || { echo "::error::the draft's assets are not the six Release made: $actual"; exit 1; }
           if command -v sha256sum >/dev/null; then sha256sum -c SHA256SUMS; else shasum -a 256 -c SHA256SUMS; fi
           # Made by this workflow, on main, at this commit, and nowhere else.
           signer=(--repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
             --source-ref refs/heads/main --source-digest "$GITHUB_SHA")
-          for file in voyager163-liftoff-*.tgz liftoff-package-* liftoff-*.cdx.json SHA256SUMS; do
+          for file in voyager163-liftoff-*.tgz liftoff-package-* liftoff-*.msi liftoff-*.cdx.json SHA256SUMS; do
             gh attestation verify "$file" "${signer[@]}"
           done
-          for file in liftoff-package-*; do
+          for file in liftoff-package-* liftoff-*.msi; do
             gh attestation verify "$file" "${signer[@]}" --predicate-type https://cyclonedx.org/bom
           done
       - name: Check the macOS signature and notarization
@@ -336,6 +349,25 @@ jobs:
           liftoff init --name smoke --workflow manual --agents claude --yes
           liftoff validate --dir smoke
           test -f smoke/.gitignore
+      # As a user installs it: for the runner's own user, with no elevation.
+      # The full install, upgrade and uninstall cycle is CI's (DIST-006).
+      - name: Install Liftoff from the installer and run it
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          $msi = Join-Path $env:RUNNER_TEMP 'assets\liftoff-x86_64-pc-windows-msvc.msi'
+          $log = Join-Path $env:RUNNER_TEMP 'msiexec.log'
+          $install = Start-Process msiexec -Wait -PassThru -ArgumentList '/i', "`"$msi`"", '/qn', '/norestart', '/l*v', "`"$log`""
+          if ($install.ExitCode -ne 0) { Get-Content $log -Tail 60; throw "msiexec exited $($install.ExitCode)" }
+          $liftoff = Join-Path $env:LOCALAPPDATA 'Programs\Liftoff\bin\liftoff.exe'
+          $installed = & $liftoff --version
+          if ($installed -ne $env:VERSION) { throw "the installed Liftoff is $installed, not $env:VERSION" }
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if (-not ($userPath -split ';' -contains (Split-Path $liftoff))) { throw "the user's PATH lacks $(Split-Path $liftoff)" }
+          $remove = Start-Process msiexec -Wait -PassThru -ArgumentList '/x', "`"$msi`"", '/qn', '/norestart'
+          if ($remove.ExitCode -ne 0) { throw "uninstalling exited $($remove.ExitCode)" }
+          if (Test-Path (Split-Path (Split-Path $liftoff))) { throw 'the uninstall left files behind' }
       - name: Run Liftoff from the npm package outside any checkout
         run: |
           prefix="$(cd "$RUNNER_TEMP" && pwd)/npm-prefix"

@@ -97,15 +97,15 @@ jobs:
           # Made by the Release workflow, on main, at the release's commit.
           signer=(--repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
             --source-ref refs/heads/main --source-digest "$TARGET")
-          for file in voyager163-liftoff-*.tgz liftoff-package-* liftoff-*.cdx.json SHA256SUMS; do
+          for file in voyager163-liftoff-*.tgz liftoff-package-* liftoff-*.msi liftoff-*.cdx.json SHA256SUMS; do
             gh attestation verify "$file" "${signer[@]}"
           done
-          for file in liftoff-package-*; do
+          for file in liftoff-package-* liftoff-*.msi; do
             gh attestation verify "$file" "${signer[@]}" --predicate-type https://cyclonedx.org/bom
           done
           # The run that built them, from their signed provenance rather than
           # the release notes, which anyone who can write releases may edit.
-          runs="$(for file in voyager163-liftoff-*.tgz liftoff-package-*; do
+          runs="$(for file in voyager163-liftoff-*.tgz liftoff-package-* liftoff-*.msi; do
             gh attestation verify "$file" "${signer[@]}" --format json \
               --jq '.[].verificationResult.statement.predicate.runDetails.metadata.invocationId'
           done | sed -nE 's#^https://github\.com/[^/]+/[^/]+/actions/runs/([0-9]+)/.*#\1#p' | sort -u)"

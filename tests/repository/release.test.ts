@@ -146,7 +146,9 @@ describe("DIST-003 a release is built once, from a checked commit, into a draft"
     );
     expect(runs(draft)).toContain('grep -Fxq "v$VERSION"');
     const sbom = draft.steps.find((step) => step.uses?.startsWith("actions/attest@"));
-    expect(sbom?.with?.["subject-path"]).toBe("assets/liftoff-package-*");
+    expect(sbom?.with?.["subject-path"]).toBe(
+      "assets/liftoff-package-*\nassets/liftoff-x86_64-pc-windows-msvc.msi\n",
+    );
     // Only the draft job writes releases, and only after the approved bundles.
     for (const [name, job] of Object.entries(data.jobs)) {
       if (name !== "draft") expect(runs(job)).not.toMatch(/gh release (create|edit|upload|delete)/);
@@ -158,7 +160,7 @@ describe("DIST-003 a release is built once, from a checked commit, into a draft"
     const steps = runs(verify);
     expect(steps).toContain('gh release download "v$VERSION"');
     expect(steps).toMatch(/sha256sum -c SHA256SUMS/);
-    expect(steps).toContain("the draft's assets are not the five Release made");
+    expect(steps).toContain("the draft's assets are not the six Release made");
     expect(steps).toContain('--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"');
     expect(steps).toContain('--source-ref refs/heads/main --source-digest "$GITHUB_SHA"');
     expect(steps).toContain('gh attestation verify "$file" "${signer[@]}" --predicate-type');

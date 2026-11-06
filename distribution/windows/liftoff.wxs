@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Windows installer (DIST-006): the bundle, installed for the current
+  user only, with no elevation, under %LOCALAPPDATA%\Programs\Liftoff, and
+  its bin folder added to the user's PATH. Built by
+  scripts/package/build-msi.ts, which sets Version and BundleDir.
+
+  A dual-purpose package (ALLUSERS=2, MSIINSTALLPERUSER=1) is how Windows
+  Installer 5 installs to the per-user Programs folder: ProgramFiles64Folder
+  resolves there for a per-user install. A per-machine install is refused.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Liftoff"
+    Manufacturer="voyager163"
+    Version="$(var.Version)"
+    UpgradeCode="60D7F28B-CC6D-4476-B93F-20A568C637F2"
+    Scope="perUserOrMachine"
+    Compressed="yes"
+    Language="1033">
+    <!--
+      Every build is a new product with the same UpgradeCode, so installing
+      any build replaces the one installed. The same version is allowed, as
+      prereleases of one version share an MSI version; an older one is not.
+      The old product is removed inside the install's transaction, so a
+      failed upgrade rolls back to it.
+    -->
+    <MajorUpgrade
+      Schedule="afterInstallInitialize"
+      AllowSameVersionUpgrades="yes"
+      DowngradeErrorMessage="A newer version of Liftoff is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <?ifdef FailForTest ?>
+    <!--
+      Only in an MSI that scripts/package/check-msi.ts builds to show that a
+      failed upgrade restores what was installed. InstallExecute first runs
+      everything queued so far, removing the old product and installing the
+      new files, a marker file among them, and the PATH entry; then it fails,
+      before InstallFinalize. No release has it.
+    -->
+    <CustomAction Id="FailForTest" Error="This Liftoff installer is built to fail, for a test." />
+    <InstallExecuteSequence>
+      <InstallExecute Before="FailForTest" />
+      <Custom Action="FailForTest" Before="InstallFinalize" />
+    </InstallExecuteSequence>
+    <Component Id="FailForTestMarker" Directory="INSTALLFOLDER">
+      <File Id="FailForTestMarker" Source="$(var.BundleDir)\release.json" Name="failed-upgrade-marker.json" />
+    </Component>
+    <?endif?>
+
+    <Launch
+      Condition="Installed OR NOT (ALLUSERS = 1)"
+      Message="Liftoff installs for the current user only. Install it without ALLUSERS=1." />
+
+    <!-- Add or Remove Programs: where it is installed, and no Change button. -->
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/voyager163/liftoff" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Liftoff" />
+    </StandardDirectory>
+
+    <Feature Id="Liftoff" Title="Liftoff">
+      <ComponentGroupRef Id="Bundle" />
+      <ComponentRef Id="UserPath" />
+      <?ifdef FailForTest ?>
+      <ComponentRef Id="FailForTestMarker" />
+      <?endif?>
+    </Feature>
+
+    <ComponentGroup Id="Bundle" Directory="INSTALLFOLDER">
+      <Files Include="$(var.BundleDir)\**" />
+    </ComponentGroup>
+
+    <!-- The user's PATH, not the system's: removed again on uninstall. -->
+    <Component Id="UserPath" Directory="INSTALLFOLDER">
+      <Environment
+        Id="UserPath"
+        Name="PATH"
+        Value="[INSTALLFOLDER]bin"
+        Action="set"
+        Part="last"
+        System="no"
+        Permanent="no" />
+      <RegistryValue
+        Root="HKMU"
+        Key="Software\voyager163\Liftoff"
+        Name="UserPath"
+        Type="integer"
+        Value="1"
+        KeyPath="yes" />
+    </Component>
+  </Package>
+</Wix>

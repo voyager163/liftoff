@@ -43,7 +43,8 @@ Set these up once in the repository's settings:
 2. **Build the draft.** Run the **Release** workflow on `main` with that
    version. It packs the npm package once, and when you approve the
    `release` environment it builds both bundles from it, signing and
-   notarizing the macOS one. It writes checksums and attestations, and makes
+   notarizing the macOS one, and the Windows installer from the Windows
+   bundle. It writes checksums and attestations, and makes
    a draft prerelease, titled "(unsigned)" if a bundle is. It then downloads the draft's assets on
    macOS and Windows and checks them.
 3. **Publish.** Run the **Promote** workflow with the same version:

@@ -74,7 +74,7 @@ and Windows and checks:
 - the checksums;
 - each attestation, which must come from the Release workflow run on `main`
   at that commit;
-- that the draft holds exactly the five assets it made;
+- that the draft holds exactly the six assets it made;
 - the commit and version in each bundle's `release.json`.
 
 Then it runs Liftoff from the bundle with no Node on the PATH, and from the
@@ -161,5 +161,40 @@ cannot be stapled, so Gatekeeper looks the ticket up online.
   Liftoff starts, then it fails. `scripts/package/check-entitlements.ts`
   shows this; where System Integrity Protection is off, as on some CI
   runners, it checks only that Liftoff starts with them all.
+
+Verification: test
+
+## DIST-006 Windows users install Liftoff with an MSI, for themselves
+
+The Release workflow builds `liftoff-x86_64-pc-windows-msvc.msi` from the
+Windows bundle, with the WiX version that `.config/dotnet-tools.json` pins.
+It installs the bundle for the current user only, without elevation, in
+`%LOCALAPPDATA%\Programs\Liftoff`, and adds its `bin` folder to that user's
+`PATH`. Windows records where it is installed, and Add or Remove Programs
+offers to remove it but not to change it. Every MSI shares one UpgradeCode,
+so installing any newer build, or another build of the same version (as
+prereleases of one version are), replaces the installed one; an older
+version is refused. Uninstalling removes the files, the `PATH` entry and
+everything else it added. A per-machine install is refused.
+
+The MSI's version is the release's `X.Y.Z`, without any prerelease, which
+Windows Installer cannot hold, and must be at most 255.255.65535. The draft's
+attestations, SBOM and checksums cover the MSI as they cover the bundles, and
+the verify job installs it from the draft, runs Liftoff, and uninstalls it.
+
+- Given the MSI, when the runner's own user installs it, then Liftoff is in
+  `%LOCALAPPDATA%\Programs\Liftoff`, Windows records it there for that
+  user, and a new terminal finds `liftoff` on the user's `PATH`.
+- Given an installed Liftoff, when another build of the same version or a
+  newer one is installed, then one Liftoff is installed, at the new version,
+  in the same place.
+- Given an installed Liftoff, when an older version is installed, then it is
+  refused and the installed one stays.
+- Given an installed Liftoff, when it is uninstalled, then nothing it added
+  is left: no files, no `PATH` entry, no registry key.
+- Given the MSI, when it is installed with `ALLUSERS=1`, then nothing is
+  installed.
+
+`scripts/package/check-msi.ts` shows this on Windows CI.
 
 Verification: test

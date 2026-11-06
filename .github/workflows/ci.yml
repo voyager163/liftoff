@@ -614,7 +614,8 @@ jobs:
             os: windows-latest
             bundle: liftoff-package-x86_64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    # Windows also builds three installers and installs each.
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -648,6 +649,13 @@ jobs:
           test -f smoke/backend/.gitignore
       - name: Build the bundle from the same package
         run: node scripts/package/build-bundle.ts --package "out/$(cd out && ls voyager163-liftoff-*.tgz)"
+      # Installed, upgraded and uninstalled as the runner's own user, which
+      # is how a user installs it, with no elevation (DIST-006).
+      - name: Check the Windows installer installs, upgrades and uninstalls
+        if: runner.os == 'Windows'
+        env:
+          BUNDLE: ${{ matrix.bundle }}
+        run: node scripts/package/check-msi.ts "out/$BUNDLE"
       # Signed ad hoc with the hardened runtime, as a release is signed, once
       # without each entitlement: Liftoff must need every one (DIST-005).
       # Where the runner has System Integrity Protection off, nothing is

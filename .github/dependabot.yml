@@ -27,3 +27,11 @@ updates:
         dependency-type: development
       production:
         dependency-type: production
+
+  # WiX, pinned in .config/dotnet-tools.json.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
