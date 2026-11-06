@@ -163,7 +163,7 @@ export function promoteProblems(facts: PromoteFacts): string[] {
     problems.push("SHA256SUMS does not list exactly the release's other assets");
   }
   if (facts.stable) {
-    // The latest release only ever moves forward, on GitHub and on npm.
+    // The latest release only ever moves forward.
     const newer = facts.stableVersions.filter((other) => compareStable(other, facts.version) > 0);
     if (newer.length > 0) {
       problems.push(

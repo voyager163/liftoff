@@ -4,7 +4,6 @@
 import path from "node:path";
 import { isNewer, parseVersion } from "./version.ts";
 
-export const PACKAGE_NAME = "@voyager163/liftoff";
 export const REPOSITORY = "voyager163/liftoff";
 export const WINGET_ID = "voyager163.liftoff";
 /** The UpgradeCode every Liftoff MSI shares (distribution/windows/liftoff.wxs). */
@@ -19,7 +18,6 @@ export type Platform = "darwin" | "win32";
  * - homebrew-cask, homebrew-formula: Homebrew, from a tap or homebrew/core;
  * - winget: the WinGet package, which installed the MSI;
  * - msi: the MSI, installed by hand;
- * - npm: a global npm install;
  * - archive: a release archive unpacked by hand;
  * - source: a Git checkout;
  * - unknown: anything else, such as a project's own node_modules.
@@ -29,7 +27,6 @@ export type Channel =
   | "homebrew-formula"
   | "winget"
   | "msi"
-  | "npm"
   | "archive"
   | "source"
   | "unknown";
@@ -229,43 +226,6 @@ export function wingetNewestVersion(output: string): string | undefined {
     }
   }
   return newest;
-}
-
-/** Liftoff's version in `npm ls -g --json --depth=0` output. */
-export function npmListedVersion(json: string): string | undefined {
-  try {
-    return text(object(object(object(JSON.parse(json)).dependencies)[PACKAGE_NAME]).version);
-  } catch {
-    return undefined;
-  }
-}
-
-/** The version `npm view <package> version --json` printed. */
-export function npmViewVersion(json: string): string | undefined {
-  try {
-    const parsed: unknown = JSON.parse(json);
-    return text(Array.isArray(parsed) ? parsed.at(-1) : parsed);
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Where the npm that ships with a Node may be: beside node.exe on Windows,
- * under the prefix's lib/ for the official macOS archive and Homebrew's
- * Node, and wherever the npm beside node links to.
- */
-export function npmCliCandidates(platform: Platform, node: string): string[] {
-  const paths = pathFor(platform);
-  const directory = paths.dirname(node);
-  const cli = ["node_modules", "npm", "bin", "npm-cli.js"];
-  return platform === "win32"
-    ? [paths.join(directory, ...cli)]
-    : [
-        paths.join(directory, "..", "lib", ...cli),
-        paths.join(directory, "..", "libexec", "lib", ...cli),
-        paths.join(directory, "npm"),
-      ];
 }
 
 /** Where a command named `name` could be on PATH, in the order a shell looks. */

@@ -1,10 +1,11 @@
-# A draft for homebrew/core (CHAN-002), built from the npm package.
+# A draft for homebrew/core (CHAN-002), built from the package tarball each
+# GitHub release carries.
 # scripts/release/homebrew.ts fills in the version and checksum. A person
 # submits it, as Homebrew's rules for AI-assisted contributions require.
 class Liftoff < Formula
   desc "Developer platform CLI for governed API and GenAI projects"
   homepage "https://github.com/voyager163/liftoff"
-  url "https://registry.npmjs.org/@voyager163/liftoff/-/liftoff-{{version}}.tgz"
+  url "https://github.com/voyager163/liftoff/releases/download/v{{version}}/voyager163-liftoff-{{version}}.tgz"
   sha256 "{{sha256}}"
   license "GPL-3.0-only"
 

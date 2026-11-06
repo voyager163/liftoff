@@ -145,10 +145,10 @@ describe("CHAN-001 an install is checked against what liftoff upgrade --verify r
 });
 
 describe("CHAN-002 a formula for homebrew/core is ready to submit", () => {
-  it("builds the npm package with Homebrew's Node and tests a project", () => {
+  it("builds the release's package tarball with Homebrew's Node and tests a project", () => {
     expect(formula).toMatch(/^class Liftoff < Formula\n/);
     expect(formula).toContain(
-      '  url "https://registry.npmjs.org/@voyager163/liftoff/-/liftoff-0.1.0.tgz"\n',
+      '  url "https://github.com/voyager163/liftoff/releases/download/v0.1.0/voyager163-liftoff-0.1.0.tgz"\n',
     );
     expect(formula).toContain(`  sha256 "${SUM}"\n`);
     expect(formula).toContain('  license "GPL-3.0-only"\n');
