@@ -39,7 +39,7 @@ jobs:
       - run: npm run boundaries
       - run: npm run check:trace
       - run: npm run check:generated
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.1"
       - name: Check the Python template lock matches its pyproject
@@ -107,7 +107,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         if: matrix.stack == 'python-fastapi'
         with:
           version: "0.13.1"
@@ -211,7 +211,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         if: matrix.stack == 'python-fastapi'
         with:
           version: "0.13.1"
@@ -406,7 +406,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.1"
       - run: npm ci
@@ -519,7 +519,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.1"
       - run: npm ci
@@ -573,7 +573,7 @@ jobs:
         with:
           tofu_version: 1.13.2
           tofu_wrapper: false
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.1"
       - run: npm ci
