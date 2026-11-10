@@ -27,13 +27,15 @@ Set these up once in the repository's settings:
     issuer ID.
 
   Set all five or none: Release fails with only some.
-- **npm trusted publishing**, set up shortly before the first stable
-  promotion: within the two days before it, since npm expires a trusted
-  publisher that has not published within two days of being created. On
-  npmjs.com, configure it for `@voyager163/liftoff` with this repository and
-  the workflow file `promote.yml`. No npm token is stored. If it expires,
-  delete and create it again, then run Promote again; it publishes only what
-  npm is missing.
+- **The Homebrew tap.** The public repository `voyager163/homebrew-tap`,
+  with a `main` branch, and `HOMEBREW_TAP_TOKEN` as a secret of the `release`
+  environment: a fine-grained token for that repository only, with contents
+  and pull requests read and write. When it expires, replace the secret and
+  run Promote again.
+
+Liftoff is not published to npm: its package is private, and the package
+tarball is only a release asset that the bundles and the Homebrew formula
+are built from.
 
 ## Cutting a release
 
@@ -41,7 +43,7 @@ Set these up once in the repository's settings:
    `release/X.Y.Z` branch, merge it into `main` with a merge commit, and wait
    for `ci-gate` to pass on `main`.
 2. **Build the draft.** Run the **Release** workflow on `main` with that
-   version. It packs the npm package once, and when you approve the
+   version. It packs the package once, and when you approve the
    `release` environment it builds both bundles from it, signing and
    notarizing the macOS one, and the Windows installer from the Windows
    bundle. It writes checksums and attestations, and makes
@@ -50,8 +52,11 @@ Set these up once in the repository's settings:
 3. **Publish.** Run the **Promote** workflow with the same version:
    - With `stable` off, the draft is published as a prerelease, on GitHub
      only.
-   - With `stable` on, it becomes the latest release, and its tarball is
-     published to npm. This is refused unless both bundles are signed.
+   - With `stable` on, it becomes the latest release. This is refused unless
+     both bundles are signed. A second job, which the `release` environment
+     asks you to approve, then opens a pull request on
+     `voyager163/homebrew-tap` that changes the cask's version and checksum.
+     Review and merge it there.
 
    Either way, Promote checks the assets again first and rebuilds nothing.
    Running it again finishes a promotion that stopped part way.

@@ -3,10 +3,13 @@
 How Liftoff itself is packaged, released and installed. Building the bundle
 that runs without a global Node is PKG-001 in [repository.md](repository.md).
 
-## DIST-001 One npm package carries every file Liftoff ships
+## DIST-001 One package carries every file Liftoff ships
 
-Liftoff is packaged once, as the npm package `@voyager163/liftoff`, and the
-native bundles unpack that same package. npm leaves some files out of every
+Liftoff is packaged once, as an npm-format package tarball,
+`voyager163-liftoff-X.Y.Z.tgz`, and the native bundles and the Homebrew
+formula unpack that same package. It is a release asset, never published to
+the npm registry: npm is not one of Liftoff's channels, and `package.json`
+is marked private so npm refuses to publish it. npm leaves some files out of every
 package, `.gitignore` among them, so assets keep each `.gitignore` as
 `_gitignore`, and Liftoff reads it under its real name. The package is made
 from the commit, never the working tree: its sources, assets and build
@@ -18,19 +21,19 @@ that the package holds exactly the files Git tracks under `assets/` and
 and commit as its checkout, and installs from that commit's lockfile.
 
 - Given a template with a `.gitignore`, when Liftoff is installed from the
-  npm package or the bundle and generates a project, then the project has that
+  package or the bundle and generates a project, then the project has that
   `.gitignore`.
 - Given an asset that npm would leave out, when the package is packed, then
   packing fails and names the file.
 - Given an untracked, ignored or uncommitted file, such as a `.env` under
   `assets/` or a local `.ts` file under `src/`, when the package is packed,
   then neither it nor anything compiled from it is in the package.
-- Given the package installed into an npm prefix, when Liftoff runs from
+- Given the package installed into a scratch npm prefix, when Liftoff runs from
   outside its checkout, then `--version`, `init` and `validate` work.
 
-npm 12 ships no lockfile in a package, so an npm install gets Liftoff's exact
-direct dependencies but resolves theirs afresh. The bundle installs from
-Liftoff's lockfile.
+npm 12 ships no lockfile in a package, so installing the package (as the
+Homebrew formula does) gets Liftoff's exact direct dependencies but resolves
+theirs afresh. The bundle installs from Liftoff's lockfile.
 
 Verification: test
 
@@ -61,9 +64,9 @@ version. Before anything is built it refuses unless:
 - the `release` environment exists, with a required reviewer, and only `main`
   may use it. GitHub would otherwise create it unprotected.
 
-It packs the npm package once, builds the macOS and Windows bundles from that
+It packs the package once, builds the macOS and Windows bundles from that
 tarball, and describes what the bundles install from the lockfile in a
-CycloneDX SBOM. (An npm install resolves its own dependencies, so the SBOM is
+CycloneDX SBOM. (Installing the package resolves its own dependencies, so the SBOM is
 attested for the bundles only.) It lists every asset's SHA-256 in
 `SHA256SUMS`, attests how each was built, and, once it has checked with a
 token that can see drafts that no draft of the version exists, makes a draft
@@ -78,7 +81,7 @@ and Windows and checks:
 - the commit and version in each bundle's `release.json`.
 
 Then it runs Liftoff from the bundle with no Node on the PATH, and from the
-npm package, outside any checkout. Only the steps that call GitHub get the
+package, outside any checkout. Only the steps that call GitHub get the
 workflow's token, so nothing installed or run there can reach it.
 
 - Given a commit whose `ci-gate` failed, or a version `package.json` does not
@@ -111,20 +114,18 @@ asked:
 - a stable release is never made a prerelease again, and a version never
   becomes the latest stable release while a newer one is published.
 
-A stable release is refused, before anything becomes public, when npm already
-has its version with different bytes, or had it once and unpublished it. It then publishes the GitHub release,
-which creates its tag. A stable release also goes to npm under `latest`, as the very tarball in the release, through
-npm trusted publishing with provenance; prereleases stay on GitHub. Running it
-again finishes a promotion that stopped part way: npm is left alone when it
-already has the same tarball, and refused when it has different bytes.
-Nothing is built or packed during promotion.
+It then publishes the GitHub release, which creates its tag. Nothing is
+built, packed or published anywhere else during promotion; npm in
+particular never receives the package. Running it again finishes a
+promotion that stopped part way. A stable release then updates the Homebrew
+tap (CHAN-003).
 
 - Given a release whose bundles are unsigned, when it is promoted as stable,
   then nothing is published.
 - Given a draft whose Release run failed its verification, when it is
   promoted, then nothing is published.
 - Given a prerelease already published, when it is promoted as stable, then
-  it becomes the latest release and its tarball is published to npm.
+  it becomes the latest release, and nothing is published to npm.
 
 Verification: test
 
@@ -228,9 +229,9 @@ Verification: test
 
 Homebrew's policy is that an open-source command-line tool belongs in
 homebrew/core as a formula built from source, so the official submission is a
-formula: `distribution/homebrew/core/liftoff.rb` installs the npm package
-`@voyager163/liftoff` from the npm registry, at the checksum of the release's
-own tarball, with Homebrew's Node. Its test runs `--version`, `init` and
+formula: `distribution/homebrew/core/liftoff.rb` installs the package
+tarball attached to the GitHub release, at the checksum the release's
+attested `SHA256SUMS` lists, with Homebrew's Node. Its test runs `--version`, `init` and
 `validate`. A person submits it, and answers Homebrew's maintainers, once the
 repository meets Homebrew's eligibility rules, disclosing the AI assistance
 and adding no AI trailers. After it is accepted, Homebrew's own tools may
@@ -238,7 +239,7 @@ change it; nothing in Liftoff depends on its exact text.
 
 - Given the formula rendered for a release, when `brew style` and
   `brew audit --strict` check it in a tap, then they find nothing.
-- Given the formula and this commit's npm package, when it is built from
+- Given the formula and this commit's package, when it is built from
   source in a local tap, then `brew test` passes, `liftoff upgrade --verify`
   reports the formula, and uninstalling it leaves nothing on `PATH`.
 
@@ -273,7 +274,7 @@ the channel that would own it, never guessing from a path alone:
 
 - a bundle in Homebrew's Caskroom is the cask that `brew info --installed`
   lists at that version, with its tap;
-- an npm package in Homebrew's Cellar is the formula `brew info --installed`
+- a package in Homebrew's Cellar is the formula `brew info --installed`
   lists at that version;
 - a Windows bundle is the MSI Windows Installer records with Liftoff's
   UpgradeCode at that location, and it is WinGet's when
@@ -281,12 +282,14 @@ the channel that would own it, never guessing from a path alone:
   WinGet matches what Windows has installed to its packages, so once the
   package is published it lists an MSI installed by hand too. Only WinGet's
   own "no installed package found" means it does not list Liftoff; any
-  other failure leaves the channel's offer unknown;
-- an npm package is a global npm install when the npm that ships with the
-  running Node has it as its global `@voyager163/liftoff`.
+  other failure leaves the channel's offer unknown.
+
+npm is not one of Liftoff's channels, so a copy npm installed is no
+channel's, and Liftoff asks npm nothing.
 
 A bundle no channel records was unpacked by hand. A Git checkout, or a copy
-no channel records, such as one in a project's own `node_modules`, is
+no channel records, such as a global npm install or one in a project's own
+`node_modules`, is
 reported with its location and is never changed.
 
 - Given a copy in the Caskroom that brew lists, when `liftoff upgrade
@@ -295,8 +298,8 @@ reported with its location and is never changed.
   the channel is unknown.
 - Given a Windows bundle Windows Installer records and WinGet does not list,
   when it runs, then the channel is the MSI; when WinGet lists it, WinGet.
-- Given a global npm install, when it runs, then the channel is npm; given a
-  package in some other `node_modules`, the channel is unknown.
+- Given a global npm install, when it runs, then the channel is unknown and
+  npm is not asked.
 
 `scripts/package/check-msi.ts` shows the MSI case on Windows CI.
 
@@ -306,7 +309,7 @@ Verification: test
 
 The latest published release is read from GitHub without credentials, and
 what the owning channel would install is read from that channel (`brew
-info`, `winget show`, `npm view`), since a channel can lag behind a release.
+info`, `winget show`), since a channel can lag behind a release.
 Only a newer version the channel offers is an upgrade. `--check` changes
 nothing and exits 3 when there is one. A channel that cannot say what it
 offers is a failure, with what it printed, never "up to date". A release
@@ -320,7 +323,7 @@ depend on the language Windows uses.
   exits 3 and names the command that would upgrade.
 - Given GitHub cannot be reached, when it runs, then it says so and still
   reports the channel.
-- Given `npm view` or `winget show` fails or times out, when `--check`
+- Given `winget show` fails or times out, when `--check`
   runs, then it fails and says why.
 
 Verification: test
@@ -329,9 +332,7 @@ Verification: test
 
 The upgrade is that channel's own command for Liftoff alone:
 `brew upgrade --cask <tap>/liftoff`, `brew upgrade <formula>`,
-`winget upgrade --id voyager163.liftoff --exact`, or
-`npm install --global @voyager163/liftoff@<version>` with the npm that ships
-with the running Node. Liftoff shows the command and asks before running it;
+or `winget upgrade --id voyager163.liftoff --exact`. Liftoff shows the command and asks before running it;
 the default answer is no, and without a terminal it needs `--yes`. It never
 switches channel, installs a package manager, upgrades anything else, asks
 for administrator rights or changes a project. Homebrew upgrades the
@@ -339,7 +340,7 @@ formula with what it depends on, such as Node, when those are out of date,
 but not the other formulae that depend on them. Every program it runs, the
 channels' and Windows PowerShell, is named by its absolute path and runs in
 the home directory, so nothing in the project, such as its own
-`powershell.exe` or `.npmrc`, stands in for it. Stopping Liftoff before the
+`powershell.exe`, stands in for it. Stopping Liftoff before the
 upgrade starts runs nothing, and stopping it during one stops that too and
 is reported as cancelled, since the channel may have changed something.
 
@@ -357,11 +358,10 @@ Verification: test
 
 ## UPGRADE-004 An upgrade is verified, and WinGet's is handed over
 
-After a Homebrew or npm upgrade, the upgraded copy (the `liftoff` Homebrew
-links, or the package npm replaced) verifies itself with `liftoff upgrade
---verify`: the channel records the version that is running, which for a
-formula is the version Homebrew links, and `liftoff` on `PATH` is that copy,
-or the launcher npm wrote for it. The upgrade succeeds only when that copy
+After a Homebrew upgrade, the upgraded copy (the `liftoff` Homebrew links)
+verifies itself with `liftoff upgrade --verify`: the channel records the
+version that is running, which for a formula is the version Homebrew links,
+and `liftoff` on `PATH` is that copy. The upgrade succeeds only when that copy
 verified itself, through the same channel, at a newer version. WinGet must
 replace the running `liftoff.exe`, so Liftoff starts it in a window of its
 own and exits, and the person runs `liftoff upgrade --verify` once it

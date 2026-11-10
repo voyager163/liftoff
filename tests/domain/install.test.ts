@@ -11,9 +11,6 @@ import {
   MSI_PRODUCTS_SCRIPT,
   MSI_UPGRADE_CODE,
   msiProducts,
-  npmCliCandidates,
-  npmListedVersion,
-  npmViewVersion,
   samePath,
   wingetNewestVersion,
   within,
@@ -89,7 +86,7 @@ describe("UPGRADE-001 channel records are read as each channel prints them", () 
     expect(brewVersion("1.2.0,42")).toBe("1.2.0");
   });
 
-  it("reads brew, Windows Installer, WinGet and npm output, and refuses anything else", () => {
+  it("reads brew, Windows Installer and WinGet output, and refuses anything else", () => {
     expect(brewPackage("nope", "cask", "liftoff")).toBeUndefined();
     expect(brewPackage('{"casks":[{"token":"liftoff"}]}', "cask", "liftoff")).toBeUndefined();
     expect(brewPackage('{"formulae":[{"name":"liftoff"}]}', "formula", "liftoff")).toBeUndefined();
@@ -108,10 +105,6 @@ describe("UPGRADE-001 channel records are read as each channel prints them", () 
       "1.10.0",
     );
     expect(wingetNewestVersion("Found x\nVersion: 1.2.0\n")).toBeUndefined();
-    expect(npmListedVersion("nope")).toBeUndefined();
-    expect(npmListedVersion("{}")).toBeUndefined();
-    expect(npmViewVersion('["0.1.0","0.2.0"]')).toBe("0.2.0");
-    expect(npmViewVersion("nope")).toBeUndefined();
   });
 
   it("compares paths as each platform does", () => {
@@ -122,7 +115,7 @@ describe("UPGRADE-001 channel records are read as each channel prints them", () 
     expect(within("darwin", "/a", "/ab")).toBe(false);
   });
 
-  it("looks for liftoff and npm where each platform keeps them", () => {
+  it("looks for liftoff where each platform keeps it", () => {
     expect(
       commandCandidates("win32", "liftoff", {
         Path: 'C:\\a;;"C:\\b c";relative',
@@ -139,13 +132,5 @@ describe("UPGRADE-001 channel records are read as each channel prints them", () 
       "/b/liftoff",
     ]);
     expect(commandCandidates("win32", "liftoff", {})).toEqual([]);
-    expect(npmCliCandidates("win32", "C:\\node\\node.exe")).toEqual([
-      "C:\\node\\node_modules\\npm\\bin\\npm-cli.js",
-    ]);
-    expect(npmCliCandidates("darwin", "/usr/local/bin/node")).toEqual([
-      "/usr/local/lib/node_modules/npm/bin/npm-cli.js",
-      "/usr/local/libexec/lib/node_modules/npm/bin/npm-cli.js",
-      "/usr/local/bin/npm",
-    ]);
   });
 });
