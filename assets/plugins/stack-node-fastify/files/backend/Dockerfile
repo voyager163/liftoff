@@ -13,11 +13,12 @@ FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8
 # npm and apt install packages, which the running image never does; without
 # them the image carries none of the packages npm bundles nor apt itself, so
 # their advisories do not fail the build's scan. Debian's security updates
-# are applied first: the pinned base image is rebuilt only some time after
-# Debian fixes a library it carries, such as zlib.
+# are applied first, and the build fails if Debian cannot be reached: the
+# pinned base image is rebuilt only some time after Debian fixes a library it
+# carries, such as zlib.
 RUN useradd --system --uid 10001 --no-create-home app \
   && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
-  && apt-get update \
+  && apt-get update --error-on=any \
   && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
   && rm -rf /var/lib/apt/lists/* \
   && dpkg --purge apt $(dpkg-query --showformat '${Package}\n' --show 'libapt-pkg*')
