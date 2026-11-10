@@ -20,7 +20,8 @@ import {
   readJournal,
   UNREADABLE_JOURNAL_ADVICE,
 } from "../change/apply-changes.ts";
-import type { ProjectFsPort } from "../ports.ts";
+import type { FileHash, ProjectFsPort } from "../ports.ts";
+import { hashEach } from "./hash-each.ts";
 import { inventoryLegacy } from "./legacy-inventory.ts";
 
 export type Severity = "error" | "warning" | "info";
@@ -223,10 +224,16 @@ export async function validateProject(
     }
   }
 
-  for (const file of manifest.files) {
-    // Framework files belong to the framework, which may change or remove them.
-    if (file.ownership === "framework") continue;
-    const found = await fs.hashWithin(directory, file.path, MAX_FILE_BYTES);
+  // Framework files belong to the framework, which may change or remove them.
+  const checked = manifest.files.filter((file) => file.ownership !== "framework");
+  const hashes = await hashEach(
+    fs,
+    directory,
+    checked.map((file) => file.path),
+    MAX_FILE_BYTES,
+  );
+  for (const [index, file] of checked.entries()) {
+    const found = hashes[index] as FileHash;
     if (found.kind === "directory" || found.kind === "other") {
       findings.push({
         severity: "error",

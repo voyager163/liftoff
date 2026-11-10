@@ -353,6 +353,32 @@ describe("VALID-001 validate reports without repairing", () => {
     ]);
   });
 
+  it("checks a few files at once, and reports them in the manifest's order", async () => {
+    const target = await create();
+    let open = 0;
+    let most = 0;
+    const slow: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: async (directory: string, relative: string, max: number) => {
+        most = Math.max(most, ++open);
+        // The last files listed answer first, so order comes from the manifest.
+        await new Promise((resolve) => setTimeout(resolve, relative < "b" ? 5 : 0));
+        open--;
+        return relative.endsWith(".md")
+          ? { kind: "missing" }
+          : fs.hashWithin(directory, relative, max);
+      },
+    });
+    const manifest = JSON.parse(readFileSync(path.join(target, ".liftoff/manifest.json"), "utf8"));
+    const listed = (manifest.files as { path: string; ownership: string }[])
+      .filter((file) => file.ownership !== "framework" && file.path.endsWith(".md"))
+      .map((file) => file.path);
+    expect(listed.length).toBeGreaterThan(1);
+    const findings = (await validateProject(slow, target)).findings;
+    expect(findings.map((f) => f.path)).toEqual(listed);
+    expect(most).toBeGreaterThan(1);
+    expect(most).toBeLessThanOrEqual(16);
+  });
+
   it("reports invalid configuration, manifests and plugins", async () => {
     const target = await create();
     const manifestPath = path.join(target, ".liftoff/manifest.json");
