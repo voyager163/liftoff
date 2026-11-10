@@ -19,9 +19,14 @@ COPY migrations ./migrations
 FROM python:3.14.9-slim-trixie@sha256:35caba83af2fe6da9a5d922f9b0156f21d1246a48278c58a08bd253303ba42e8 AS runtime
 # pip and apt install packages, which the running image never does; without
 # them the image carries none of the libraries pip vendors nor apt itself, so
-# their advisories do not fail the build's scan.
+# their advisories do not fail the build's scan. Debian's security updates
+# are applied first: the pinned base image is rebuilt only some time after
+# Debian fixes a library it carries, such as zlib.
 RUN useradd --system --uid 10001 --no-create-home app \
   && python -m pip uninstall --yes --quiet --root-user-action ignore pip \
+  && apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
+  && rm -rf /var/lib/apt/lists/* \
   && dpkg --purge apt $(dpkg-query --showformat '${Package}\n' --show 'libapt-pkg*')
 COPY --from=build /opt/venv /opt/venv
 COPY --from=build /src /srv/app
