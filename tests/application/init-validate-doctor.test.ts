@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PackageAssets } from "../../src/adapters/assets.ts";
 import { LocalProjectFs } from "../../src/adapters/project-fs.ts";
 import { applyInit, InitTargetError, planInit } from "../../src/application/init/init-project.ts";
@@ -377,6 +377,48 @@ describe("VALID-001 validate reports without repairing", () => {
     expect(findings.map((f) => f.path)).toEqual(listed);
     expect(most).toBeGreaterThan(1);
     expect(most).toBeLessThanOrEqual(16);
+  });
+
+  it("starts no further file once one fails, and throws once the rest are done", async () => {
+    const target = await create();
+    const started: string[] = [];
+    const pending: (() => void)[] = [];
+    let active = 0;
+    let fail: (error: Error) => void = () => {};
+    const failing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (_directory: string, relative: string) => {
+        started.push(relative);
+        active++;
+        return new Promise((resolve, reject) => {
+          const done = () => {
+            active--;
+            resolve({ kind: "missing" });
+          };
+          if (started.length === 1) {
+            fail = (error) => {
+              active--;
+              reject(error);
+            };
+          } else pending.push(done);
+        });
+      },
+    });
+    let thrown: unknown;
+    let activeWhenThrown = -1;
+    const validating = validateProject(failing, target).catch((error: unknown) => {
+      thrown = error;
+      activeWhenThrown = active;
+    });
+    await vi.waitFor(() => expect(started).toHaveLength(16));
+    fail(new Error("EIO"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(started).toHaveLength(16);
+    expect(thrown).toBeUndefined();
+    for (const done of pending) done();
+    await validating;
+    expect(started).toHaveLength(16);
+    expect((thrown as Error).message).toBe("EIO");
+    expect(activeWhenThrown).toBe(0);
   });
 
   it("reports invalid configuration, manifests and plugins", async () => {
