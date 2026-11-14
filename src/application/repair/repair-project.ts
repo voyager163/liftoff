@@ -13,6 +13,7 @@ import {
   sealProjectChange,
 } from "../change/project-change.ts";
 import type { AssetPort, FileHash, ProjectFsPort } from "../ports.ts";
+import { hashEach } from "../project/hash-each.ts";
 
 /** The largest patch, and the largest file a patch changes, that repair reads. */
 export const MAX_PATCH_BYTES = 4 * 1024 * 1024;
@@ -95,9 +96,17 @@ export async function planRestore(
   const contents = new Map<string, NewContent>();
   const entries = new Map(project.manifest.files.map((entry) => [entry.path, entry]));
 
-  for (const entry of project.manifest.files) {
-    if (entry.ownership === "framework" || RECORDS.has(pathKey(entry.path))) continue;
-    const now = await fs.hashWithin(directory, entry.path, MAX_CHANGED_BYTES);
+  const checked = project.manifest.files.filter(
+    (entry) => entry.ownership !== "framework" && !RECORDS.has(pathKey(entry.path)),
+  );
+  const hashes = await hashEach(
+    fs,
+    directory,
+    checked.map((entry) => entry.path),
+    MAX_CHANGED_BYTES,
+  );
+  for (const [index, entry] of checked.entries()) {
+    const now = hashes[index] as FileHash;
     if (now.kind === "file" && now.sha256 === entry.sha256) continue;
     // A file the project owns may change freely; only a missing one is a problem.
     if (entry.ownership === "seeded" && now.kind !== "missing") continue;
