@@ -574,6 +574,33 @@ describe("ASSESS-003 the standard's checks", () => {
         "services/api",
       ),
     ).toContain(compliant("services/api"));
+    // Only a workflow that runs on pull requests can fail one.
+    for (const trigger of ["workflow_dispatch", "schedule", "release", "push"]) {
+      const manual = (body: string) => ({
+        ".github/workflows/ci.yml": `on: ${trigger}\njobs:\n  test:\n    steps:\n      - ${body}\n`,
+      });
+      expect(go(manual(`run: ${tool}`))).toContain(unknown());
+      expect(go(manual(action))).toContain(unknown());
+    }
+    expect(
+      go({
+        ".github/workflows/ci.yml": `on: [push, pull_request]\njobs:\n  test:\n    steps:\n      - run: ${tool}\n`,
+      }),
+    ).toContain(compliant());
+    // A shell other than a standard one, or GOFLAGS, could make it pass unchecked.
+    expect(go(step(`run: ${tool}\n        shell: "true {0}"`))).toContain(unknown());
+    expect(go(step(`run: ${tool}\n        shell: bash`))).toContain(compliant());
+    expect(
+      go(step(`run: ${tool}`, "    defaults:\n      run:\n        shell: 'true {0}'\n")),
+    ).toContain(unknown());
+    expect(go(step(`run: ${tool}\n        env:\n          GOFLAGS: -exec=true`))).toContain(
+      unknown(),
+    );
+    expect(go(step(`run: ${tool}`, "    env:\n      GOFLAGS: -exec=true\n"))).toContain(unknown());
+    expect(
+      go(ci(`env:\n  GOFLAGS: -exec=true\njobs:\n  test:\n    steps:\n      - run: ${tool}\n`)),
+    ).toContain(unknown());
+    expect(go({ ".testcoverage.yaml": "threshold:\n  package: 60\n" })).toContain(compliant());
     // Thresholds must be percentages, and nothing malformed throws.
     for (const threshold of ["true", "[80]", "{ value: 80 }", "{ toString: 0 }", "80.5"]) {
       expect(go({ ".testcoverage.yml": `threshold:\n  total: ${threshold}\n` })).toContain(

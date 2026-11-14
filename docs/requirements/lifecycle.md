@@ -278,12 +278,16 @@ only when it is configured: `fail_under` or `--cov-fail-under` above 0, or a
 non-empty `thresholds` or `coverageThreshold` object, never a mention in a
 description or a comment; one set in code that cannot be read statically is
 unknown. Go has no declaration of its own for one, so a Go module's gate is
-a workflow step that runs `go run ./tools/coverage <profile> <percent>` in
-the module with a percentage above 0, as Liftoff's Go projects do, the
-go-test-coverage action with a threshold above 0, or a `.testcoverage.yml`
-in the module or at the root with a whole-number threshold above 0. The
-step's directory is its own, its job's or the workflow's default, read with
-either separator. The check counts only as the step's one command, apart from
+a step in a workflow that runs on pull requests that runs
+`go run ./tools/coverage <profile> <percent>` with a percentage above 0, as
+Liftoff's Go projects do, in the module or naming the module's path (as in
+`go run ./backend/tools/coverage`); the go-test-coverage action with a
+threshold above 0 in such a workflow; or a `.testcoverage.yml` or
+`.testcoverage.yaml` in the module or at the root with a whole-number
+threshold above 0. The step's directory is its own, its job's or the
+workflow's default, read with either separator. A step with a shell other
+than bash, sh, pwsh, powershell or cmd, or that sets `GOFLAGS` in its own,
+its job's or the workflow's `env`, gates nothing. The check counts only as the step's one command, apart from
 blank and comment lines, since anything around it could skip it, swallow
 its failure or move it; and a step or job that may fail
 (`continue-on-error` anything but false) or may not run (an `if` other than

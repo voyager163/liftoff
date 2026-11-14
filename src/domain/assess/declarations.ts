@@ -390,6 +390,17 @@ function onlyCoverageCommand(script: string): string | undefined {
   return match !== null && Number(match[2]) > 0 ? (match[1] ?? "") : undefined;
 }
 
+/** Shells that run a one-command script and exit with its status. */
+const STANDARD_SHELLS = new Set(["bash", "sh", "pwsh", "powershell", "cmd"]);
+
+/** Whether a `shell` setting, if any, is a standard shell. */
+const standardShell = (shell: unknown): boolean =>
+  shell === undefined || (typeof shell === "string" && STANDARD_SHELLS.has(shell));
+
+/** Whether an `env` mapping sets GOFLAGS, which can change what `go run` does. */
+const setsGoFlags = (env: unknown): boolean =>
+  typeof env === "object" && env !== null && Object.hasOwn(env, "GOFLAGS");
+
 /** Whether a job or step runs whenever its workflow does: no `if`, or a literal true. */
 const alwaysRuns = (condition: unknown): boolean => condition === undefined || condition === true;
 
@@ -419,6 +430,8 @@ export function readWorkflow(text: string): Workflow | undefined {
   const uses: string[] = [];
   const goCoverageGates: string[] = [];
   const stringOf = (value: unknown) => (typeof value === "string" ? value : undefined);
+  const runDefault = (defaults: unknown, key: "working-directory" | "shell") =>
+    (defaults as { run?: Record<string, unknown> } | null | undefined)?.run?.[key];
   const directoryDefault = (defaults: unknown) =>
     stringOf(
       (defaults as { run?: { "working-directory"?: unknown } } | null | undefined)?.run?.[
@@ -426,6 +439,9 @@ export function readWorkflow(text: string): Workflow | undefined {
       ],
     );
   const workflowDirectory = directoryDefault(workflow.defaults);
+  // A gate that runs only by hand or on a timer never fails a pull request.
+  const onPullRequest = events.includes("pull_request");
+  const workflowShell = runDefault(workflow.defaults, "shell");
   for (const job of Object.values(jobs)) {
     if (typeof job !== "object" || job === null) continue;
     const {
@@ -434,11 +450,18 @@ export function readWorkflow(text: string): Workflow | undefined {
       defaults,
       "continue-on-error": jobMayFail,
       if: jobCondition,
+      env: jobEnv,
     } = job as Record<string, unknown>;
     if (typeof called === "string") uses.push(called);
     if (!Array.isArray(steps)) continue;
     // A job that may fail, or may not run, gates nothing, whatever its steps check.
-    const gates = !mayFail(jobMayFail) && alwaysRuns(jobCondition);
+    const gates =
+      onPullRequest &&
+      !mayFail(jobMayFail) &&
+      alwaysRuns(jobCondition) &&
+      !setsGoFlags(workflow.env) &&
+      !setsGoFlags(jobEnv);
+    const jobShell = runDefault(defaults, "shell") ?? workflowShell;
     const jobDirectory = directoryDefault(defaults) ?? workflowDirectory;
     for (const step of steps) {
       if (typeof step !== "object" || step === null) continue;
@@ -449,6 +472,8 @@ export function readWorkflow(text: string): Workflow | undefined {
         "working-directory": stepDirectory,
         "continue-on-error": stepMayFail,
         if: stepCondition,
+        shell,
+        env: stepEnv,
       } = step as Record<string, unknown>;
       if (typeof used === "string") uses.push(used);
       if (!gates || mayFail(stepMayFail) || !alwaysRuns(stepCondition)) continue;
@@ -463,7 +488,9 @@ export function readWorkflow(text: string): Workflow | undefined {
       ) {
         goCoverageGates.push("*");
       }
-      if (typeof run !== "string") continue;
+      if (typeof run !== "string" || setsGoFlags(stepEnv) || !standardShell(shell ?? jobShell)) {
+        continue;
+      }
       const prefix = onlyCoverageCommand(run);
       if (prefix !== undefined) {
         goCoverageGates.push(directoryOf(stringOf(stepDirectory) ?? jobDirectory, prefix));
