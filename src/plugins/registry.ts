@@ -2,6 +2,7 @@ import type { ProjectConfig } from "../domain/project/config.ts";
 import { PROFILE_IDS, type ProfileId } from "../domain/risk-policy/policy.ts";
 import { AGENT_HOSTS } from "./builtin/agents/hosts.ts";
 import { agentsPlugin } from "./builtin/agents.ts";
+import { aiServicePlugin } from "./builtin/ai-service.ts";
 import { commonPlugin } from "./builtin/common.ts";
 import { deliveryPlugin } from "./builtin/delivery.ts";
 import { vueFrontend } from "./builtin/frontends/vue.ts";
@@ -86,11 +87,13 @@ export class SelectionError extends Error {
 export interface Selection {
   readonly stack: StackPlugin;
   readonly pattern: PatternPlugin | undefined;
+  /** The API project's AI service, if it has one (AISVC-001). */
+  readonly aiService: ComponentPlugin | undefined;
   readonly frontend: FrontendPlugin | undefined;
   readonly infrastructure: InfrastructurePlugin | undefined;
   /** In dev, staging, prod order. */
   readonly environments: readonly EnvironmentId[];
-  /** The stack, then the frontend and the infrastructure if selected. */
+  /** The stack, then the AI service, the frontend and the infrastructure if selected. */
   readonly components: readonly ComponentPlugin[];
   readonly hosts: readonly AgentHostId[];
   readonly profile: ProfileId;
@@ -108,6 +111,49 @@ const list = (values: Iterable<string>) => [...values].join(", ");
  */
 export const entry = <T>(registry: Readonly<Record<string, T>>, id: string): T | undefined =>
   Object.hasOwn(registry, id) ? registry[id] : undefined;
+
+/** Stacks an AI service can be generated beside in this release. */
+export const AI_SERVICE_STACKS: readonly string[] = ["go-huma"];
+
+/**
+ * The API project's AI service, if the configuration has one (AISVC-001):
+ * only beside an API stack this release generates it for, and not yet with
+ * infrastructure, which does not deploy it.
+ */
+function resolveAiService(
+  config: ProjectConfig,
+  stack: StackPlugin,
+  infrastructure: InfrastructurePlugin | undefined,
+): ComponentPlugin | undefined {
+  if (config.ai === undefined) return undefined;
+  if (stack.workload !== "api") {
+    throw new SelectionError(
+      `an AI service is for api projects; a ${stack.workload} project is one already`,
+    );
+  }
+  let pattern: PatternPlugin | undefined;
+  if (config.ai.pattern !== undefined) {
+    pattern = entry(PATTERNS, config.ai.pattern);
+    if (!pattern) {
+      throw new SelectionError(
+        `unknown AI service pattern "${config.ai.pattern}"; available: ${list(Object.keys(PATTERNS))}`,
+      );
+    }
+  }
+  if (!AI_SERVICE_STACKS.includes(config.stack)) {
+    throw new SelectionError(
+      `an AI service is not available beside ${config.stack} in this release; available beside: ${list(AI_SERVICE_STACKS)}`,
+      true,
+    );
+  }
+  if (infrastructure) {
+    throw new SelectionError(
+      `an AI service is not available with ${config.infrastructure} infrastructure in this release`,
+      true,
+    );
+  }
+  return aiServicePlugin(pattern);
+}
 
 /** Checks a configuration against what this release ships, before anything is generated. */
 export function resolveSelection(config: ProjectConfig): Selection {
@@ -182,6 +228,7 @@ export function resolveSelection(config: ProjectConfig): Selection {
       true,
     );
   }
+  const aiService = resolveAiService(config, stack, infrastructure);
   if (infrastructure && config.environments.length === 0) {
     throw new SelectionError(
       `${config.infrastructure} infrastructure needs at least one environment`,
@@ -235,11 +282,13 @@ export function resolveSelection(config: ProjectConfig): Selection {
 
   const components: ComponentPlugin[] = [stack];
   if (pattern) components.push(pattern);
+  if (aiService) components.push(aiService);
   if (frontend) components.push(frontend);
   if (infrastructure) components.push(infrastructure);
   return {
     stack,
     pattern,
+    aiService,
     frontend,
     infrastructure,
     environments,
@@ -266,6 +315,8 @@ export function allPlugins(): ProjectPlugin[] {
     commonPlugin,
     ...Object.values(STACKS),
     ...PATTERN_LIST,
+    // One id and version whatever its pattern, which is in liftoff.yaml.
+    aiServicePlugin(undefined),
     ...Object.values(FRONTENDS),
     ...Object.values(INFRASTRUCTURE),
     deliveryPlugin,

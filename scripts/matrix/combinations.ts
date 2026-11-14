@@ -16,6 +16,7 @@ import type { ProjectFile } from "../../src/generators/project.ts";
 import { AGENT_HOSTS } from "../../src/plugins/builtin/agents/hosts.ts";
 import { ENVIRONMENTS } from "../../src/plugins/contracts/project-plugin.ts";
 import {
+  DEFAULT_PATTERN,
   FRONTENDS,
   GOVERNANCE,
   INFRASTRUCTURE,
@@ -47,41 +48,47 @@ export function combinations(): Combination[] {
   const result: Combination[] = [];
   for (const [stack, plugin] of Object.entries(STACKS)) {
     const patterns = plugin.workload === "genai" ? Object.keys(PATTERNS) : [NO_PATTERN];
+    // An API project with or without an AI service (AISVC-001); the patterns
+    // themselves are each covered by the GenAI projects.
+    const aiServices = plugin.workload === "api" ? [false, true] : [false];
     for (const pattern of patterns)
-      for (const frontend of [NO_FRONTEND, ...Object.keys(FRONTENDS)])
-        for (const infrastructure of [NO_INFRASTRUCTURE, ...Object.keys(INFRASTRUCTURE)])
-          for (const workflow of Object.keys(WORKFLOWS))
-            for (const agents of agentSets)
-              for (const governance of Object.keys(GOVERNANCE)) {
-                const components = [
-                  stack,
-                  ...(pattern === NO_PATTERN ? [] : [pattern]),
-                  ...(frontend === NO_FRONTEND ? [] : [frontend]),
-                  ...(infrastructure === NO_INFRASTRUCTURE ? [] : [infrastructure]),
-                ];
-                result.push({
-                  id: [
-                    components.join("+"),
-                    workflow,
-                    agents.length === 0 ? "no-agents" : agents.join(","),
-                    governance,
-                  ].join(" "),
-                  config: validateConfig({
-                    schema: CONFIG_SCHEMA,
-                    name: "demo",
-                    workload: plugin.workload,
+      for (const ai of aiServices)
+        for (const frontend of [NO_FRONTEND, ...Object.keys(FRONTENDS)])
+          for (const infrastructure of [NO_INFRASTRUCTURE, ...Object.keys(INFRASTRUCTURE)])
+            for (const workflow of Object.keys(WORKFLOWS))
+              for (const agents of agentSets)
+                for (const governance of Object.keys(GOVERNANCE)) {
+                  const components = [
                     stack,
-                    pattern,
-                    frontend,
-                    infrastructure,
-                    environments: infrastructure === NO_INFRASTRUCTURE ? [] : [...ENVIRONMENTS],
-                    workflow,
-                    agents,
-                    governance,
-                    review: { ai: agents.length > 0 },
-                  }),
-                });
-              }
+                    ...(pattern === NO_PATTERN ? [] : [pattern]),
+                    ...(ai ? ["ai-service"] : []),
+                    ...(frontend === NO_FRONTEND ? [] : [frontend]),
+                    ...(infrastructure === NO_INFRASTRUCTURE ? [] : [infrastructure]),
+                  ];
+                  result.push({
+                    id: [
+                      components.join("+"),
+                      workflow,
+                      agents.length === 0 ? "no-agents" : agents.join(","),
+                      governance,
+                    ].join(" "),
+                    config: validateConfig({
+                      schema: CONFIG_SCHEMA,
+                      name: "demo",
+                      workload: plugin.workload,
+                      stack,
+                      pattern,
+                      frontend,
+                      infrastructure,
+                      environments: infrastructure === NO_INFRASTRUCTURE ? [] : [...ENVIRONMENTS],
+                      workflow,
+                      agents,
+                      governance,
+                      review: { ai: agents.length > 0 },
+                      ...(ai ? { ai: { pattern: DEFAULT_PATTERN } } : {}),
+                    }),
+                  });
+                }
   }
   return result;
 }

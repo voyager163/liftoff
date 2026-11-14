@@ -1,0 +1,11 @@
+# The AI service, for the API to call at http://ai-service:8000; nothing in
+# the generated API calls it yet. It publishes no port, and the API does not
+# wait for it to start. It answers with the offline test model unless .env
+# names a real model and the provider's key.
+ai-service:
+  build: ./{{liftoff.aiServiceDirectory}}
+  environment:
+    APP_ENVIRONMENT: local
+    APP_MODEL: ${APP_MODEL:-test}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

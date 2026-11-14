@@ -507,7 +507,8 @@ Verification: test
 Run in a terminal with no project options and no plan, `liftoff init` asks
 one question for each option, named after it, and offers only what this
 release can generate with the earlier answers: a frontend and infrastructure
-only for stacks with a database, environments only with infrastructure,
+only for stacks with a database, an AI service only beside a stack that has
+one and without infrastructure (AISVC-001), environments only with infrastructure,
 Spec Kit and AI review only with a coding agent, and a review engine only
 with several. It checks names and GitHub logins as the options do, then
 prints the command that gives the same answers, quoted for the shell (POSIX
