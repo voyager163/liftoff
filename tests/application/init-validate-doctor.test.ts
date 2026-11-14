@@ -421,6 +421,33 @@ describe("VALID-001 validate reports without repairing", () => {
     expect(activeWhenThrown).toBe(0);
   });
 
+  it("throws the error of the earliest file that failed, not the first to fail", async () => {
+    const target = await create();
+    const started: string[] = [];
+    const settle: ((error?: Error) => void)[] = [];
+    const failing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (_directory: string, relative: string) => {
+        started.push(relative);
+        return new Promise((resolve, reject) => {
+          settle.push((error) => (error ? reject(error) : resolve({ kind: "missing" })));
+        });
+      },
+    });
+    const validating = validateProject(failing, target).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await vi.waitFor(() => expect(started).toHaveLength(16));
+    // The first file is done, so the worker that hashed it takes the 17th.
+    settle[0]?.();
+    await vi.waitFor(() => expect(started).toHaveLength(17));
+    settle[16]?.(new Error(`later: ${started[16]}`));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    settle[5]?.(new Error(`earlier: ${started[5]}`));
+    for (const [index, done] of settle.entries()) if (index !== 5 && index !== 16) done();
+    expect(((await validating) as Error).message).toBe(`earlier: ${started[5]}`);
+  });
+
   it("reports invalid configuration, manifests and plugins", async () => {
     const target = await create();
     const manifestPath = path.join(target, ".liftoff/manifest.json");

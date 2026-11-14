@@ -10,9 +10,10 @@ const AT_ONCE = 16;
 
 /**
  * Hashes each file as hashWithin does, a few at a time, in the order given.
- * Once one fails no further file is started, and the first error is thrown
- * only when the files already being hashed are done, so nothing is left
- * reading the project after it returns.
+ * Once one fails no further file is started. When the files already being
+ * hashed are done, so nothing is left reading the project, it throws the
+ * error of the earliest file in the order given that failed, as hashing them
+ * one after another would have.
  */
 export async function hashEach(
   fs: ProjectFsPort,
@@ -22,22 +23,24 @@ export async function hashEach(
 ): Promise<FileHash[]> {
   const hashes: FileHash[] = new Array(relatives.length);
   let next = 0;
-  let failed = false;
+  // Every file before one that started has started too, so the earliest
+  // failure among those started is the earliest of all.
+  let failedAt = Number.POSITIVE_INFINITY;
+  let failure: unknown;
   const work = async () => {
-    while (!failed && next < relatives.length) {
+    while (failedAt === Number.POSITIVE_INFINITY && next < relatives.length) {
       const index = next++;
       try {
         hashes[index] = await fs.hashWithin(directory, relatives[index] as string, maxBytes);
       } catch (error) {
-        failed = true;
-        throw error;
+        if (index < failedAt) {
+          failedAt = index;
+          failure = error;
+        }
       }
     }
   };
-  const settled = await Promise.allSettled(
-    Array.from({ length: Math.min(AT_ONCE, relatives.length) }, work),
-  );
-  const failure = settled.find((result) => result.status === "rejected");
-  if (failure !== undefined) throw failure.reason;
+  await Promise.all(Array.from({ length: Math.min(AT_ONCE, relatives.length) }, work));
+  if (failedAt !== Number.POSITIVE_INFINITY) throw failure;
   return hashes;
 }
