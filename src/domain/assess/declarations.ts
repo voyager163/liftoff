@@ -339,19 +339,65 @@ export interface Workflow {
   readonly goCoverageGates: readonly string[];
 }
 
-/** A repository-relative directory as written in a workflow, "." for the root. */
+/**
+ * A repository-relative directory as written in a workflow, "." for the
+ * root, with Windows' backslashes read as the separators they are there.
+ */
 const directoryOf = (...parts: (string | undefined)[]): string =>
   path.posix.normalize(
     parts
       .filter((part): part is string => part !== undefined && part !== "")
-      .map((part) => part.replace(/^\.\/+/, "").replace(/\/+$/, ""))
+      .map((part) =>
+        part
+          .replaceAll("\\", "/")
+          .replace(/^\.\/+/, "")
+          .replace(/\/+$/, ""),
+      )
       .filter(Boolean)
       .join("/") || ".",
   );
 
+/** Liftoff's coverage check, as the whole of one command. */
 const GO_COVERAGE_TOOL =
-  /\bgo run (?:\.\/)?((?:[\w.-]+\/)*)tools\/coverage\/?[ \t]+\S+[ \t]+(\d+(?:\.\d+)?)\b/g;
+  /^go run (?:\.[/\\])?((?:[\w.-]+[/\\])*)tools[/\\]coverage[/\\]?[ \t]+[^\s;&|#]+[ \t]+(\d+(?:\.\d+)?)$/;
 const GO_TEST_COVERAGE = "vladopajic/go-test-coverage@";
+
+/** A percentage above 0, written as a number or as a numeric string. */
+const positivePercent = (value: unknown): boolean =>
+  (typeof value === "number" && Number.isFinite(value) && value > 0) ||
+  (typeof value === "string" && /^\d+(\.\d+)?$/.test(value.trim()) && Number(value) > 0);
+
+/**
+ * Whether a step or job may fail without failing the workflow. Anything
+ * but an absent or literal false, an expression included, may.
+ */
+const mayFail = (value: unknown): boolean => value !== undefined && value !== false;
+
+/**
+ * The directory prefix and percentage of Liftoff's coverage check when it
+ * is a script's last command, so its exit status is the step's in every
+ * shell; or undefined. Nothing before it may change directory, turn off
+ * stopping on errors, or put the check behind `||`, and comments and
+ * quoted text are never commands.
+ */
+function lastCoverageCommand(script: string): { prefix: string; percent: number } | undefined {
+  const commands = script
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"))
+    .flatMap((line) => line.split(/&&|;/).map((command) => command.trim()))
+    .filter(Boolean);
+  const last = commands.at(-1);
+  if (last === undefined || script.includes("||")) return undefined;
+  const before = commands.slice(0, -1);
+  if (before.some((command) => /^(cd|pushd|popd|set-location|sl|set \+e)\b/i.test(command))) {
+    return undefined;
+  }
+  const match = GO_COVERAGE_TOOL.exec(last);
+  if (match === null) return undefined;
+  const percent = Number(match[2]);
+  return percent > 0 ? { prefix: match[1] ?? "", percent } : undefined;
+}
 
 export function readWorkflow(text: string): Workflow | undefined {
   let value: unknown;
@@ -379,20 +425,26 @@ export function readWorkflow(text: string): Workflow | undefined {
   const uses: string[] = [];
   const goCoverageGates: string[] = [];
   const stringOf = (value: unknown) => (typeof value === "string" ? value : undefined);
+  const directoryDefault = (defaults: unknown) =>
+    stringOf(
+      (defaults as { run?: { "working-directory"?: unknown } } | null | undefined)?.run?.[
+        "working-directory"
+      ],
+    );
+  const workflowDirectory = directoryDefault(workflow.defaults);
   for (const job of Object.values(jobs)) {
     if (typeof job !== "object" || job === null) continue;
     const {
       uses: called,
       steps,
       defaults,
-    } = job as {
-      uses?: unknown;
-      steps?: unknown;
-      defaults?: { run?: { "working-directory"?: unknown } };
-    };
+      "continue-on-error": jobMayFail,
+    } = job as Record<string, unknown>;
     if (typeof called === "string") uses.push(called);
     if (!Array.isArray(steps)) continue;
-    const jobDirectory = stringOf(defaults?.run?.["working-directory"]);
+    // A job that may fail gates nothing, whatever its steps check.
+    const gates = !mayFail(jobMayFail);
+    const jobDirectory = directoryDefault(defaults) ?? workflowDirectory;
     for (const step of steps) {
       if (typeof step !== "object" || step === null) continue;
       const {
@@ -400,24 +452,25 @@ export function readWorkflow(text: string): Workflow | undefined {
         run,
         with: inputs,
         "working-directory": stepDirectory,
+        "continue-on-error": stepMayFail,
       } = step as Record<string, unknown>;
-      if (typeof used === "string") {
-        uses.push(used);
-        const thresholds =
-          typeof inputs === "object" && inputs !== null
-            ? ["threshold-file", "threshold-package", "threshold-total"].map((key) =>
-                Number((inputs as Record<string, unknown>)[key]),
-              )
-            : [];
-        if (used.startsWith(GO_TEST_COVERAGE) && thresholds.some((value) => value > 0)) {
-          goCoverageGates.push("*");
-        }
+      if (typeof used === "string") uses.push(used);
+      if (!gates || mayFail(stepMayFail)) continue;
+      if (
+        typeof used === "string" &&
+        used.startsWith(GO_TEST_COVERAGE) &&
+        typeof inputs === "object" &&
+        inputs !== null &&
+        ["threshold-file", "threshold-package", "threshold-total"].some((key) =>
+          positivePercent((inputs as Record<string, unknown>)[key]),
+        )
+      ) {
+        goCoverageGates.push("*");
       }
       if (typeof run !== "string") continue;
-      for (const [, prefix, percent] of run.matchAll(GO_COVERAGE_TOOL)) {
-        if (Number(percent) > 0) {
-          goCoverageGates.push(directoryOf(stringOf(stepDirectory) ?? jobDirectory, prefix));
-        }
+      const check = lastCoverageCommand(run);
+      if (check !== undefined) {
+        goCoverageGates.push(directoryOf(stringOf(stepDirectory) ?? jobDirectory, check.prefix));
       }
     }
   }
@@ -441,10 +494,14 @@ export function goTestCoverageGate(text: string): boolean | undefined {
     return undefined;
   }
   const threshold = (value as { threshold?: unknown } | null)?.threshold;
-  if (typeof threshold !== "object" || threshold === null) return false;
-  return ["file", "package", "total"].some(
-    (key) => Number((threshold as Record<string, unknown>)[key]) > 0,
-  );
+  if (threshold === undefined || threshold === null) return false;
+  if (typeof threshold !== "object" || Array.isArray(threshold)) return undefined;
+  const values = ["file", "package", "total"]
+    .map((key) => (threshold as Record<string, unknown>)[key])
+    .filter((each) => each !== undefined && each !== null);
+  // go-test-coverage takes whole percentages; anything else is not a threshold.
+  if (values.some((each) => typeof each !== "number" || !Number.isInteger(each))) return undefined;
+  return values.some((each) => (each as number) > 0);
 }
 
 /** Whether an action is pinned to a full commit SHA. Local actions and containers need not be. */

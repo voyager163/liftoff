@@ -505,6 +505,83 @@ describe("ASSESS-003 the standard's checks", () => {
     expect(go({ ".testcoverage.yml": "threshold: [\n" })).toContain(unknown());
   });
 
+  it("counts only a Go coverage check that runs and can fail CI", () => {
+    const huma = "module x\n\ngo 1.26\n\nrequire github.com/danielgtaylor/huma/v2 v2.0.0\n";
+    const go = (files: Record<string, string>, at = ".") =>
+      lines(run(tree({ [at === "." ? "go.mod" : `${at}/go.mod`]: huma, ...files })));
+    const ci = (yaml: string) => ({ ".github/workflows/ci.yml": `on: pull_request\n${yaml}` });
+    const step = (body: string, extra = "") =>
+      ci(`jobs:\n  test:\n${extra}    steps:\n      - ${body}\n`);
+    const script = (lines: string[]) =>
+      step(`run: |\n${lines.map((line) => `          ${line}`).join("\n")}`);
+    const tool = "go run ./tools/coverage cover.out 80";
+    const compliant = (at = ".") => `compliant tests.coverage-gate backend at ${at}`;
+    const unknown = (at = ".") => `unknown tests.coverage-gate backend at ${at}`;
+
+    // Comments and quoted text are not commands.
+    expect(go(script([`# ${tool}`, "go test ./..."]))).toContain(unknown());
+    expect(go(script([`echo '${tool}'`]))).toContain(unknown());
+    expect(go(script([`echo "${tool}"`]))).toContain(unknown());
+    // It must be the last command, and nothing may swallow its failure or
+    // change where it runs.
+    expect(go(script(["go test -coverprofile=cover.out ./...", tool]))).toContain(compliant());
+    expect(go(script([tool, "echo done"]))).toContain(unknown());
+    expect(go(script([`${tool} || true`]))).toContain(unknown());
+    expect(go(script(["set +e", tool]))).toContain(unknown());
+    expect(go(script([`cd backend && ${tool}`]), "backend")).toContain(unknown("backend"));
+    // A step or job allowed to fail gates nothing, an expression included.
+    expect(go(step(`run: ${tool}\n        continue-on-error: true`))).toContain(unknown());
+    expect(
+      go(step(`run: ${tool}\n        continue-on-error: \${{ github.event_name == 'push' }}`)),
+    ).toContain(unknown());
+    expect(go(step(`run: ${tool}\n        continue-on-error: false`))).toContain(compliant());
+    expect(go(step(`run: ${tool}`, "    continue-on-error: true\n"))).toContain(unknown());
+    const action = `uses: vladopajic/go-test-coverage@${"a".repeat(40)}\n        with:\n          threshold-total: 80`;
+    expect(go(step(action))).toContain(compliant());
+    expect(go(step(`${action}\n        continue-on-error: true`))).toContain(unknown());
+    // The workflow's own default directory, and Windows' separators.
+    expect(
+      go(
+        ci(
+          `defaults:\n  run:\n    working-directory: backend\njobs:\n  test:\n    steps:\n      - run: ${tool}\n`,
+        ),
+        "backend",
+      ),
+    ).toContain(compliant("backend"));
+    expect(
+      go(
+        step(`run: ${tool}`, "    defaults:\n      run:\n        working-directory: .\\backend\n"),
+        "backend",
+      ),
+    ).toContain(compliant("backend"));
+    expect(
+      go(
+        step(
+          `run: ${tool}`,
+          "    defaults:\n      run:\n        working-directory: services\\api\n",
+        ),
+        "services/api",
+      ),
+    ).toContain(compliant("services/api"));
+    // Thresholds must be percentages, and nothing malformed throws.
+    for (const threshold of ["true", "[80]", "{ value: 80 }", "{ toString: 0 }", "80.5"]) {
+      expect(go({ ".testcoverage.yml": `threshold:\n  total: ${threshold}\n` })).toContain(
+        unknown(),
+      );
+    }
+    expect(go({ ".testcoverage.yml": "threshold: 80\n" })).toContain(unknown());
+    for (const input of ["true", "'80'", '""', "{ toString: 0 }"]) {
+      const expected = input === "'80'" ? compliant() : unknown();
+      expect(
+        go(
+          step(
+            `uses: vladopajic/go-test-coverage@${"a".repeat(40)}\n        with:\n          threshold-total: ${input}`,
+          ),
+        ),
+      ).toContain(expected);
+    }
+  });
+
   it("recognizes other ecosystems as unsupported and does not check them further", () => {
     const project = run(
       tree({

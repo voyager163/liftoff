@@ -281,8 +281,14 @@ unknown. Go has no declaration of its own for one, so a Go module's gate is
 a workflow step that runs `go run ./tools/coverage <profile> <percent>` in
 the module with a percentage above 0, as Liftoff's Go projects do, the
 go-test-coverage action with a threshold above 0, or a `.testcoverage.yml`
-in the module or at the root with one; the tool's name alone is not a gate,
-and a gate kept anywhere else, such as a Makefile, is unknown. OpenTofu root modules make one part per kind of provider their
+in the module or at the root with a whole-number threshold above 0. The
+step's directory is its own, its job's or the workflow's default, read with
+either separator. The check counts only as the step's last command, with
+nothing before it that changes directory or stops failing on errors and no
+`||`; comments and quoted text are not commands, and a step or job that may
+fail (`continue-on-error` anything but false) gates nothing. The tool's name
+alone is not a gate, and a gate kept anywhere else, such as a Makefile, is
+unknown. OpenTofu root modules make one part per kind of provider their
 lock files lock, so Azure and another cloud are separate parts; a root
 module whose lock file could not be read, or that has none, is unknown,
 never unsupported. Each finding lists the paths it rests on
