@@ -9,7 +9,9 @@ is [ai-service-design.md](../maintainers/ai-service-design.md).
 `liftoff.yaml` may have `ai`, with an optional `pattern` naming one of the
 nine GenAI patterns (PROJ-018). `liftoff init --ai` records it, with the
 pattern `--ai-pattern` names or `generic`; `--ai-pattern` without `--ai` is a
-usage error. An AI service is only for an `api` project: a GenAI project is
+usage error. An AI service Liftoff generates is built around its pattern,
+so generating one without a pattern is refused; only an adopted project's
+own AI service may have none. An AI service is only for an `api` project: a GenAI project is
 one already, and is refused. This release generates it beside `go-huma`;
 beside another stack it is reported as not available yet (exit 6), and so
 is an AI service with infrastructure, which does not deploy it yet. An

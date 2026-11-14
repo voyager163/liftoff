@@ -2,8 +2,10 @@
 
 `ai-service/` is a Python service built with FastAPI and
 [PydanticAI](https://ai.pydantic.dev/), around the {{liftoff.aiPattern}}
-pattern. Only the API calls it, over HTTP inside Compose; the browser never
-does, and model keys live only here.{{liftoff.maturity}}
+pattern. It is for the API to call, at `http://ai-service:8000` inside
+Compose, which publishes none of its ports: the browser never calls it, and
+model keys live only here. The generated API does not call it yet; add the
+call where your API needs it.{{liftoff.maturity}}
 
 Its tests run offline, on PydanticAI's test model, so they need no key. You
 need [uv](https://docs.astral.sh/uv/):

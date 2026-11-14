@@ -1,7 +1,7 @@
-# The AI service, reached only by the API, at http://ai-service:8000. It
-# publishes no port, and the API does not wait for it: requests that need it
-# fail with 502 or 504 while it is down. It answers with the offline test
-# model unless .env names a real model and the provider's key.
+# The AI service, for the API to call at http://ai-service:8000; nothing in
+# the generated API calls it yet. It publishes no port, and the API does not
+# wait for it to start. It answers with the offline test model unless .env
+# names a real model and the provider's key.
 ai-service:
   build: ./{{liftoff.aiServiceDirectory}}
   environment:

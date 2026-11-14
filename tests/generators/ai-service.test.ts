@@ -13,7 +13,7 @@ import {
   serializeConfig,
   validateConfig,
 } from "../../src/domain/project/config.ts";
-import { resolveSelection, SelectionError } from "../../src/plugins/registry.ts";
+import { resolveSelection } from "../../src/plugins/registry.ts";
 import { captureIo } from "../helpers/io.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
@@ -100,12 +100,9 @@ describe("AISVC-001 an API project may have one AI service, beside a stack that 
       expect(refused.code, argv.join(" ")).toBe(6);
       expect(refused.err).toContain(message);
     }
-    try {
-      resolveSelection(config({ stack: "node-fastify", ai: {} }));
-    } catch (error) {
-      expect(error).toBeInstanceOf(SelectionError);
-      expect((error as SelectionError).unsupported).toBe(true);
-    }
+    expect(() => resolveSelection(config({ stack: "node-fastify", ai: {} }))).toThrow(
+      expect.objectContaining({ name: "SelectionError", unsupported: true }),
+    );
   });
 });
 
@@ -136,6 +133,17 @@ describe("AISVC-002 the AI service is the GenAI stack, in its own directory", ()
     expect([...files.keys()].filter((file) => file.startsWith("ai-service/app/pattern"))).toEqual([
       "ai-service/app/pattern.py",
     ]);
+  });
+
+  it("is generated only around a pattern; only an adopted project's may have none", async () => {
+    await expect(generate(assets, config({ ai: {} }), "0.0.0")).rejects.toThrow(
+      "an AI service Liftoff generates needs its pattern",
+    );
+    const adopted = await generate(assets, config({ ai: {} }), "0.0.0", { application: false });
+    expect(adopted.files.some((file) => file.path.startsWith("ai-service/"))).toBe(false);
+    expect(
+      adopted.files.find((file) => file.path === ".github/workflows/01-pr-ci.yml")?.content,
+    ).toContain("ai-test");
   });
 
   it("runs the AI service in Compose with no published port, and no service waits for it", async () => {
