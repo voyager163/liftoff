@@ -43,9 +43,12 @@ my-project/
   OpenAPI and Scalar docs, `APP_MODEL=test` by default, Langfuse only with
   `APP_TRACING=langfuse`, and the pattern's endpoints and offline tests.
 - In Compose the AI service has no published port. The API reaches it as
-  `http://ai-service:8000`, from the setting `AI_SERVICE_URL`, and starts
-  only once the AI service is healthy.
-- The backend gets a small client for the AI service in its own language:
+  `http://ai-service:8000`, from the setting `AI_SERVICE_URL`. The API does
+  not wait for the AI service to start or be healthy: it starts on its own,
+  and a request that needs AI while the service is down gets the client's
+  error, so the rest of the API keeps working from the first start.
+- The backend gets a small client for the AI service in its own language,
+  in Go at `backend/internal/ai/client/`:
   one function per pattern endpoint, a time limit, and its errors mapped to
   the API's (a slow AI service is a 504 and a failing one a 502, with
   details only in the logs). Its tests use a fake AI service, so they run
@@ -64,14 +67,19 @@ my-project/
   existing Liftoff API project, generated or adopted. Like `agents add`, it
   previews the change, asks with no as the default (or takes `--yes`),
   and applies it as a recoverable change (CHANGE-001 to CHANGE-003).
-  - It creates `ai-service/` (or the directory given with `--layout`) only
-    where nothing is, and adds its CI jobs, Dependabot entry, review-policy
-    rules, CodeQL language and image scan.
-  - In a generated project it also updates the Compose file and adds the
-    backend's client and example endpoint, as `init --ai` makes them.
-  - In an adopted project it changes none of the application's files
-    (PROJ-026): the Compose service and the backend's client are listed as
-    application changes for the team to make, with what to add.
+  - In a project Liftoff generated, it does what `init --ai` would have:
+    it creates `ai-service/` only where nothing is, updates the Compose file
+    and adds the backend's client and example endpoint, and adds the AI
+    service's CI jobs, Dependabot entry, review-policy rules, CodeQL
+    language and image scan.
+  - In an adopted project, whose application is its own, it keeps PROJ-026:
+    it creates no application file, not even a starter `ai-service/`. It
+    needs an AI service the project already has, found or named with
+    `--layout ai-service=<directory>`, and adds only Liftoff's own files for
+    it (CI jobs, Dependabot, review policy, CodeQL, image scan). Creating the
+    service, its Compose entry and the backend's client are listed as
+    application changes for the team, with a pointer to what `init --ai`
+    generates as a reference.
 - **`liftoff ai remove`** is not planned for the first version.
 
 ## Assess and adopt
@@ -81,8 +89,18 @@ my-project/
   service, with no `--layout` needed. Today this blocks.
 - `--layout ai-service=<directory>` binds it where it lives (PROJ-024), and
   `--ai none` leaves it out, so it stays the project's and unmanaged.
+- An AI service is recognised from its `pyproject.toml` (FastAPI and
+  PydanticAI), whatever its internal layout: a `src/<package>/` layout,
+  several packages, queue workers and more than one Dockerfile are the
+  project's own, and adopting never restructures them.
 - The AI service's checks are the GenAI stack's: lock file, runtime
-  version, tests with a coverage threshold, Dockerfile.
+  version, tests with a coverage threshold, and a Dockerfile at its root.
+- Its pattern is optional when adopting: a service that does several jobs
+  fits none of the nine, and the pattern only shapes generated starter code
+  and the README's maturity table. `init --ai` always records one.
+- When the AI service uses the backend's PostgreSQL and the backend owns
+  the schema, the AI service is not expected to have migrations of its own;
+  assess checks migrations on the backend only.
 - A Vue frontend beside an API backend with an AI service is allowed, since
   the frontend talks only to the API.
 
@@ -90,7 +108,7 @@ my-project/
 
 | Area | Change |
 | --- | --- |
-| Configuration | `liftoff.yaml` gains `ai: { pattern }`, and layout gains an `ai-service` part |
+| Configuration | `liftoff.yaml` gains `ai: { pattern }` (pattern optional when adopted), and layout gains an `ai-service` part |
 | Generators | The GenAI stack's backend is rendered into `ai-service/` for an API project; each API stack gets its AI client and example endpoint |
 | Shared files | CI, Compose, Dependabot, CodeQL, review policy, `AGENTS.md`, README and the image scan include the AI service |
 | Assess and adopt | Recognise the pair; the `ai-service` binding; `--ai none` |
@@ -108,8 +126,10 @@ my-project/
 ## Out of scope for the first version
 
 - An AI service beside a GenAI project, or more than one AI service.
-- Azure infrastructure for the AI service. Until it is designed, `--ai`
-  with `--infrastructure azure` is refused, as GenAI projects are today.
+- Generating Azure infrastructure for the AI service. Until it is designed,
+  `init --ai` with `--infrastructure azure` is refused. Adopting a project
+  whose own OpenTofu already deploys its AI service is not refused: that
+  code is the project's, and Liftoff checks it as it checks any root module.
 - Shared persistence between the API and the AI service; the AI service
   keeps the GenAI stack's rule of no database it does not use.
 - Streaming from the AI service through the API to the browser; the
@@ -119,6 +139,6 @@ my-project/
 
 1. Is `ai-service/` the right standard directory name?
 2. Should the API's readiness ignore the AI service, as proposed, or report
-   it as degraded?
+   it as degraded? (The API never waits for it to start, either way.)
 3. Should the example endpoint in the backend's starter be included, or is
    the client alone enough?
