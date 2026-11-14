@@ -109,7 +109,10 @@ async function ask(io: Io): Promise<ParsedArgs> {
   io.stderr(`\nThe same project without questions:\n  ${equivalentCommand(answers, shell)}\n\n`);
   const given = Object.entries(answers).filter(([, value]) => value !== "");
   return {
-    options: Object.fromEntries(given),
+    // A yes to a question for an option that takes no value is that option given.
+    options: Object.fromEntries(
+      given.map(([flag, value]) => [flag, PROJECT_OPTIONS[flag]?.type === "boolean" || value]),
+    ),
     positionals: [],
     given: new Set(given.map(([flag]) => flag)),
   };

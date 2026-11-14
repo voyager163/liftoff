@@ -36,6 +36,9 @@ export const STANDARD_LAYOUT: Readonly<Record<Component, string>> = {
   infrastructure: "infrastructure/opentofu/azure",
 };
 
+/** Where an API project's AI service lives (AISVC-002). */
+export const AI_SERVICE_DIRECTORY = "ai-service";
+
 /** Directories no part of a project may be bound to, or inside. */
 const RESERVED = [".git", ".github", ".liftoff"];
 
@@ -71,6 +74,15 @@ const configSchema = z.strictObject({
   }),
   /** GitHub logins that own the project, for CODEOWNERS. */
   owners: z._default(z.array(z.string().check(z.regex(LOGIN, "must be a GitHub login"))), []),
+  /**
+   * An AI service beside an API project's backend (AISVC-001): the GenAI
+   * stack's FastAPI and PydanticAI service, built around one pattern.
+   */
+  ai: z.optional(
+    z.strictObject({
+      pattern: z.optional(z.string().check(z.minLength(1))),
+    }),
+  ),
   /**
    * Where parts of the project live when not in the standard directories,
    * such as a project adopted with its own layout. "." is the repository
@@ -253,6 +265,9 @@ export function serializeConfig(config: ProjectConfig): string {
         ? { ai: config.review.ai }
         : { ai: config.review.ai, engine: config.review.engine },
     owners: config.owners,
+    ...(config.ai === undefined
+      ? {}
+      : { ai: config.ai.pattern === undefined ? {} : { pattern: config.ai.pattern } }),
     // Only bindings away from the standard directories, in a fixed order.
     ...(isStandardLayout(config)
       ? {}

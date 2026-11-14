@@ -55,6 +55,17 @@ export const PROJECT_OPTIONS: Readonly<Record<string, OptionSpec>> = {
     choices: [NO_PATTERN, ...Object.keys(PATTERNS)],
     description: `GenAI pattern, for genai projects: ${Object.keys(PATTERNS).join(", ")}. Defaults to ${DEFAULT_PATTERN}.`,
   },
+  ai: {
+    type: "boolean",
+    description:
+      "Add an AI service beside an api project's backend: FastAPI and PydanticAI in ai-service/, which only the API calls.",
+  },
+  "ai-pattern": {
+    type: "string",
+    valueName: "pattern",
+    choices: Object.keys(PATTERNS),
+    description: `The AI service's GenAI pattern, with --ai: ${Object.keys(PATTERNS).join(", ")}. Defaults to ${DEFAULT_PATTERN}.`,
+  },
   frontend: {
     type: "string",
     valueName: "frontend",
@@ -137,6 +148,10 @@ export function projectFromOptions(
   const workload = option("workload") ?? "api";
   const genai = workload === "genai";
   const aiMode = option("ai-review") ?? "auto";
+  const aiService = args.options.ai === true;
+  if (!aiService && option("ai-pattern") !== undefined) {
+    throw new UsageError("--ai-pattern goes with --ai");
+  }
   const engine = option("review-engine");
   try {
     const config = validateConfig(
@@ -160,6 +175,7 @@ export function projectFromOptions(
           ...(engine === undefined ? {} : { engine }),
         },
         owners: splitList(option("owners")),
+        ...(aiService ? { ai: { pattern: option("ai-pattern") ?? DEFAULT_PATTERN } } : {}),
       },
       "the options",
     );

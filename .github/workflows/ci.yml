@@ -165,7 +165,7 @@ jobs:
         run: node src/cli/main.ts validate --dir "$RUNNER_TEMP/demo"
 
   services:
-    name: Generated ${{ matrix.stack }} project with PostgreSQL and Docker
+    name: Generated ${{ matrix.stack }} project${{ matrix.ai && ' with an AI service' || '' }} with PostgreSQL and Docker
     # Generated projects' integration tests and containers qualify a
     # deployment target, not a CLI platform, so they run on Linux, where
     # service containers and Docker are available.
@@ -173,6 +173,11 @@ jobs:
       fail-fast: false
       matrix:
         stack: [python-fastapi, node-fastify, go-huma]
+        ai: [false]
+        # The AI service beside the API (AISVC-002), with the frontend.
+        include:
+          - stack: go-huma
+            ai: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -195,6 +200,7 @@ jobs:
           --health-retries 20
     env:
       STACK: ${{ matrix.stack }}
+      AI_SERVICE: ${{ matrix.ai }}
       PGHOST: 127.0.0.1
       PGUSER: app
       PGPASSWORD: ci-only
@@ -222,9 +228,11 @@ jobs:
           cache-dependency-path: assets/plugins/stack-go-huma/files/backend/go.sum
       - run: npm ci
       - name: Create the project with the frontend
-        run: >-
-          node src/cli/main.ts init --name demo --stack "$STACK" --frontend vue
-          --workflow manual --dir "$RUNNER_TEMP/demo" --yes
+        run: |
+          ai=()
+          if [ "$AI_SERVICE" = true ]; then ai=(--ai --ai-pattern generic); fi
+          node src/cli/main.ts init --name demo --stack "$STACK" --frontend vue \
+            --workflow manual --dir "$RUNNER_TEMP/demo" --yes "${ai[@]}"
       - name: Put data in public that the integration tests must leave alone
         run: >-
           psql -v ON_ERROR_STOP=1
@@ -297,6 +305,14 @@ jobs:
           curl --fail --silent --show-error --max-time 5 "$web/" | grep -q '<div id="app">'
           curl --fail --silent --show-error --max-time 5 --head "$web/" | grep -qi '^content-security-policy:'
           curl --fail --silent --show-error --max-time 5 "$web/api/health/ready" | grep -q '"ready"'
+      - name: Check the AI service runs unprivileged and is ready
+        if: matrix.ai
+        working-directory: ${{ runner.temp }}/demo
+        run: |
+          test "$(docker compose exec -T ai-service id -u)" != 0
+          test -z "$(docker compose port ai-service 8000 2>/dev/null)"
+          docker compose exec -T ai-service python -c \
+            "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5).status == 200 else 1)"
       - name: Run the frontend's browser test against the application
         working-directory: ${{ runner.temp }}/demo/frontend
         run: |
@@ -358,9 +374,10 @@ jobs:
               description: Files of installed Python and npm packages
               path: '.*/(site-packages|node_modules)/.*'
           RULES
-          # The images the project builds, api and, with a frontend, web.
+          # The images the project builds: api, ai-service with an AI service,
+          # and web with a frontend.
           services=$(docker compose config --services)
-          for service in api web; do
+          for service in api ai-service web; do
             if ! grep -qx "$service" <<< "$services"; then continue; fi
             image=$(docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q "$service")")
             "$RUNNER_TEMP/trivy" image --exit-code 1 --severity HIGH,CRITICAL \

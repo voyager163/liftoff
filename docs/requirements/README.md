@@ -42,3 +42,4 @@ Verification: test
 | [gitflow.md](gitflow.md) | Branches, releases and their lineage in generated projects |
 | [repository.md](repository.md) | Liftoff's own CI, checks, governance and packaging |
 | [distribution.md](distribution.md) | Liftoff's package, release artifacts, channels and upgrades |
+| [ai-service.md](ai-service.md) | An API project's AI service beside its backend |

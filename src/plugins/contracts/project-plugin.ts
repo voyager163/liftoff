@@ -72,6 +72,7 @@ export type PluginKind =
   | "common"
   | "stack"
   | "pattern"
+  | "ai-service"
   | "frontend"
   | "infrastructure"
   | "workflow"
@@ -125,7 +126,7 @@ export interface CodeqlLanguage {
  * - `README.md`: the component's README sections.
  */
 export interface ComponentPlugin extends ProjectPlugin {
-  readonly kind: "stack" | "pattern" | "frontend" | "infrastructure";
+  readonly kind: "stack" | "pattern" | "ai-service" | "frontend" | "infrastructure";
   readonly checks: readonly ProjectCheck[];
   readonly tools: readonly ProjectTool[];
   /** Review policy rules for the component's files, added after the built-in ones. */

@@ -4,6 +4,7 @@ import { AGENT_HOSTS } from "../plugins/builtin/agents/hosts.ts";
 import type { AgentHostId } from "../plugins/contracts/agent-host.ts";
 import { ENVIRONMENTS } from "../plugins/contracts/project-plugin.ts";
 import {
+  AI_SERVICE_STACKS,
   DEFAULT_GOVERNANCE,
   DEFAULT_PATTERN,
   DEFAULT_STACKS,
@@ -99,6 +100,23 @@ export async function askProjectOptions(prompts: Prompts): Promise<Record<string
         default: NO_INFRASTRUCTURE,
       })
     : NO_INFRASTRUCTURE;
+  // An AI service beside an API stack that supports it, without
+  // infrastructure, which does not deploy it yet (AISVC-001).
+  const aiPattern =
+    workload === "api" && AI_SERVICE_STACKS.includes(stack) && infrastructure === NO_INFRASTRUCTURE
+      ? await prompts.select({
+          flag: "ai",
+          message: "AI service beside the API, and its GenAI pattern",
+          choices: [
+            { value: "", name: "none" },
+            ...Object.entries(PATTERNS).map(([id, plugin]) => ({
+              value: id,
+              description: `${plugin.maturity.level}: ${plugin.summary}`,
+            })),
+          ],
+          default: "",
+        })
+      : "";
   const environments =
     infrastructure === NO_INFRASTRUCTURE
       ? []
@@ -183,6 +201,8 @@ export async function askProjectOptions(prompts: Prompts): Promise<Record<string
     pattern,
     frontend,
     infrastructure,
+    ai: aiPattern === "" ? "" : "true",
+    "ai-pattern": aiPattern,
     environments: environments.join(","),
     workflow,
     agents: agents.join(","),
@@ -228,6 +248,7 @@ export function equivalentCommand(
   const flags = Object.entries(answers).flatMap(([flag, value]) => {
     const spec = PROJECT_OPTIONS[flag];
     if (value === "" || (spec?.type === "string" && spec.default === value)) return [];
+    if (spec?.type === "boolean") return [`--${flag}`];
     if ((flag === "dir" && value === answers.name) || (flag === "pattern" && value === NO_PATTERN))
       return [];
     return [

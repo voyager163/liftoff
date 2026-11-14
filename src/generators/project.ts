@@ -31,7 +31,13 @@ export class GenerationError extends Error {
 const RESERVED = new Set([CONFIG_FILE, MANIFEST_FILE]);
 
 /** Plugins whose every file belongs to the application. */
-const PARTS: ReadonlySet<PluginKind> = new Set(["stack", "pattern", "frontend", "infrastructure"]);
+const PARTS: ReadonlySet<PluginKind> = new Set([
+  "stack",
+  "pattern",
+  "ai-service",
+  "frontend",
+  "infrastructure",
+]);
 
 function checkPath(path: string, plugin: string): void {
   const parts = path.split("/");
