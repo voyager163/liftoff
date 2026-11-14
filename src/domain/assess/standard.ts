@@ -5,6 +5,7 @@ import type { LegacyInventory } from "../legacy/inventory.ts";
 import {
   composeImages,
   type GoModule,
+  goTestCoverageGate,
   hasPython,
   iniCoverageGate,
   lockedProviders,
@@ -815,12 +816,7 @@ function coverageGate(
   const kind = ecosystem(part);
   const found =
     kind === "go"
-      ? // Liftoff's Go projects gate coverage with a small tool of their own.
-        (() => {
-          const tool = fileAt(tree, within(at, "tools/coverage/main.go"));
-          if (tool.found === true) return { evidence: listed(tool.path) };
-          return tool.found === "unknown" ? { status: tool.status, why: tool.why } : undefined;
-        })()
+      ? goCoverageGate(tree, at)
       : declaredIn(
           tree,
           directories.flatMap((directory) =>
@@ -855,12 +851,12 @@ function coverageGate(
       area: "tests",
       status: "unknown",
       message:
-        "Go has no standard place to declare a coverage threshold, so one in a script or CI step is not seen",
+        "no Go coverage gate was found where one is read: a workflow step running `go run ./tools/coverage <profile> <percent>` in the module, the go-test-coverage action with a threshold, or a .testcoverage.yml with one; a gate kept elsewhere, such as in a Makefile, is not read",
       subject,
       evidence: [],
       next: {
         category: "project",
-        text: "Make sure CI fails when coverage falls below a threshold.",
+        text: "Fail CI below a coverage threshold in a way that is read: run `go run ./tools/coverage cover.out 80` in the module from a workflow, as Liftoff's Go projects do, or set a threshold in .testcoverage.yml for go-test-coverage.",
       },
     };
   }
@@ -873,6 +869,53 @@ function coverageGate(
     evidence: [],
     next: { category: "project", text: COVERAGE[kind].next },
   };
+}
+
+/**
+ * A Go module's coverage gate: a workflow step that runs a threshold check
+ * in the module (Liftoff's `tools/coverage`, or the go-test-coverage action
+ * with a threshold), or a go-test-coverage configuration with a threshold
+ * in the module or at the root.
+ */
+function goCoverageGate(
+  tree: Tree,
+  at: string,
+):
+  | { readonly evidence: Evidence }
+  | { readonly status: "inaccessible" | "unknown"; readonly why: string }
+  | undefined {
+  const config = declaredIn(
+    tree,
+    [...new Set([at, "."])].flatMap((directory) =>
+      [".testcoverage.yml", ".testcoverage.yaml"].map((file) => within(directory, file)),
+    ),
+    (_name, text) => {
+      const gate = goTestCoverageGate(text);
+      return gate === undefined ? "unclear" : gate ? "declared" : "none";
+    },
+  );
+  if (config !== undefined && "evidence" in config) return config;
+  let unknown = config;
+  const listing = filesUnder(
+    tree,
+    ".github/workflows",
+    (file) => /\.ya?ml$/.test(file) && file.split("/").length === 3,
+  );
+  if (listing.hidden?.found === "unknown") {
+    unknown ??= { status: listing.hidden.status, why: listing.hidden.why };
+  }
+  const module = path.posix.normalize(at);
+  for (const file of listing.files) {
+    const workflow = parsed(tree, file, readWorkflow, "YAML");
+    if ("status" in workflow) {
+      unknown ??= { status: workflow.status, why: workflow.reason };
+      continue;
+    }
+    if (workflow.value.goCoverageGates.some((gate) => gate === "*" || gate === module)) {
+      return { evidence: read(file) };
+    }
+  }
+  return unknown;
 }
 
 /** Database drivers, and the migration tool this release's standard uses with them. */

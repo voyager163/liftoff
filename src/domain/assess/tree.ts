@@ -125,6 +125,8 @@ export function isDeclaration(file: string): boolean {
       "pytest.ini",
       "pytest.toml",
       ".pytest.toml",
+      ".testcoverage.yml",
+      ".testcoverage.yaml",
     ].includes(name) || /^(vitest|vite|jest)\.config\.([cm]?[jt]s|json)$/.test(name)
   );
 }

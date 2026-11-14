@@ -208,7 +208,8 @@ while it assesses exits 4 and reports nothing.
 It reads only the declarations it interprets: `pyproject.toml`,
 `package.json`, `go.mod`, Compose files, Vitest, Vite and Jest
 configuration, `pytest.toml`, `.coveragerc`, `setup.cfg`, `tox.ini`, `pytest.ini`,
-`.terraform.lock.hcl` and the workflows in `.github/workflows`, plus what
+go-test-coverage's `.testcoverage.yml`, `.terraform.lock.hcl` and the
+workflows in `.github/workflows`, plus what
 `liftoff validate` reads in a Liftoff project, without following a link to
 any of them. Every other file is seen by name only. Files that may hold secrets or state, such as `.env`,
 `prod.env`, `.envrc`, `*.tfstate`, `*.tfvars`, private keys, `.npmrc`,
@@ -276,6 +277,23 @@ not valid TOML is unknown, whatever it names. A coverage threshold counts
 only when it is configured: `fail_under` or `--cov-fail-under` above 0, or a
 non-empty `thresholds` or `coverageThreshold` object, never a mention in a
 description or a comment; one set in code that cannot be read statically is
+unknown. Go has no declaration of its own for one, so a Go module's gate is
+a step in a workflow that runs on pull requests that runs
+`go run ./tools/coverage <profile> <percent>` with a percentage above 0, as
+Liftoff's Go projects do, in the module or naming the module's path (as in
+`go run ./backend/tools/coverage`); the go-test-coverage action with a
+threshold above 0 in such a workflow; or a `.testcoverage.yml` or
+`.testcoverage.yaml` in the module or at the root with a whole-number
+threshold above 0. The step's directory is its own, its job's or the
+workflow's default, read with either separator. A step with a shell other
+than bash, sh, pwsh, powershell or cmd, or that sets `GOFLAGS` in its own,
+its job's or the workflow's `env`, gates nothing. The check counts only as the step's one command, apart from
+blank and comment lines, since anything around it could skip it, swallow
+its failure or move it; and a step or job that may fail
+(`continue-on-error` anything but false) or may not run (an `if` other than
+true) gates nothing. Directories are compared as written, since workflows
+usually run on Linux, where letter case matters. The tool's name
+alone is not a gate, and a gate kept anywhere else, such as a Makefile, is
 unknown. OpenTofu root modules make one part per kind of provider their
 lock files lock, so Azure and another cloud are separate parts; a root
 module whose lock file could not be read, or that has none, is unknown,
