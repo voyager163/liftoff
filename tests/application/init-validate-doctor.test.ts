@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PackageAssets } from "../../src/adapters/assets.ts";
 import { LocalProjectFs } from "../../src/adapters/project-fs.ts";
 import { applyInit, InitTargetError, planInit } from "../../src/application/init/init-project.ts";
@@ -351,6 +351,101 @@ describe("VALID-001 validate reports without repairing", () => {
         message: expect.stringContaining("over 1 MiB"),
       }),
     ]);
+  });
+
+  it("checks a few files at once, and reports them in the manifest's order", async () => {
+    const target = await create();
+    let open = 0;
+    let most = 0;
+    const slow: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: async (directory: string, relative: string, max: number) => {
+        most = Math.max(most, ++open);
+        // The last files listed answer first, so order comes from the manifest.
+        await new Promise((resolve) => setTimeout(resolve, relative < "b" ? 5 : 0));
+        open--;
+        return relative.endsWith(".md")
+          ? { kind: "missing" }
+          : fs.hashWithin(directory, relative, max);
+      },
+    });
+    const manifest = JSON.parse(readFileSync(path.join(target, ".liftoff/manifest.json"), "utf8"));
+    const listed = (manifest.files as { path: string; ownership: string }[])
+      .filter((file) => file.ownership !== "framework" && file.path.endsWith(".md"))
+      .map((file) => file.path);
+    expect(listed.length).toBeGreaterThan(1);
+    const findings = (await validateProject(slow, target)).findings;
+    expect(findings.map((f) => f.path)).toEqual(listed);
+    expect(most).toBeGreaterThan(1);
+    expect(most).toBeLessThanOrEqual(16);
+  });
+
+  it("starts no further file once one fails, and throws once the rest are done", async () => {
+    const target = await create();
+    const started: string[] = [];
+    const pending: (() => void)[] = [];
+    let active = 0;
+    let fail: (error: Error) => void = () => {};
+    const failing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (_directory: string, relative: string) => {
+        started.push(relative);
+        active++;
+        return new Promise((resolve, reject) => {
+          const done = () => {
+            active--;
+            resolve({ kind: "missing" });
+          };
+          if (started.length === 1) {
+            fail = (error) => {
+              active--;
+              reject(error);
+            };
+          } else pending.push(done);
+        });
+      },
+    });
+    let thrown: unknown;
+    let activeWhenThrown = -1;
+    const validating = validateProject(failing, target).catch((error: unknown) => {
+      thrown = error;
+      activeWhenThrown = active;
+    });
+    await vi.waitFor(() => expect(started).toHaveLength(16));
+    fail(new Error("EIO"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(started).toHaveLength(16);
+    expect(thrown).toBeUndefined();
+    for (const done of pending) done();
+    await validating;
+    expect(started).toHaveLength(16);
+    expect((thrown as Error).message).toBe("EIO");
+    expect(activeWhenThrown).toBe(0);
+  });
+
+  it("throws the error of the earliest file that failed, not the first to fail", async () => {
+    const target = await create();
+    const started: string[] = [];
+    const settle: ((error?: Error) => void)[] = [];
+    const failing: ProjectFsPort = Object.assign(Object.create(fs) as ProjectFsPort, {
+      hashWithin: (_directory: string, relative: string) => {
+        started.push(relative);
+        return new Promise((resolve, reject) => {
+          settle.push((error) => (error ? reject(error) : resolve({ kind: "missing" })));
+        });
+      },
+    });
+    const validating = validateProject(failing, target).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await vi.waitFor(() => expect(started).toHaveLength(16));
+    // The first file is done, so the worker that hashed it takes the 17th.
+    settle[0]?.();
+    await vi.waitFor(() => expect(started).toHaveLength(17));
+    settle[16]?.(new Error(`later: ${started[16]}`));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    settle[5]?.(new Error(`earlier: ${started[5]}`));
+    for (const [index, done] of settle.entries()) if (index !== 5 && index !== 16) done();
+    expect(((await validating) as Error).message).toBe(`earlier: ${started[5]}`);
   });
 
   it("reports invalid configuration, manifests and plugins", async () => {
