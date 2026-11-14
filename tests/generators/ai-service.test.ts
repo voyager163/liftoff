@@ -219,6 +219,22 @@ describe("AISVC-003 Liftoff's shared files cover the AI service", () => {
     expect(validated.code, validated.out).toBe(0);
   });
 
+  it("points its documentation at the AI service's directory, never the backend's", async () => {
+    for (const [pattern, directory] of [
+      ["rag", "ai-service/app/documents"],
+      ["prompt", "ai-service/app/prompts"],
+    ] as const) {
+      const files = await project({ ai: { pattern } });
+      const readme = files.get("README.md") ?? "";
+      expect(readme, pattern).toContain(directory);
+      expect(readme, pattern).not.toMatch(/backend\/app\/(documents|prompts)/);
+      expect(files.get("AGENTS.md"), pattern).toContain(`\`${directory}/\``);
+      expect(files.get("AGENTS.md"), pattern).not.toMatch(
+        /backend\/app\/(documents|prompts|pattern)/,
+      );
+    }
+  });
+
   it("adds nothing for an AI service to a project without one", async () => {
     const files = await project({ frontend: "vue" });
     expect([...files.keys()].some((file) => file.startsWith("ai-service/"))).toBe(false);

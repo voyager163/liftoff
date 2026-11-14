@@ -12,6 +12,9 @@ const AI = AI_SERVICE_DIRECTORY;
 const moved = (path: string): string =>
   path === "backend" || path.startsWith("backend/") ? `${AI}${path.slice("backend".length)}` : path;
 
+/** Text about the GenAI stack, with each `backend/` path in it moved to the AI service's. */
+const relocated = (text: string): string => text.replaceAll(/\bbackend\//g, `${AI}/`);
+
 /**
  * An API project's AI service (AISVC-002): the GenAI stack's FastAPI and
  * PydanticAI service and one pattern's endpoints, in `ai-service/` beside
@@ -62,10 +65,15 @@ export function aiServicePlugin(pattern: PatternPlugin | undefined): ComponentPl
         purpose:
           "the AI service's boundaries to the model and tracing, each with an offline adapter",
       },
+      // Where the pattern keeps its own files, such as its documents or prompts.
+      ...(pattern?.layout ?? []).map((entry) => ({
+        path: moved(entry.path),
+        purpose: `the AI service's ${entry.purpose.replace(/^the /, "")}`,
+      })),
     ],
     readmeValues: () => ({
       aiPattern: pattern?.name ?? "its own",
-      maturity: pattern === undefined ? "" : `\n\n${maturityMarkdown(pattern.maturity)}`,
+      maturity: pattern === undefined ? "" : `\n\n${relocated(maturityMarkdown(pattern.maturity))}`,
     }),
     artifacts: ({ templates, config }) => [
       ...filesFrom(templates, STACK, { name: config.name }, "seeded", moved),
