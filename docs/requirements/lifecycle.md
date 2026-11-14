@@ -208,7 +208,8 @@ while it assesses exits 4 and reports nothing.
 It reads only the declarations it interprets: `pyproject.toml`,
 `package.json`, `go.mod`, Compose files, Vitest, Vite and Jest
 configuration, `pytest.toml`, `.coveragerc`, `setup.cfg`, `tox.ini`, `pytest.ini`,
-`.terraform.lock.hcl` and the workflows in `.github/workflows`, plus what
+go-test-coverage's `.testcoverage.yml`, `.terraform.lock.hcl` and the
+workflows in `.github/workflows`, plus what
 `liftoff validate` reads in a Liftoff project, without following a link to
 any of them. Every other file is seen by name only. Files that may hold secrets or state, such as `.env`,
 `prod.env`, `.envrc`, `*.tfstate`, `*.tfvars`, private keys, `.npmrc`,
@@ -276,7 +277,12 @@ not valid TOML is unknown, whatever it names. A coverage threshold counts
 only when it is configured: `fail_under` or `--cov-fail-under` above 0, or a
 non-empty `thresholds` or `coverageThreshold` object, never a mention in a
 description or a comment; one set in code that cannot be read statically is
-unknown. OpenTofu root modules make one part per kind of provider their
+unknown. Go has no declaration of its own for one, so a Go module's gate is
+a workflow step that runs `go run ./tools/coverage <profile> <percent>` in
+the module with a percentage above 0, as Liftoff's Go projects do, the
+go-test-coverage action with a threshold above 0, or a `.testcoverage.yml`
+in the module or at the root with one; the tool's name alone is not a gate,
+and a gate kept anywhere else, such as a Makefile, is unknown. OpenTofu root modules make one part per kind of provider their
 lock files lock, so Azure and another cloud are separate parts; a root
 module whose lock file could not be read, or that has none, is unknown,
 never unsupported. Each finding lists the paths it rests on

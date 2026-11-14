@@ -1,3 +1,4 @@
+import path from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { parse } from "yaml";
 
@@ -330,7 +331,27 @@ export interface Workflow {
   readonly jobs: readonly string[];
   /** Every action and reusable workflow it uses, as written. */
   readonly uses: readonly string[];
+  /**
+   * The directories whose Go coverage a step gates with a threshold above
+   * 0: Liftoff's `go run ./tools/coverage <profile> <percent>`, run there,
+   * or "*" for the go-test-coverage action, which does not say whose.
+   */
+  readonly goCoverageGates: readonly string[];
 }
+
+/** A repository-relative directory as written in a workflow, "." for the root. */
+const directoryOf = (...parts: (string | undefined)[]): string =>
+  path.posix.normalize(
+    parts
+      .filter((part): part is string => part !== undefined && part !== "")
+      .map((part) => part.replace(/^\.\/+/, "").replace(/\/+$/, ""))
+      .filter(Boolean)
+      .join("/") || ".",
+  );
+
+const GO_COVERAGE_TOOL =
+  /\bgo run (?:\.\/)?((?:[\w.-]+\/)*)tools\/coverage\/?[ \t]+\S+[ \t]+(\d+(?:\.\d+)?)\b/g;
+const GO_TEST_COVERAGE = "vladopajic/go-test-coverage@";
 
 export function readWorkflow(text: string): Workflow | undefined {
   let value: unknown;
@@ -356,17 +377,74 @@ export function readWorkflow(text: string): Workflow | undefined {
       ? (workflow.jobs as Record<string, unknown>)
       : {};
   const uses: string[] = [];
+  const goCoverageGates: string[] = [];
+  const stringOf = (value: unknown) => (typeof value === "string" ? value : undefined);
   for (const job of Object.values(jobs)) {
     if (typeof job !== "object" || job === null) continue;
-    const { uses: called, steps } = job as { uses?: unknown; steps?: unknown };
+    const {
+      uses: called,
+      steps,
+      defaults,
+    } = job as {
+      uses?: unknown;
+      steps?: unknown;
+      defaults?: { run?: { "working-directory"?: unknown } };
+    };
     if (typeof called === "string") uses.push(called);
     if (!Array.isArray(steps)) continue;
+    const jobDirectory = stringOf(defaults?.run?.["working-directory"]);
     for (const step of steps) {
-      const used = (step as { uses?: unknown } | null)?.uses;
-      if (typeof used === "string") uses.push(used);
+      if (typeof step !== "object" || step === null) continue;
+      const {
+        uses: used,
+        run,
+        with: inputs,
+        "working-directory": stepDirectory,
+      } = step as Record<string, unknown>;
+      if (typeof used === "string") {
+        uses.push(used);
+        const thresholds =
+          typeof inputs === "object" && inputs !== null
+            ? ["threshold-file", "threshold-package", "threshold-total"].map((key) =>
+                Number((inputs as Record<string, unknown>)[key]),
+              )
+            : [];
+        if (used.startsWith(GO_TEST_COVERAGE) && thresholds.some((value) => value > 0)) {
+          goCoverageGates.push("*");
+        }
+      }
+      if (typeof run !== "string") continue;
+      for (const [, prefix, percent] of run.matchAll(GO_COVERAGE_TOOL)) {
+        if (Number(percent) > 0) {
+          goCoverageGates.push(directoryOf(stringOf(stepDirectory) ?? jobDirectory, prefix));
+        }
+      }
     }
   }
-  return { onPullRequest: events.includes("pull_request"), jobs: Object.keys(jobs), uses };
+  return {
+    onPullRequest: events.includes("pull_request"),
+    jobs: Object.keys(jobs),
+    uses,
+    goCoverageGates,
+  };
+}
+
+/**
+ * Whether a go-test-coverage configuration (`.testcoverage.yml`) sets a
+ * threshold above 0, or undefined when it is not valid YAML.
+ */
+export function goTestCoverageGate(text: string): boolean | undefined {
+  let value: unknown;
+  try {
+    value = parse(text, { maxAliasCount: 100 });
+  } catch {
+    return undefined;
+  }
+  const threshold = (value as { threshold?: unknown } | null)?.threshold;
+  if (typeof threshold !== "object" || threshold === null) return false;
+  return ["file", "package", "total"].some(
+    (key) => Number((threshold as Record<string, unknown>)[key]) > 0,
+  );
 }
 
 /** Whether an action is pinned to a full commit SHA. Local actions and containers need not be. */
