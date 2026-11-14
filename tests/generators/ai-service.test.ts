@@ -68,6 +68,12 @@ describe("AISVC-001 an API project may have one AI service, beside a stack that 
     expect(JSON.parse(without.out).plan.config.ai).toBeUndefined();
   });
 
+  it("says in liftoff capabilities beside which stacks it is available", async () => {
+    const { code, out } = await exec(["capabilities", "--json"]);
+    expect(code).toBe(0);
+    expect(JSON.parse(out).aiService).toEqual({ stacks: ["go-huma"], defaultPattern: "generic" });
+  });
+
   it("writes and reads it in liftoff.yaml, with or without a pattern", () => {
     for (const ai of [{ pattern: "rag" }, {}]) {
       const written = serializeConfig(config({ ai }));
@@ -191,6 +197,26 @@ describe("AISVC-003 Liftoff's shared files cover the AI service", () => {
     const images = Object.values(build.jobs).flatMap((job) => job.strategy?.matrix?.image ?? []);
     expect(images).toContainEqual({ name: "ai-service", context: "ai-service" });
     expect(read(".github/workflows/30-after-release.yml")).toContain("IMAGES: api ai-service web");
+  });
+
+  it("is a project that liftoff validate finds as Liftoff made it", async () => {
+    const created = await exec([
+      "init",
+      "--name",
+      "demo",
+      "--stack",
+      "go-huma",
+      "--ai",
+      "--ai-pattern",
+      "rag",
+      "--workflow",
+      "manual",
+      "--yes",
+    ]);
+    expect(created.code, created.err).toBe(0);
+    const validated = await exec(["validate", "--dir", "demo", "--json"]);
+    expect(validated.err).not.toContain("unknown-plugin");
+    expect(validated.code, validated.out).toBe(0);
   });
 
   it("adds nothing for an AI service to a project without one", async () => {

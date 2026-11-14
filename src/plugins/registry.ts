@@ -315,6 +315,8 @@ export function allPlugins(): ProjectPlugin[] {
     commonPlugin,
     ...Object.values(STACKS),
     ...PATTERN_LIST,
+    // One id and version whatever its pattern, which is in liftoff.yaml.
+    aiServicePlugin(undefined),
     ...Object.values(FRONTENDS),
     ...Object.values(INFRASTRUCTURE),
     deliveryPlugin,

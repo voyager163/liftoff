@@ -310,7 +310,8 @@ jobs:
         working-directory: ${{ runner.temp }}/demo
         run: |
           test "$(docker compose exec -T ai-service id -u)" != 0
-          test -z "$(docker compose port ai-service 8000 2>/dev/null)"
+          # No port of it is published on the host; only the API reaches it.
+          test "$(docker inspect --format '{{len .HostConfig.PortBindings}}' "$(docker compose ps -q ai-service)")" = 0
           docker compose exec -T ai-service python -c \
             "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5).status == 200 else 1)"
       - name: Run the frontend's browser test against the application
