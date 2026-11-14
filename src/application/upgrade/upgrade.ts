@@ -15,10 +15,6 @@ import {
   LATEST_RELEASE_URL,
   MSI_PRODUCTS_SCRIPT,
   msiProducts,
-  npmCliCandidates,
-  npmListedVersion,
-  npmViewVersion,
-  PACKAGE_NAME,
   RELEASES_PAGE,
   samePath,
   WINGET_ID,
@@ -40,7 +36,7 @@ export interface UpgradeInvocation extends Invocation {
 /** The running Liftoff, as the channel that installed it records it. */
 export interface Install {
   readonly channel: Channel;
-  /** The bundle's root, or the npm package's directory. */
+  /** The bundle's root, or the formula's package directory. */
   readonly location: string;
   /** The channel's own name for it, such as voyager163/tap/liftoff. */
   readonly name?: string;
@@ -56,8 +52,6 @@ export interface Install {
   readonly upgrade?: UpgradeInvocation;
   /** Directories a `liftoff` on PATH may resolve into and still be this install. */
   readonly roots: readonly string[];
-  /** Launchers outside those that the channel itself wrote for this install. */
-  readonly launchers?: readonly string[];
 }
 
 /** The newest published release on GitHub, if there is one, or why it could not be read. */
@@ -83,7 +77,7 @@ const failed = (what: string, result: QueryResult | undefined): string => {
 };
 
 /** Finds which channel installed the running copy, from that channel's own records. */
-export async function findInstall(ports: InstallPorts, version: string): Promise<Install> {
+export async function findInstall(ports: InstallPorts): Promise<Install> {
   const { platform } = ports;
   const paths = pathsOf(ports);
   const { app, executable } = await ports.running();
@@ -104,7 +98,10 @@ export async function findInstall(ports: InstallPorts, version: string): Promise
   }
   const cellar = platform === "darwin" ? cellarPlace(app) : undefined;
   if (cellar !== undefined) return cellarFormula(ports, app, cellar);
-  return npmInstall(ports, app, executable, version);
+  return unknown(
+    app,
+    `Liftoff is running from ${app}, which no channel records, such as an npm install or a project's own node_modules.`,
+  );
 }
 
 /** Whether a bundle's release.json is Liftoff's. */
@@ -307,72 +304,6 @@ async function windowsBundle(ports: InstallPorts, bundle: string): Promise<Insta
   };
 }
 
-async function npmInstall(
-  ports: InstallPorts,
-  app: string,
-  node: string,
-  version: string,
-): Promise<Install> {
-  const { platform } = ports;
-  const paths = pathsOf(ports);
-  let cli: string | undefined;
-  for (const candidate of npmCliCandidates(platform, node)) {
-    const real = await ports.realPath(candidate);
-    if (real !== undefined && paths.basename(real) === "npm-cli.js") {
-      cli = real;
-      break;
-    }
-  }
-  const nobody = `Liftoff is running from ${app}, which no channel records, such as a project's own node_modules.`;
-  if (cli === undefined) return unknown(app, nobody);
-  const pathFirst = [paths.dirname(node)];
-  const npm = (...args: string[]) => ports.query(node, [cli, ...args], pathFirst);
-  const root = (await npm("root", "--global"))?.stdout.trim();
-  const installed = root ? await ports.realPath(paths.join(root, PACKAGE_NAME)) : undefined;
-  if (root === undefined || installed === undefined || !samePath(platform, installed, app)) {
-    return unknown(app, nobody);
-  }
-  const listed = await npm("ls", "--global", "--json", "--depth=0");
-  const recorded = listed === undefined ? undefined : npmListedVersion(listed.stdout);
-  const viewed = await npm("view", PACKAGE_NAME, "version", "--json");
-  const offered = viewed?.exitCode === 0 ? npmViewVersion(viewed.stdout) : undefined;
-  // npm writes liftoff.cmd and its siblings into the prefix on Windows; on
-  // macOS bin/liftoff links into the package.
-  const prefix = platform === "win32" ? await ports.realPath(paths.dirname(root)) : undefined;
-  return {
-    channel: "npm",
-    location: app,
-    name: PACKAGE_NAME,
-    ...(recorded === undefined ? {} : { recorded }),
-    ...(offered === undefined ? { offerProblem: failed("npm view", viewed) } : { offered }),
-    reason: `npm installed it globally, with the npm of the Node at ${node}.`,
-    ...(offered === undefined || !isNewer(offered, version)
-      ? {}
-      : {
-          upgrade: {
-            command: node,
-            args: [cli, "install", "--global", `${PACKAGE_NAME}@${offered}`],
-            pathFirst,
-            handOff: false,
-            // npm replaces the package in place.
-            verifier: {
-              command: node,
-              args: [paths.join(app, "dist", "cli", "main.js"), "upgrade", "--verify", "--json"],
-              pathFirst,
-            },
-          },
-        }),
-    roots: [app],
-    ...(prefix === undefined
-      ? {}
-      : {
-          launchers: ["liftoff", "liftoff.cmd", "liftoff.ps1"].map((name) =>
-            paths.join(prefix, name),
-          ),
-        }),
-  };
-}
-
 /** The newest published, non-prerelease release on GitHub. */
 export async function latestRelease(ports: InstallPorts): Promise<Latest> {
   try {
@@ -393,7 +324,7 @@ export async function latestRelease(ports: InstallPorts): Promise<Latest> {
 
 /** Which channel has the running copy, and what is released. */
 export async function upgradeStatus(ports: InstallPorts, version: string): Promise<UpgradeStatus> {
-  const [install, latest] = await Promise.all([findInstall(ports, version), latestRelease(ports)]);
+  const [install, latest] = await Promise.all([findInstall(ports), latestRelease(ports)]);
   return { version, install, latest };
 }
 
@@ -444,9 +375,7 @@ export async function verifyInstall(
     if (found !== undefined) break;
   }
   const ours =
-    found !== undefined &&
-    (install.roots.some((root) => within(ports.platform, root, found)) ||
-      (install.launchers ?? []).some((launcher) => samePath(ports.platform, launcher, found)));
+    found !== undefined && install.roots.some((root) => within(ports.platform, root, found));
   checks.push({
     name: "path",
     ok: ours,

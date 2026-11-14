@@ -1,6 +1,7 @@
 {
   "name": "@voyager163/liftoff",
   "version": "0.1.0-rc.1",
+  "private": true,
   "description": "Developer platform CLI for governed API and GenAI projects.",
   "license": "GPL-3.0-only",
   "type": "module",
@@ -60,9 +61,5 @@
     "esbuild": "0.28.2",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
   }
 }

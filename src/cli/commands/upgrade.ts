@@ -19,7 +19,6 @@ const CHANNELS: Record<Channel, string> = {
   "homebrew-formula": "Homebrew",
   winget: "WinGet",
   msi: "its MSI",
-  npm: "npm",
   archive: "a release archive",
   source: "a Git checkout",
   unknown: "no channel Liftoff knows",
@@ -94,7 +93,7 @@ export function makeUpgradeCommand(
     path: ["upgrade"],
     summary: "Upgrade Liftoff itself with the channel that installed it.",
     description:
-      "Finds which channel installed the running Liftoff from that channel's own records: Homebrew, WinGet, its MSI or npm. It reports the latest release on GitHub apart from what that channel offers, which can lag behind it, and upgrades only with that channel's own command for Liftoff alone: brew upgrade, winget upgrade or npm install --global. It never switches channel, installs a package manager, upgrades anything else, asks for administrator rights or changes a project. It shows the command and asks before running it; the default answer is no. In scripts, pass --yes. On Windows, WinGet replaces liftoff.exe, so Liftoff hands it over and exits; run liftoff upgrade --verify once it finishes. A copy unpacked by hand, a checkout or one no channel records is reported, never changed.",
+      "Finds which channel installed the running Liftoff from that channel's own records: Homebrew, WinGet or its MSI. It reports the latest release on GitHub apart from what that channel offers, which can lag behind it, and upgrades only with that channel's own command for Liftoff alone: brew upgrade or winget upgrade. It never switches channel, installs a package manager, upgrades anything else, asks for administrator rights or changes a project. It shows the command and asks before running it; the default answer is no. In scripts, pass --yes. On Windows, WinGet replaces liftoff.exe, so Liftoff hands it over and exits; run liftoff upgrade --verify once it finishes. A copy unpacked by hand, a checkout or one no channel records is reported, never changed.",
     readOnly: false,
     reportSchema: "liftoff.upgrade/v1",
     options: {

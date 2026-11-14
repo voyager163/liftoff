@@ -442,6 +442,27 @@ describe("PROJ-011 probes retry until their deadline", () => {
   });
 });
 
+describe("PROJ-011 generated Debian images take Debian's security fixes or fail to build", () => {
+  it("updates from Debian, failing on any error, then upgrades, then removes apt", () => {
+    for (const stack of ["stack-node-fastify", "stack-python-fastapi", "stack-python-pydanticai"]) {
+      const dockerfile = readFileSync(
+        path.resolve(import.meta.dirname, `../../assets/plugins/${stack}/files/backend/Dockerfile`),
+        "utf8",
+      );
+      const runtime = dockerfile.slice(dockerfile.indexOf(" AS runtime"));
+      const at = (text: string) => runtime.indexOf(text);
+      // A plain apt-get update exits 0 when Debian cannot be reached, and the
+      // upgrade then quietly upgrades nothing.
+      expect(runtime, stack).not.toMatch(/apt-get update(?! --error-on=any)/);
+      expect(at("apt-get update --error-on=any"), stack).toBeGreaterThan(-1);
+      expect(at("apt-get upgrade --yes"), stack).toBeGreaterThan(
+        at("apt-get update --error-on=any"),
+      );
+      expect(at("dpkg --purge apt"), stack).toBeGreaterThan(at("apt-get upgrade --yes"));
+    }
+  });
+});
+
 describe("PROJ-011 generated images are scanned as their own build scans them", () => {
   const ci = () => workflows.find((workflow) => workflow.name === "ci.yml")?.data;
   const step = (job: string, name: string) => {
