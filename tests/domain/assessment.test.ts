@@ -90,6 +90,8 @@ describe("ASSESS-001 only declarations are read, and secrets are never", () => {
     ["docker-compose.yml", true],
     ["infra/.terraform.lock.hcl", true],
     ["frontend/vitest.config.mts", true],
+    ["backend/.testcoverage.yml", true],
+    ["backend/tools/coverage/main.go", false],
     [".github/workflows/ci.yml", true],
     [".github/workflows/nested/ci.yml", false],
     [".github/liftoff/review-agent/package.json", false],
@@ -444,20 +446,178 @@ describe("ASSESS-003 the standard's checks", () => {
     expect(api(["psycopg"], "services: [\n")).toContain("unknown data.local-database backend at .");
   });
 
-  it("tells a Go project's coverage gate only when it is Liftoff's", () => {
-    const go = (files: Record<string, string>) =>
-      lines(
-        run(
-          tree({
-            "go.mod": "module x\n\ngo 1.26\n\nrequire github.com/danielgtaylor/huma/v2 v2.0.0\n",
-            ...files,
-          }),
-        ),
+  it("finds a Go coverage gate where one is read, and only a gate with a threshold", () => {
+    const huma = "module x\n\ngo 1.26\n\nrequire github.com/danielgtaylor/huma/v2 v2.0.0\n";
+    const go = (files: Record<string, string>, at = ".") =>
+      lines(run(tree({ [at === "." ? "go.mod" : `${at}/go.mod`]: huma, ...files })));
+    const workflow = (job: string) => `on: pull_request\njobs:\n  test:\n${job}`;
+    const tool = (directory: string, command: string) =>
+      workflow(
+        `    defaults:\n      run:\n        working-directory: ${directory}\n    steps:\n      - run: ${command}\n`,
       );
-    expect(go({})).toContain("unknown tests.coverage-gate backend at .");
-    expect(go({ "tools/coverage/main.go": "" })).toContain(
-      "compliant tests.coverage-gate backend at .",
+    const compliant = (at = ".") => `compliant tests.coverage-gate backend at ${at}`;
+    const unknown = (at = ".") => `unknown tests.coverage-gate backend at ${at}`;
+
+    // The tool's name alone is not a gate; it must be run with a threshold.
+    expect(go({})).toContain(unknown());
+    expect(go({ "tools/coverage/main.go": "" })).toContain(unknown());
+    expect(
+      go({ ".github/workflows/ci.yml": tool(".", "go run ./tools/coverage cover.out 80") }),
+    ).toContain(compliant());
+    expect(
+      go({ ".github/workflows/ci.yml": tool(".", "go run ./tools/coverage cover.out 0") }),
+    ).toContain(unknown());
+    // Run in the module, by its working directory or by the tool's path.
+    expect(
+      go(
+        { ".github/workflows/ci.yml": tool("backend", "go run ./tools/coverage cover.out 80") },
+        "backend",
+      ),
+    ).toContain(compliant("backend"));
+    expect(
+      go(
+        { ".github/workflows/ci.yml": tool(".", "go run ./backend/tools/coverage cover.out 75.5") },
+        "backend",
+      ),
+    ).toContain(compliant("backend"));
+    expect(
+      go(
+        { ".github/workflows/ci.yml": tool("other", "go run ./tools/coverage cover.out 80") },
+        "backend",
+      ),
+    ).toContain(unknown("backend"));
+    // The go-test-coverage action with a threshold, or its configuration.
+    const action = (inputs: string) =>
+      workflow(
+        `    steps:\n      - uses: vladopajic/go-test-coverage@${"a".repeat(40)}\n        with:\n${inputs}`,
+      );
+    expect(go({ ".github/workflows/ci.yml": action("          threshold-total: 80\n") })).toContain(
+      compliant(),
     );
+    expect(go({ ".github/workflows/ci.yml": action("          profile: cover.out\n") })).toContain(
+      unknown(),
+    );
+    expect(go({ ".testcoverage.yml": "threshold:\n  total: 80\n" })).toContain(compliant());
+    expect(go({ "backend/.testcoverage.yaml": "threshold:\n  file: 70\n" }, "backend")).toContain(
+      compliant("backend"),
+    );
+    expect(go({ ".testcoverage.yml": "profile: cover.out\n" })).toContain(unknown());
+    expect(go({ ".testcoverage.yml": "threshold: [\n" })).toContain(unknown());
+  });
+
+  it("counts only a Go coverage check that runs and can fail CI", () => {
+    const huma = "module x\n\ngo 1.26\n\nrequire github.com/danielgtaylor/huma/v2 v2.0.0\n";
+    const go = (files: Record<string, string>, at = ".") =>
+      lines(run(tree({ [at === "." ? "go.mod" : `${at}/go.mod`]: huma, ...files })));
+    const ci = (yaml: string) => ({ ".github/workflows/ci.yml": `on: pull_request\n${yaml}` });
+    const step = (body: string, extra = "") =>
+      ci(`jobs:\n  test:\n${extra}    steps:\n      - ${body}\n`);
+    const script = (lines: string[]) =>
+      step(`run: |\n${lines.map((line) => `          ${line}`).join("\n")}`);
+    const tool = "go run ./tools/coverage cover.out 80";
+    const compliant = (at = ".") => `compliant tests.coverage-gate backend at ${at}`;
+    const unknown = (at = ".") => `unknown tests.coverage-gate backend at ${at}`;
+
+    // Comments and quoted text are not commands.
+    expect(go(script([`# ${tool}`, "go test ./..."]))).toContain(unknown());
+    expect(go(script([`echo '${tool}'`]))).toContain(unknown());
+    expect(go(script([`echo "${tool}"`]))).toContain(unknown());
+    // It must be the step's only command: anything around it could skip it,
+    // swallow its failure or change where it runs.
+    expect(go(script([`# Require 80% coverage`, tool]))).toContain(compliant());
+    expect(go(script(["go test -coverprofile=cover.out ./...", tool]))).toContain(unknown());
+    expect(go(script([tool, "echo done"]))).toContain(unknown());
+    expect(go(script([`${tool} || true`]))).toContain(unknown());
+    expect(go(script(["set +e", tool]))).toContain(unknown());
+    expect(go(script(["exit 0", tool]))).toContain(unknown());
+    expect(go(script([`echo done # ; ${tool}`]))).toContain(unknown());
+    expect(go(script([`${tool} # gate`]))).toContain(unknown());
+    expect(go(script([`cd backend && ${tool}`]), "backend")).toContain(unknown("backend"));
+    // A step or job that may not run gates nothing.
+    expect(go(step(`run: ${tool}\n        if: false`))).toContain(unknown());
+    expect(go(step(`run: ${tool}\n        if: github.event_name == 'push'`))).toContain(unknown());
+    expect(go(step(`run: ${tool}\n        if: true`))).toContain(compliant());
+    expect(go(step(`run: ${tool}`, "    if: false\n"))).toContain(unknown());
+    // A step or job allowed to fail gates nothing, an expression included.
+    expect(go(step(`run: ${tool}\n        continue-on-error: true`))).toContain(unknown());
+    expect(
+      go(step(`run: ${tool}\n        continue-on-error: \${{ github.event_name == 'push' }}`)),
+    ).toContain(unknown());
+    expect(go(step(`run: ${tool}\n        continue-on-error: false`))).toContain(compliant());
+    expect(go(step(`run: ${tool}`, "    continue-on-error: true\n"))).toContain(unknown());
+    const action = `uses: vladopajic/go-test-coverage@${"a".repeat(40)}\n        with:\n          threshold-total: 80`;
+    expect(go(step(action))).toContain(compliant());
+    expect(go(step(`${action}\n        continue-on-error: true`))).toContain(unknown());
+    expect(go(step(`${action}\n        if: false`))).toContain(unknown());
+    expect(go(step(action, "    if: false\n"))).toContain(unknown());
+    // The workflow's own default directory, and Windows' separators.
+    expect(
+      go(
+        ci(
+          `defaults:\n  run:\n    working-directory: backend\njobs:\n  test:\n    steps:\n      - run: ${tool}\n`,
+        ),
+        "backend",
+      ),
+    ).toContain(compliant("backend"));
+    expect(
+      go(
+        step(`run: ${tool}`, "    defaults:\n      run:\n        working-directory: .\\backend\n"),
+        "backend",
+      ),
+    ).toContain(compliant("backend"));
+    expect(
+      go(
+        step(
+          `run: ${tool}`,
+          "    defaults:\n      run:\n        working-directory: services\\api\n",
+        ),
+        "services/api",
+      ),
+    ).toContain(compliant("services/api"));
+    // Only a workflow that runs on pull requests can fail one.
+    for (const trigger of ["workflow_dispatch", "schedule", "release", "push"]) {
+      const manual = (body: string) => ({
+        ".github/workflows/ci.yml": `on: ${trigger}\njobs:\n  test:\n    steps:\n      - ${body}\n`,
+      });
+      expect(go(manual(`run: ${tool}`))).toContain(unknown());
+      expect(go(manual(action))).toContain(unknown());
+    }
+    expect(
+      go({
+        ".github/workflows/ci.yml": `on: [push, pull_request]\njobs:\n  test:\n    steps:\n      - run: ${tool}\n`,
+      }),
+    ).toContain(compliant());
+    // A shell other than a standard one, or GOFLAGS, could make it pass unchecked.
+    expect(go(step(`run: ${tool}\n        shell: "true {0}"`))).toContain(unknown());
+    expect(go(step(`run: ${tool}\n        shell: bash`))).toContain(compliant());
+    expect(
+      go(step(`run: ${tool}`, "    defaults:\n      run:\n        shell: 'true {0}'\n")),
+    ).toContain(unknown());
+    expect(go(step(`run: ${tool}\n        env:\n          GOFLAGS: -exec=true`))).toContain(
+      unknown(),
+    );
+    expect(go(step(`run: ${tool}`, "    env:\n      GOFLAGS: -exec=true\n"))).toContain(unknown());
+    expect(
+      go(ci(`env:\n  GOFLAGS: -exec=true\njobs:\n  test:\n    steps:\n      - run: ${tool}\n`)),
+    ).toContain(unknown());
+    expect(go({ ".testcoverage.yaml": "threshold:\n  package: 60\n" })).toContain(compliant());
+    // Thresholds must be percentages, and nothing malformed throws.
+    for (const threshold of ["true", "[80]", "{ value: 80 }", "{ toString: 0 }", "80.5"]) {
+      expect(go({ ".testcoverage.yml": `threshold:\n  total: ${threshold}\n` })).toContain(
+        unknown(),
+      );
+    }
+    expect(go({ ".testcoverage.yml": "threshold: 80\n" })).toContain(unknown());
+    for (const input of ["true", "'80'", '""', "{ toString: 0 }"]) {
+      const expected = input === "'80'" ? compliant() : unknown();
+      expect(
+        go(
+          step(
+            `uses: vladopajic/go-test-coverage@${"a".repeat(40)}\n        with:\n          threshold-total: ${input}`,
+          ),
+        ),
+      ).toContain(expected);
+    }
   });
 
   it("recognizes other ecosystems as unsupported and does not check them further", () => {

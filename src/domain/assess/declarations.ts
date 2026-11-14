@@ -1,3 +1,4 @@
+import path from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { parse } from "yaml";
 
@@ -330,7 +331,78 @@ export interface Workflow {
   readonly jobs: readonly string[];
   /** Every action and reusable workflow it uses, as written. */
   readonly uses: readonly string[];
+  /**
+   * The directories whose Go coverage a step gates with a threshold above
+   * 0: Liftoff's `go run ./tools/coverage <profile> <percent>`, run there,
+   * or "*" for the go-test-coverage action, which does not say whose.
+   */
+  readonly goCoverageGates: readonly string[];
 }
+
+/**
+ * A repository-relative directory as written in a workflow, "." for the
+ * root, with Windows' backslashes read as the separators they are there.
+ */
+const directoryOf = (...parts: (string | undefined)[]): string =>
+  path.posix.normalize(
+    parts
+      .filter((part): part is string => part !== undefined && part !== "")
+      .map((part) =>
+        part
+          .replaceAll("\\", "/")
+          .replace(/^\.\/+/, "")
+          .replace(/\/+$/, ""),
+      )
+      .filter(Boolean)
+      .join("/") || ".",
+  );
+
+/** Liftoff's coverage check, as the whole of one command. */
+const GO_COVERAGE_TOOL =
+  /^go run (?:\.[/\\])?((?:[\w.-]+[/\\])*)tools[/\\]coverage[/\\]?[ \t]+[^\s;&|#]+[ \t]+(\d+(?:\.\d+)?)$/;
+const GO_TEST_COVERAGE = "vladopajic/go-test-coverage@";
+
+/** A percentage above 0, written as a number or as a numeric string. */
+const positivePercent = (value: unknown): boolean =>
+  (typeof value === "number" && Number.isFinite(value) && value > 0) ||
+  (typeof value === "string" && /^\d+(\.\d+)?$/.test(value.trim()) && Number(value) > 0);
+
+/**
+ * Whether a step or job may fail without failing the workflow. Anything
+ * but an absent or literal false, an expression included, may.
+ */
+const mayFail = (value: unknown): boolean => value !== undefined && value !== false;
+
+/**
+ * The directory prefix of Liftoff's coverage check when it is the script's
+ * only command, apart from blank and comment lines; or undefined. A script
+ * that does anything else around it, whose control flow a shell would have
+ * to work out (an early exit, a `cd`, `||`, an inline comment), is not read
+ * as a gate.
+ */
+function onlyCoverageCommand(script: string): string | undefined {
+  const commands = script
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"));
+  if (commands.length !== 1) return undefined;
+  const match = GO_COVERAGE_TOOL.exec(commands[0] ?? "");
+  return match !== null && Number(match[2]) > 0 ? (match[1] ?? "") : undefined;
+}
+
+/** Shells that run a one-command script and exit with its status. */
+const STANDARD_SHELLS = new Set(["bash", "sh", "pwsh", "powershell", "cmd"]);
+
+/** Whether a `shell` setting, if any, is a standard shell. */
+const standardShell = (shell: unknown): boolean =>
+  shell === undefined || (typeof shell === "string" && STANDARD_SHELLS.has(shell));
+
+/** Whether an `env` mapping sets GOFLAGS, which can change what `go run` does. */
+const setsGoFlags = (env: unknown): boolean =>
+  typeof env === "object" && env !== null && Object.hasOwn(env, "GOFLAGS");
+
+/** Whether a job or step runs whenever its workflow does: no `if`, or a literal true. */
+const alwaysRuns = (condition: unknown): boolean => condition === undefined || condition === true;
 
 export function readWorkflow(text: string): Workflow | undefined {
   let value: unknown;
@@ -356,17 +428,103 @@ export function readWorkflow(text: string): Workflow | undefined {
       ? (workflow.jobs as Record<string, unknown>)
       : {};
   const uses: string[] = [];
+  const goCoverageGates: string[] = [];
+  const stringOf = (value: unknown) => (typeof value === "string" ? value : undefined);
+  const runDefault = (defaults: unknown, key: "working-directory" | "shell") =>
+    (defaults as { run?: Record<string, unknown> } | null | undefined)?.run?.[key];
+  const directoryDefault = (defaults: unknown) =>
+    stringOf(
+      (defaults as { run?: { "working-directory"?: unknown } } | null | undefined)?.run?.[
+        "working-directory"
+      ],
+    );
+  const workflowDirectory = directoryDefault(workflow.defaults);
+  // A gate that runs only by hand or on a timer never fails a pull request.
+  const onPullRequest = events.includes("pull_request");
+  const workflowShell = runDefault(workflow.defaults, "shell");
   for (const job of Object.values(jobs)) {
     if (typeof job !== "object" || job === null) continue;
-    const { uses: called, steps } = job as { uses?: unknown; steps?: unknown };
+    const {
+      uses: called,
+      steps,
+      defaults,
+      "continue-on-error": jobMayFail,
+      if: jobCondition,
+      env: jobEnv,
+    } = job as Record<string, unknown>;
     if (typeof called === "string") uses.push(called);
     if (!Array.isArray(steps)) continue;
+    // A job that may fail, or may not run, gates nothing, whatever its steps check.
+    const gates =
+      onPullRequest &&
+      !mayFail(jobMayFail) &&
+      alwaysRuns(jobCondition) &&
+      !setsGoFlags(workflow.env) &&
+      !setsGoFlags(jobEnv);
+    const jobShell = runDefault(defaults, "shell") ?? workflowShell;
+    const jobDirectory = directoryDefault(defaults) ?? workflowDirectory;
     for (const step of steps) {
-      const used = (step as { uses?: unknown } | null)?.uses;
+      if (typeof step !== "object" || step === null) continue;
+      const {
+        uses: used,
+        run,
+        with: inputs,
+        "working-directory": stepDirectory,
+        "continue-on-error": stepMayFail,
+        if: stepCondition,
+        shell,
+        env: stepEnv,
+      } = step as Record<string, unknown>;
       if (typeof used === "string") uses.push(used);
+      if (!gates || mayFail(stepMayFail) || !alwaysRuns(stepCondition)) continue;
+      if (
+        typeof used === "string" &&
+        used.startsWith(GO_TEST_COVERAGE) &&
+        typeof inputs === "object" &&
+        inputs !== null &&
+        ["threshold-file", "threshold-package", "threshold-total"].some((key) =>
+          positivePercent((inputs as Record<string, unknown>)[key]),
+        )
+      ) {
+        goCoverageGates.push("*");
+      }
+      if (typeof run !== "string" || setsGoFlags(stepEnv) || !standardShell(shell ?? jobShell)) {
+        continue;
+      }
+      const prefix = onlyCoverageCommand(run);
+      if (prefix !== undefined) {
+        goCoverageGates.push(directoryOf(stringOf(stepDirectory) ?? jobDirectory, prefix));
+      }
     }
   }
-  return { onPullRequest: events.includes("pull_request"), jobs: Object.keys(jobs), uses };
+  return {
+    onPullRequest: events.includes("pull_request"),
+    jobs: Object.keys(jobs),
+    uses,
+    goCoverageGates,
+  };
+}
+
+/**
+ * Whether a go-test-coverage configuration (`.testcoverage.yml`) sets a
+ * threshold above 0, or undefined when it is not valid YAML.
+ */
+export function goTestCoverageGate(text: string): boolean | undefined {
+  let value: unknown;
+  try {
+    value = parse(text, { maxAliasCount: 100 });
+  } catch {
+    return undefined;
+  }
+  const threshold = (value as { threshold?: unknown } | null)?.threshold;
+  if (threshold === undefined || threshold === null) return false;
+  if (typeof threshold !== "object" || Array.isArray(threshold)) return undefined;
+  const values = ["file", "package", "total"]
+    .map((key) => (threshold as Record<string, unknown>)[key])
+    .filter((each) => each !== undefined && each !== null);
+  // go-test-coverage takes whole percentages; anything else is not a threshold.
+  if (values.some((each) => typeof each !== "number" || !Number.isInteger(each))) return undefined;
+  return values.some((each) => (each as number) > 0);
 }
 
 /** Whether an action is pinned to a full commit SHA. Local actions and containers need not be. */
