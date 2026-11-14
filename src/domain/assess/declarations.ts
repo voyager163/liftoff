@@ -374,30 +374,24 @@ const positivePercent = (value: unknown): boolean =>
 const mayFail = (value: unknown): boolean => value !== undefined && value !== false;
 
 /**
- * The directory prefix and percentage of Liftoff's coverage check when it
- * is a script's last command, so its exit status is the step's in every
- * shell; or undefined. Nothing before it may change directory, turn off
- * stopping on errors, or put the check behind `||`, and comments and
- * quoted text are never commands.
+ * The directory prefix of Liftoff's coverage check when it is the script's
+ * only command, apart from blank and comment lines; or undefined. A script
+ * that does anything else around it, whose control flow a shell would have
+ * to work out (an early exit, a `cd`, `||`, an inline comment), is not read
+ * as a gate.
  */
-function lastCoverageCommand(script: string): { prefix: string; percent: number } | undefined {
+function onlyCoverageCommand(script: string): string | undefined {
   const commands = script
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line !== "" && !line.startsWith("#"))
-    .flatMap((line) => line.split(/&&|;/).map((command) => command.trim()))
-    .filter(Boolean);
-  const last = commands.at(-1);
-  if (last === undefined || script.includes("||")) return undefined;
-  const before = commands.slice(0, -1);
-  if (before.some((command) => /^(cd|pushd|popd|set-location|sl|set \+e)\b/i.test(command))) {
-    return undefined;
-  }
-  const match = GO_COVERAGE_TOOL.exec(last);
-  if (match === null) return undefined;
-  const percent = Number(match[2]);
-  return percent > 0 ? { prefix: match[1] ?? "", percent } : undefined;
+    .filter((line) => line !== "" && !line.startsWith("#"));
+  if (commands.length !== 1) return undefined;
+  const match = GO_COVERAGE_TOOL.exec(commands[0] ?? "");
+  return match !== null && Number(match[2]) > 0 ? (match[1] ?? "") : undefined;
 }
+
+/** Whether a job or step runs whenever its workflow does: no `if`, or a literal true. */
+const alwaysRuns = (condition: unknown): boolean => condition === undefined || condition === true;
 
 export function readWorkflow(text: string): Workflow | undefined {
   let value: unknown;
@@ -439,11 +433,12 @@ export function readWorkflow(text: string): Workflow | undefined {
       steps,
       defaults,
       "continue-on-error": jobMayFail,
+      if: jobCondition,
     } = job as Record<string, unknown>;
     if (typeof called === "string") uses.push(called);
     if (!Array.isArray(steps)) continue;
-    // A job that may fail gates nothing, whatever its steps check.
-    const gates = !mayFail(jobMayFail);
+    // A job that may fail, or may not run, gates nothing, whatever its steps check.
+    const gates = !mayFail(jobMayFail) && alwaysRuns(jobCondition);
     const jobDirectory = directoryDefault(defaults) ?? workflowDirectory;
     for (const step of steps) {
       if (typeof step !== "object" || step === null) continue;
@@ -453,9 +448,10 @@ export function readWorkflow(text: string): Workflow | undefined {
         with: inputs,
         "working-directory": stepDirectory,
         "continue-on-error": stepMayFail,
+        if: stepCondition,
       } = step as Record<string, unknown>;
       if (typeof used === "string") uses.push(used);
-      if (!gates || mayFail(stepMayFail)) continue;
+      if (!gates || mayFail(stepMayFail) || !alwaysRuns(stepCondition)) continue;
       if (
         typeof used === "string" &&
         used.startsWith(GO_TEST_COVERAGE) &&
@@ -468,9 +464,9 @@ export function readWorkflow(text: string): Workflow | undefined {
         goCoverageGates.push("*");
       }
       if (typeof run !== "string") continue;
-      const check = lastCoverageCommand(run);
-      if (check !== undefined) {
-        goCoverageGates.push(directoryOf(stringOf(stepDirectory) ?? jobDirectory, check.prefix));
+      const prefix = onlyCoverageCommand(run);
+      if (prefix !== undefined) {
+        goCoverageGates.push(directoryOf(stringOf(stepDirectory) ?? jobDirectory, prefix));
       }
     }
   }

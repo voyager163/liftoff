@@ -522,13 +522,22 @@ describe("ASSESS-003 the standard's checks", () => {
     expect(go(script([`# ${tool}`, "go test ./..."]))).toContain(unknown());
     expect(go(script([`echo '${tool}'`]))).toContain(unknown());
     expect(go(script([`echo "${tool}"`]))).toContain(unknown());
-    // It must be the last command, and nothing may swallow its failure or
-    // change where it runs.
-    expect(go(script(["go test -coverprofile=cover.out ./...", tool]))).toContain(compliant());
+    // It must be the step's only command: anything around it could skip it,
+    // swallow its failure or change where it runs.
+    expect(go(script([`# Require 80% coverage`, tool]))).toContain(compliant());
+    expect(go(script(["go test -coverprofile=cover.out ./...", tool]))).toContain(unknown());
     expect(go(script([tool, "echo done"]))).toContain(unknown());
     expect(go(script([`${tool} || true`]))).toContain(unknown());
     expect(go(script(["set +e", tool]))).toContain(unknown());
+    expect(go(script(["exit 0", tool]))).toContain(unknown());
+    expect(go(script([`echo done # ; ${tool}`]))).toContain(unknown());
+    expect(go(script([`${tool} # gate`]))).toContain(unknown());
     expect(go(script([`cd backend && ${tool}`]), "backend")).toContain(unknown("backend"));
+    // A step or job that may not run gates nothing.
+    expect(go(step(`run: ${tool}\n        if: false`))).toContain(unknown());
+    expect(go(step(`run: ${tool}\n        if: github.event_name == 'push'`))).toContain(unknown());
+    expect(go(step(`run: ${tool}\n        if: true`))).toContain(compliant());
+    expect(go(step(`run: ${tool}`, "    if: false\n"))).toContain(unknown());
     // A step or job allowed to fail gates nothing, an expression included.
     expect(go(step(`run: ${tool}\n        continue-on-error: true`))).toContain(unknown());
     expect(
@@ -539,6 +548,8 @@ describe("ASSESS-003 the standard's checks", () => {
     const action = `uses: vladopajic/go-test-coverage@${"a".repeat(40)}\n        with:\n          threshold-total: 80`;
     expect(go(step(action))).toContain(compliant());
     expect(go(step(`${action}\n        continue-on-error: true`))).toContain(unknown());
+    expect(go(step(`${action}\n        if: false`))).toContain(unknown());
+    expect(go(step(action, "    if: false\n"))).toContain(unknown());
     // The workflow's own default directory, and Windows' separators.
     expect(
       go(

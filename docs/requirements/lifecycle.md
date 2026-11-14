@@ -283,10 +283,12 @@ the module with a percentage above 0, as Liftoff's Go projects do, the
 go-test-coverage action with a threshold above 0, or a `.testcoverage.yml`
 in the module or at the root with a whole-number threshold above 0. The
 step's directory is its own, its job's or the workflow's default, read with
-either separator. The check counts only as the step's last command, with
-nothing before it that changes directory or stops failing on errors and no
-`||`; comments and quoted text are not commands, and a step or job that may
-fail (`continue-on-error` anything but false) gates nothing. The tool's name
+either separator. The check counts only as the step's one command, apart from
+blank and comment lines, since anything around it could skip it, swallow
+its failure or move it; and a step or job that may fail
+(`continue-on-error` anything but false) or may not run (an `if` other than
+true) gates nothing. Directories are compared as written, since workflows
+usually run on Linux, where letter case matters. The tool's name
 alone is not a gate, and a gate kept anywhere else, such as a Makefile, is
 unknown. OpenTofu root modules make one part per kind of provider their
 lock files lock, so Azure and another cloud are separate parts; a root
