@@ -47,7 +47,7 @@
     "bundle": "node scripts/package/build-bundle.ts"
   },
   "dependencies": {
-    "@inquirer/prompts": "8.7.3",
+    "@inquirer/prompts": "8.7.5",
     "picomatch": "4.0.7",
     "smol-toml": "1.9.1",
     "yaml": "2.9.1",
