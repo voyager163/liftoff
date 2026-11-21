@@ -2,7 +2,9 @@ import { PROFILES } from "../../domain/risk-policy/profiles.ts";
 import { AGENT_HOSTS } from "../../plugins/builtin/agents/hosts.ts";
 import { ENVIRONMENTS } from "../../plugins/contracts/project-plugin.ts";
 import {
+  AI_SERVICE_STACKS,
   DEFAULT_GOVERNANCE,
+  DEFAULT_PATTERN,
   DEFAULT_WORKFLOW,
   FRONTENDS,
   GOVERNANCE,
@@ -57,6 +59,9 @@ export const capabilitiesCommand: CommandSpec = {
         summary: pattern.summary,
         maturity: pattern.maturity.level,
       })),
+      // An API project's AI service (AISVC-001): beside which stacks, with
+      // the patterns above.
+      aiService: { stacks: AI_SERVICE_STACKS, defaultPattern: DEFAULT_PATTERN },
       frontends: Object.entries(FRONTENDS).map(([id, frontend]) => ({
         id,
         summary: frontend.summary,

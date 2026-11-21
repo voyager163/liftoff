@@ -123,6 +123,29 @@ describe("INIT-006 init asks for each option in a terminal", () => {
     expect(JSON.parse(planned.out).plan.hash).toBe(JSON.parse(wizard.out).plan);
   });
 
+  it("asks about an AI service only where one can be generated, and plans the same as --ai (AISVC-001)", async () => {
+    const answers = { name: "shop", stack: "go-huma", frontend: "vue", ai: "rag" };
+    const wizard = await exec(["init", "--json"], answers, false);
+    const question = wizard.io.asked.find((asked) => asked.flag === "ai");
+    expect(question?.default).toBe("");
+    expect(question?.choices).toContainEqual(expect.objectContaining({ value: "rag" }));
+    const command = /\n {2}liftoff init (.*)\n/.exec(wizard.err)?.[1] ?? "";
+    expect(command).toContain("--ai --ai-pattern rag");
+    const planned = await exec(["plan", ...words(command), "--json"], {});
+    expect(JSON.parse(planned.out).plan.config.ai).toEqual({ pattern: "rag" });
+    expect(JSON.parse(planned.out).plan.hash).toBe(JSON.parse(wizard.out).plan);
+    const none = await exec(["init", "--json"], { name: "shop", stack: "go-huma" }, false);
+    expect(/\n {2}liftoff init (.*)\n/.exec(none.err)?.[1]).not.toContain("--ai");
+    for (const elsewhere of [
+      { name: "py" },
+      { name: "cloud", stack: "go-huma", infrastructure: "azure" },
+      { name: "gen", workload: "genai", pattern: "rag" },
+    ]) {
+      const asked = await exec(["init"], elsewhere, false);
+      expect(flags(asked.io), elsewhere.name).not.toContain("ai");
+    }
+  });
+
   it("keeps an answer that differs from what the options would choose", async () => {
     const { code, err } = await exec(["init"], {
       name: "quiet",

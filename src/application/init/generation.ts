@@ -60,6 +60,13 @@ export async function generate(
       "this release generates an application's files only in the standard layout; for a project whose parts live elsewhere, it generates only its own files",
     );
   }
+  // The AI service's starter is built around its pattern; only an adopted
+  // project's own AI service may have none (AISVC-001).
+  if (application && config.ai !== undefined && config.ai.pattern === undefined) {
+    throw new ConfigError(
+      "an AI service Liftoff generates needs its pattern: set ai.pattern in liftoff.yaml, or pass --ai-pattern",
+    );
+  }
   const selection = resolveSelection(config);
   const sources = await loadAgentSources(assets, { projectSkills: true });
   const context: GenerationContext = {

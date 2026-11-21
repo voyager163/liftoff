@@ -1,0 +1,16 @@
+- package-ecosystem: uv
+  directory: {{liftoff.aiServiceFromRoot}}
+  schedule:
+    interval: weekly
+  cooldown:
+    default-days: 7
+  groups:
+    ai-service:
+      patterns: ["*"]
+
+- package-ecosystem: docker
+  directory: {{liftoff.aiServiceFromRoot}}
+  schedule:
+    interval: weekly
+  cooldown:
+    default-days: 7

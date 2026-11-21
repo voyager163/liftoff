@@ -72,6 +72,13 @@ const CASES: Record<string, Record<string, unknown>> = {
     agents: ["claude"],
     review: { ai: true },
   },
+  "go-vue-ai-claude": {
+    stack: "go-huma",
+    frontend: "vue",
+    ai: { pattern: "rag" },
+    agents: ["claude"],
+    review: { ai: true },
+  },
   "node-vue-copilot": {
     stack: "node-fastify",
     frontend: "vue",
